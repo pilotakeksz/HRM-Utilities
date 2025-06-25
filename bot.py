@@ -4,8 +4,8 @@ import asyncio
 import os
 from dotenv import load_dotenv
 
-load_dotenv(".env")         # Load public config
-load_dotenv(".env.token") 
+load_dotenv(".env")
+load_dotenv(".env.token")
 APPLICATION_ID = int(os.getenv("APPLICATION_ID"))
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 if TOKEN is None:
@@ -26,8 +26,6 @@ bot = commands.Bot(
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="High Rock"))
-
-    # sync slash commands once
     if not getattr(bot, "_synced", False):
         await bot.tree.sync()
         bot._synced = True
