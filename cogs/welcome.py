@@ -47,7 +47,7 @@ class Welcome(commands.Cog):
             title=f"Welcome to HRMC {member.display_name}!"
         )
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934098332811315/Welcome.png")
-        embed1.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
+
 
         embed2 = discord.Embed(
             color=EMBED_COLOR,
