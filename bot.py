@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import asyncio
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,6 +42,8 @@ async def main():
         await bot.load_extension("cogs.economy")
         await bot.load_extension("cogs.say")
         await bot.load_extension("cogs.suggestion")
+        await bot.load_extension("cogs.Rules")
+        await bot.load_extension("cogs.about_us")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":

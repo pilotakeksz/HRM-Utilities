@@ -103,6 +103,8 @@ class Suggestion(commands.Cog):
             await message.edit(embed=embed, view=view)
             await interaction.response.defer()
 
+    # ...existing code...
+
     @app_commands.command(name="suggestion-approve", description="Approve a suggestion (managers only)")
     @app_commands.describe(suggestion_id="Suggestion ID to approve")
     async def suggestion_approve(self, interaction: discord.Interaction, suggestion_id: int):
@@ -119,6 +121,8 @@ class Suggestion(commands.Cog):
         embed.color = APPROVED_COLOR
         yes = len(self.votes.get(suggestion_id, {}).get("yes", []))
         embed.set_field_at(2, name="Votes", value=progress_bar(yes, 0).replace("🟩", "🟩").replace("🟥", "🟩").replace("%", "100%"), inline=False)
+        # Add APPROVED in big letters at the top
+        embed.insert_field_at(0, name="✅ **APPROVED**", value="This suggestion has been approved.", inline=False)
         view = SuggestionView(suggestion_id, yes=yes, no=0, disabled=True)
         await msg.edit(embed=embed, view=view)
         await interaction.response.send_message("Suggestion approved.", ephemeral=True)
@@ -139,11 +143,15 @@ class Suggestion(commands.Cog):
         embed.color = DENIED_COLOR
         no = len(self.votes.get(suggestion_id, {}).get("no", []))
         embed.set_field_at(2, name="Votes", value=progress_bar(0, no).replace("🟩", "🟥").replace("%", "100%"), inline=False)
+        # Add DENIED in big letters at the top
+        embed.insert_field_at(0, name="❌ **DENIED**", value="This suggestion has been denied.", inline=False)
         if reason:
             embed.add_field(name="Denial Reason", value=reason, inline=False)
         view = SuggestionView(suggestion_id, yes=0, no=no, disabled=True)
         await msg.edit(embed=embed, view=view)
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)
+
+# ...existing
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Suggestion(bot))
