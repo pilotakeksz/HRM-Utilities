@@ -131,58 +131,6 @@ class TicketModal(ui.Modal, title="Open a Ticket"):
 
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
-class TicketButtons(ui.View):
-    def __init__(self, opener_id, ticket_type, opener):
-        super().__init__(timeout=None)
-        self.opener_id = opener_id
-        self.ticket_type = ticket_type
-        self.claimed_by = None
-        self.opener = opener
-        self.ticket_channel_id = None
-
-    @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
-    async def claim(self, interaction: Interaction, button: ui.Button):
-        if self.claimed_by:
-            await interaction.response.send_message(f"Already claimed by <@{self.claimed_by}>.", ephemeral=True)
-            return
-        self.claimed_by = interaction.user.id
-        channel = interaction.channel
-        guild = interaction.guild
-        handler_role = guild.get_role(TICKET_HANDLER_ROLE)
-        # Only claimer can send messages, others read only
-        for member in channel.members:
-            if handler_role in member.roles:
-                overwrite = channel.overwrites_for(member)
-                if member.id == self.claimed_by:
-                    overwrite.send_messages = True
-                else:
-                    overwrite.send_messages = False
-                await channel.set_permissions(member, overwrite=overwrite)
-        await interaction.response.send_message(f"Ticket claimed by {interaction.user.mention}.", ephemeral=False)
-
-        # Log claim
-        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
-        now = discord.utils.utcnow()
-        log_msg = (
-            f"Ticket claimed: {channel.mention}\n"
-            f"Claimed by: {interaction.user.mention} ({interaction.user.id})\n"
-            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}"
-        )
-        if log_channel:
-            await log_channel.send(log_msg)
-
-    @ui.button(label="Close", style=ButtonStyle.red, custom_id="ticket_close")
-    async def close(self, interaction: Interaction, button: ui.Button):
-        # Confirm close (send as a normal message in the channel, not ephemeral)
-        confirm_view = ConfirmCloseView(self, self.opener)
-        msg = await interaction.channel.send(
-            f"{interaction.user.mention} Are you sure you want to close this ticket? Click the button below to confirm.",
-            view=confirm_view
-        )
-        await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
-        # Store the message id for later reference if needed
-        self.ticket_channel_id = msg.channel.id
-
 class ConfirmCloseView(ui.View):
     def __init__(self, ticket_view, opener):
         super().__init__(timeout=60)
@@ -193,12 +141,14 @@ class ConfirmCloseView(ui.View):
     async def confirm(self, interaction: Interaction, button: ui.Button):
         channel = interaction.channel
         guild = interaction.guild
+        # Announce archiving
+        await channel.send("Archiving this ticket and restricting permissions. The channel will be deleted in 15 minutes.")
         # Move to archive
         await channel.edit(category=guild.get_channel(CATEGORY_ARCHIVED))
         # Set permissions: view only
         for member in channel.members:
             await channel.set_permissions(member, send_messages=False, read_message_history=True, view_channel=True)
-        await interaction.response.send_message("Ticket archived. This channel will be deleted in 15 minutes.", ephemeral=False)
+        await interaction.response.send_message("Ticket archived. This channel will be deleted in 15 minutes.", ephemeral=True)
         # Save transcript
         transcript_path = await save_transcript(channel)
         # Log close
@@ -227,9 +177,62 @@ class ConfirmCloseView(ui.View):
         # Wait 15 minutes then delete the channel
         await asyncio.sleep(900)
         try:
+            await channel.send("Deleting this ticket channel now. Thank you for contacting support!")
             await channel.delete()
         except Exception:
             pass
+
+class TicketButtons(ui.View):
+    def __init__(self, opener_id, ticket_type, opener):
+        super().__init__(timeout=None)
+        self.opener_id = opener_id
+        self.ticket_type = ticket_type
+        self.claimed_by = None
+        self.opener = opener
+        self.ticket_channel_id = None
+
+    @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
+    async def claim(self, interaction: Interaction, button: ui.Button):
+        if self.claimed_by:
+            await interaction.response.send_message(f"Already claimed by <@{self.claimed_by}>.", ephemeral=True)
+            return
+        self.claimed_by = interaction.user.id
+        channel = interaction.channel
+        guild = interaction.guild
+        handler_role = guild.get_role(TICKET_HANDLER_ROLE)
+        # Only claimer can send messages, others read only
+        for member in channel.members:
+            if handler_role in member.roles:
+                overwrite = channel.overwrites_for(member)
+                if member.id == self.claimed_by:
+                    overwrite.send_messages = True
+                else:
+                    overwrite.send_messages = False
+                await channel.set_permissions(member, overwrite=overwrite)
+        await interaction.response.send_message(f"Ticket claimed by {interaction.user.mention}. You now have exclusive write access as a handler.", ephemeral=False)
+        await channel.send(f"{interaction.user.mention} has claimed this ticket and will assist you shortly.")
+
+        # Log claim
+        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
+        now = discord.utils.utcnow()
+        log_msg = (
+            f"Ticket claimed: {channel.mention}\n"
+            f"Claimed by: {interaction.user.mention} ({interaction.user.id})\n"
+            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        )
+        if log_channel:
+            await log_channel.send(log_msg)
+
+    @ui.button(label="Close", style=ButtonStyle.red, custom_id="ticket_close")
+    async def close(self, interaction: Interaction, button: ui.Button):
+        # Confirm close (send as a normal message in the channel, not ephemeral)
+        confirm_view = ConfirmCloseView(self, self.opener)
+        msg = await interaction.channel.send(
+            f"{interaction.user.mention} Are you sure you want to close this ticket? Click the button below to confirm.",
+            view=confirm_view
+        )
+        await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
+        self.ticket_channel_id = msg.channel.id
 
 async def save_transcript(channel):
     messages = []
