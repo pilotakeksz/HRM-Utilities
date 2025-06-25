@@ -39,6 +39,8 @@ async def main():
         await bot.load_extension("cogs.misc")
         await bot.load_extension("cogs.leveling")
         await bot.load_extension("cogs.economy")
+        await bot.load_extension("cogs.say")
+        await bot.load_extension("cogs.suggestion")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":

@@ -439,7 +439,79 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
+# ...existing code...
 
+    @commands.command(name="fish")
+    async def fish_command(self, ctx):
+        await self.fish(ctx.author, ctx)
+
+    @app_commands.command(name="fish", description="Go fishing for a chance to catch and sell fish!")
+    async def fish_slash(self, interaction: discord.Interaction):
+        await self.fish(interaction.user, interaction)
+
+    async def fish(self, user, destination):
+        # Check if user has a "fish" in inventory (optional: require a fishing rod or bait)
+        catch_chance = random.random()
+        if catch_chance < 0.7:
+            # Caught a fish!
+            await self.add_item(user.id, "fish", 1)
+            embed = discord.Embed(
+                title="🎣 Fishing",
+                description="You cast your line and caught a **fish**! Use `/sell fish` or `!sell fish` to sell it.",
+                color=0xd0b47b
+            )
+        else:
+            embed = discord.Embed(
+                title="🎣 Fishing",
+                description="You didn't catch anything this time. Try again later!",
+                color=0xd0b47b
+            )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    @commands.command(name="sell")
+    async def sell_command(self, ctx, *, item: str):
+        await self.sell(ctx.author, item.lower(), ctx)
+
+    @app_commands.command(name="sell", description="Sell an item from your inventory.")
+    @app_commands.describe(item="The item to sell")
+    async def sell_slash(self, interaction: discord.Interaction, item: str):
+        await self.sell(interaction.user, item.lower(), interaction)
+
+    async def sell(self, user, item, destination):
+        # Only fish is sellable for now
+        if item != "fish":
+            embed = discord.Embed(
+                title="Sell",
+                description="You can only sell **fish** right now.",
+                color=0xd0b47b
+            )
+        else:
+            items = dict(await self.get_inventory(user.id))
+            if items.get("fish", 0) < 1:
+                embed = discord.Embed(
+                    title="Sell",
+                    description="You don't have any fish to sell.",
+                    color=0xd0b47b
+                )
+            else:
+                sell_price = 75  # You can adjust this value
+                data = await self.get_user(user.id)
+                await self.add_item(user.id, "fish", -1)
+                await self.update_user(user.id, balance=data["balance"] + sell_price)
+                embed = discord.Embed(
+                    title="Sell",
+                    description=f"You sold a **fish** for **{sell_price}** coins!",
+                    color=0xd0b47b
+                )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+# ...existing code...
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
