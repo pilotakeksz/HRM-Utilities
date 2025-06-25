@@ -143,6 +143,10 @@ class TicketButtons(ui.View):
 
     @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
     async def claim(self, interaction: Interaction, button: ui.Button):
+        # Only MC and HC can claim
+        if not any(role.id in [MC_ROLE, HC_ROLE] for role in interaction.user.roles):
+            await interaction.response.send_message("Only MC and HC can claim tickets.", ephemeral=True)
+            return
         if self.claimed_by:
             await interaction.response.send_message(f"Already claimed by <@{self.claimed_by}>.", ephemeral=True)
             return
@@ -182,7 +186,6 @@ class TicketButtons(ui.View):
         )
         await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
 
-# --- CONFIRM CLOSE VIEW ---
 class ConfirmCloseView(ui.View):
     def __init__(self, ticket_view, opener):
         super().__init__(timeout=60)
@@ -220,9 +223,13 @@ class ConfirmCloseView(ui.View):
                         )
             except Exception:
                 pass
+        # Wait 15 minutes then delete the channel
         await asyncio.sleep(900)
         try:
             await channel.send("Deleting this ticket channel now. Thank you for contacting support!")
+        except Exception:
+            pass
+        try:
             await channel.delete()
         except Exception:
             pass
