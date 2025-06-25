@@ -5,6 +5,7 @@ import os
 import datetime
 import asyncio
 
+# --- CONFIGURATION ---
 CIVILIAN_ROLE = 1329910391840702515
 MC_ROLE = 1329910285594525886
 HC_ROLE = 1329910265264869387
@@ -23,17 +24,18 @@ EMBED_FOOTER = "High Rock Military Corps"
 EMBED_ICON = "https://images-ext-1.discordapp.net/external/88RDdZ0JKsH7btZpsxKfyhbsbyHLz4hF2VUTFdaLXSA/https/images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
 EMBED1_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376933977125818469/assistance.png?ex=685d5cb2&is=685c0b32&hm=58fd22c756178ca6fc40c446cd68b5dcc0408777675394c5a324592d746ea05e&"
 EMBED2_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376648782359433316/bottom.png?ex=685cfbd6&is=685baa56&hm=8e024541f2cdf6bc41b83e1ab03f3da441b653dc98fa03f5c58aa2ccee0e3ad4&"
-
 MIA_REDIRECT = "https://discord.gg/xRashKPAKt"
 
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 
+# --- TICKET TYPES ---
 class TicketType:
     GENERAL = "general"
     MANAGEMENT = "management"
     MIA = "mia"
 
+# --- SELECT MENU ---
 class TicketSelect(ui.Select):
     def __init__(self):
         options = [
@@ -50,10 +52,9 @@ class TicketSelect(ui.Select):
                 ephemeral=True
             )
             return
+        await interaction.response.send_modal(TicketModal(self.values[0]))
 
-        modal = TicketModal(ticket_type=self.values[0])
-        await interaction.response.send_modal(modal)
-
+# --- TICKET MODAL ---
 class TicketModal(ui.Modal, title="Open a Ticket"):
     concern = ui.TextInput(label="Concern / Inquiry", style=discord.TextStyle.paragraph, required=True, max_length=500)
     def __init__(self, ticket_type):
@@ -131,57 +132,7 @@ class TicketModal(ui.Modal, title="Open a Ticket"):
 
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
-class ConfirmCloseView(ui.View):
-    def __init__(self, ticket_view, opener):
-        super().__init__(timeout=60)
-        self.ticket_view = ticket_view
-        self.opener = opener
-
-    @ui.button(label="Confirm Close", style=ButtonStyle.red)
-    async def confirm(self, interaction: Interaction, button: ui.Button):
-        channel = interaction.channel
-        guild = interaction.guild
-        # Announce archiving
-        await channel.send("Archiving this ticket and restricting permissions. The channel will be deleted in 15 minutes.")
-        # Move to archive
-        await channel.edit(category=guild.get_channel(CATEGORY_ARCHIVED))
-        # Set permissions: view only
-        for member in channel.members:
-            await channel.set_permissions(member, send_messages=False, read_message_history=True, view_channel=True)
-        await interaction.response.send_message("Ticket archived. This channel will be deleted in 15 minutes.", ephemeral=True)
-        # Save transcript
-        transcript_path = await save_transcript(channel)
-        # Log close
-        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
-        now = discord.utils.utcnow()
-        log_msg = (
-            f"Ticket closed: {channel.mention}\n"
-            f"Closed by: {interaction.user.mention} ({interaction.user.id})\n"
-            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-            f"Transcript attached."
-        )
-        if log_channel and transcript_path:
-            with open(transcript_path, "rb") as f:
-                await log_channel.send(log_msg, file=discord.File(f, filename=os.path.basename(transcript_path)))
-        # DM transcript to opener
-        if self.opener:
-            try:
-                if transcript_path:
-                    with open(transcript_path, "rb") as f:
-                        await self.opener.send(
-                            "Your ticket has been closed. Here is the transcript:",
-                            file=discord.File(f, filename=os.path.basename(transcript_path))
-                        )
-            except Exception:
-                pass
-        # Wait 15 minutes then delete the channel
-        await asyncio.sleep(900)
-        try:
-            await channel.send("Deleting this ticket channel now. Thank you for contacting support!")
-            await channel.delete()
-        except Exception:
-            pass
-
+# --- BUTTONS VIEW ---
 class TicketButtons(ui.View):
     def __init__(self, opener_id, ticket_type, opener):
         super().__init__(timeout=None)
@@ -189,7 +140,6 @@ class TicketButtons(ui.View):
         self.ticket_type = ticket_type
         self.claimed_by = None
         self.opener = opener
-        self.ticket_channel_id = None
 
     @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
     async def claim(self, interaction: Interaction, button: ui.Button):
@@ -225,15 +175,59 @@ class TicketButtons(ui.View):
 
     @ui.button(label="Close", style=ButtonStyle.red, custom_id="ticket_close")
     async def close(self, interaction: Interaction, button: ui.Button):
-        # Confirm close (send as a normal message in the channel, not ephemeral)
         confirm_view = ConfirmCloseView(self, self.opener)
-        msg = await interaction.channel.send(
+        await interaction.channel.send(
             f"{interaction.user.mention} Are you sure you want to close this ticket? Click the button below to confirm.",
             view=confirm_view
         )
         await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
-        self.ticket_channel_id = msg.channel.id
 
+# --- CONFIRM CLOSE VIEW ---
+class ConfirmCloseView(ui.View):
+    def __init__(self, ticket_view, opener):
+        super().__init__(timeout=60)
+        self.ticket_view = ticket_view
+        self.opener = opener
+
+    @ui.button(label="Confirm Close", style=ButtonStyle.red)
+    async def confirm(self, interaction: Interaction, button: ui.Button):
+        channel = interaction.channel
+        guild = interaction.guild
+        await channel.send("Archiving this ticket and restricting permissions. The channel will be deleted in 15 minutes.")
+        await channel.edit(category=guild.get_channel(CATEGORY_ARCHIVED))
+        for member in channel.members:
+            await channel.set_permissions(member, send_messages=False, read_message_history=True, view_channel=True)
+        await interaction.response.send_message("Ticket archived. This channel will be deleted in 15 minutes.", ephemeral=True)
+        transcript_path = await save_transcript(channel)
+        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
+        now = discord.utils.utcnow()
+        log_msg = (
+            f"Ticket closed: {channel.mention}\n"
+            f"Closed by: {interaction.user.mention} ({interaction.user.id})\n"
+            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"Transcript attached."
+        )
+        if log_channel and transcript_path:
+            with open(transcript_path, "rb") as f:
+                await log_channel.send(log_msg, file=discord.File(f, filename=os.path.basename(transcript_path)))
+        if self.opener:
+            try:
+                if transcript_path:
+                    with open(transcript_path, "rb") as f:
+                        await self.opener.send(
+                            "Your ticket has been closed. Here is the transcript:",
+                            file=discord.File(f, filename=os.path.basename(transcript_path))
+                        )
+            except Exception:
+                pass
+        await asyncio.sleep(900)
+        try:
+            await channel.send("Deleting this ticket channel now. Thank you for contacting support!")
+            await channel.delete()
+        except Exception:
+            pass
+
+# --- TRANSCRIPT ---
 async def save_transcript(channel):
     messages = []
     async for msg in channel.history(limit=None, oldest_first=True):
@@ -246,6 +240,7 @@ async def save_transcript(channel):
         f.write("\n".join(messages))
     return filename
 
+# --- MAIN COG ---
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -258,7 +253,6 @@ class TicketSystem(commands.Cog):
 
         embed1 = discord.Embed(colour=EMBED_COLOUR)
         embed1.set_image(url=EMBED1_IMAGE)
-
         embed2 = discord.Embed(
             title="🛰️ Assistance",
             description=(
