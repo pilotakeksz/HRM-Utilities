@@ -19,7 +19,7 @@ class RankInfoSelect(discord.ui.Select):
             discord.SelectOption(label="High Command", value="high", description="View High Command"),
             discord.SelectOption(label="Senior High Command", value="senior", description="View Senior High Command"),
         ]
-        super().__init__(placeholder="Rank info", min_values=1, max_values=1, options=options)
+        super().__init__(placeholder="Rank info", min_values=1, max_values=1, options=options, custom_id="aboutus_rankinfo_select")
 
     async def callback(self, interaction: discord.Interaction):
         embeds = {
@@ -100,9 +100,16 @@ class RankInfoView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(RankInfoSelect())
 
+    # For persistent views
+    @property
+    def persistent(self):
+        return True
+
 class AboutUs(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Register persistent view on cog load
+        bot.add_view(RankInfoView())
 
     @app_commands.command(name="aboutus", description="Send the About Us embed (owner only)")
     async def aboutus(self, interaction: discord.Interaction):

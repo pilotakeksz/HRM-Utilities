@@ -251,6 +251,8 @@ async def save_transcript(channel):
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Register persistent view for ticket buttons
+        bot.add_view(TicketButtons(opener_id=0, ticket_type="general", opener=None))
 
     @app_commands.command(name="ticket-system-setup", description="Setup the ticket system (admin only)")
     async def ticket_system_setup(self, interaction: Interaction):

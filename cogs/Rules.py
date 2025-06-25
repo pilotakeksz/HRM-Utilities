@@ -16,7 +16,7 @@ class RegulationsSelect(Select):
             discord.SelectOption(label="Discord Regulations", value="discord", description="View Discord regulations"),
             discord.SelectOption(label="In-Game Regulations", value="game", description="View In-Game regulations"),
         ]
-        super().__init__(placeholder="Navigate Interface", min_values=1, max_values=1, options=options)
+        super().__init__(placeholder="Navigate Interface", min_values=1, max_values=1, options=options, custom_id="regulations_select")
 
     async def callback(self, interaction: discord.Interaction):
         if self.values[0] == "discord":
@@ -81,6 +81,8 @@ class RegulationsView(View):
 class Rules(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Register persistent view on cog load
+        bot.add_view(RegulationsView())
 
     @app_commands.command(name="send-regulations", description="Send the regulations embed (owner only)")
     async def send_regulations(self, interaction: discord.Interaction):

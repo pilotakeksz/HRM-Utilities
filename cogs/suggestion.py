@@ -4,7 +4,6 @@ from discord import app_commands
 import asyncio
 import os
 import random
-from discord.ui import View, Button
 
 SUGGESTION_CHANNEL_ID = 1329910476171378769
 SUGGESTION_MANAGER_ROLE = 1329910241835352064
@@ -24,29 +23,94 @@ def progress_bar(yes, no):
     percent_num = int((yes / total) * 100)
     return f"{bar} {percent_num}%"
 
-class SuggestionView(View):
+class SuggestionView(discord.ui.View):
     def __init__(self, suggestion_id, yes=0, no=0, disabled=False):
         super().__init__(timeout=None)
         self.suggestion_id = suggestion_id
         self.yes = yes
         self.no = no
         self.disabled = disabled
-        self.update_buttons()
+        self.add_item(SuggestionYesButton(suggestion_id, yes, disabled))
+        self.add_item(SuggestionNoButton(suggestion_id, no, disabled))
 
-    def update_buttons(self):
-        self.clear_items()
-        self.add_item(Button(label=str(self.yes), style=discord.ButtonStyle.green, emoji=YES_EMOJI, custom_id=f"suggest_yes_{self.suggestion_id}", disabled=self.disabled))
-        self.add_item(Button(label=str(self.no), style=discord.ButtonStyle.red, emoji=NO_EMOJI, custom_id=f"suggest_no_{self.suggestion_id}", disabled=self.disabled))
+    @classmethod
+    def from_votes(cls, suggestion_id, votes, disabled=False):
+        yes = len(votes.get("yes", set()))
+        no = len(votes.get("no", set()))
+        return cls(suggestion_id, yes=yes, no=no, disabled=disabled)
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Prevent the author from voting multiple times (optional: implement per-user voting)
-        return True
+class SuggestionYesButton(discord.ui.Button):
+    def __init__(self, suggestion_id, yes, disabled):
+        super().__init__(
+            label=str(yes),
+            style=discord.ButtonStyle.green,
+            emoji=YES_EMOJI,
+            custom_id=f"suggest_yes_{suggestion_id}",
+            disabled=disabled
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        view: SuggestionView = self.view
+        await view.handle_vote(interaction, "yes")
+
+class SuggestionNoButton(discord.ui.Button):
+    def __init__(self, suggestion_id, no, disabled):
+        super().__init__(
+            label=str(no),
+            style=discord.ButtonStyle.red,
+            emoji=NO_EMOJI,
+            custom_id=f"suggest_no_{suggestion_id}",
+            disabled=disabled
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        view: SuggestionView = self.view
+        await view.handle_vote(interaction, "no")
+
+# Add persistence logic to the view
+class SuggestionView(discord.ui.View):
+    def __init__(self, suggestion_id, yes=0, no=0, disabled=False):
+        super().__init__(timeout=None)
+        self.suggestion_id = suggestion_id
+        self.yes = yes
+        self.no = no
+        self.disabled = disabled
+        self.add_item(SuggestionYesButton(suggestion_id, yes, disabled))
+        self.add_item(SuggestionNoButton(suggestion_id, no, disabled))
+
+    async def handle_vote(self, interaction: discord.Interaction, vote_type: str):
+        cog: Suggestion = interaction.client.get_cog("Suggestion")
+        suggestion_id = self.suggestion_id
+        user_id = interaction.user.id
+        if suggestion_id not in cog.votes:
+            cog.votes[suggestion_id] = {"yes": set(), "no": set()}
+        # Remove from both sets to allow changing vote
+        cog.votes[suggestion_id]["yes"].discard(user_id)
+        cog.votes[suggestion_id]["no"].discard(user_id)
+        cog.votes[suggestion_id][vote_type].add(user_id)
+        yes = len(cog.votes[suggestion_id]["yes"])
+        no = len(cog.votes[suggestion_id]["no"])
+        # Update embed
+        channel = interaction.channel
+        message = await channel.fetch_message(interaction.message.id)
+        embed = message.embeds[0]
+        embed.set_field_at(2, name="Votes", value=progress_bar(yes, no), inline=False)
+        new_view = SuggestionView(self.suggestion_id, yes=yes, no=no)
+        await message.edit(embed=embed, view=new_view)
+        await interaction.response.defer()
+
+    @property
+    def persistent_custom_id(self):
+        return [item.custom_id for item in self.children if hasattr(item, "custom_id")]
 
 class Suggestion(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.votes = {}  # suggestion_id: {"yes": set(user_ids), "no": set(user_ids)}
         self.message_map = {}  # suggestion_id: message_id
+
+        # Register persistent views for all suggestions on cog load
+        bot.add_view(SuggestionView(0))  # Dummy for persistence registration
 
     @app_commands.command(name="suggestion-submit", description="Submit a suggestion")
     @app_commands.describe(title="Title of your suggestion", suggestion="Your suggestion text")
@@ -74,37 +138,6 @@ class Suggestion(commands.Cog):
 
         await interaction.response.send_message(f"Suggestion submitted to {channel.mention}!", ephemeral=True)
 
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        if not interaction.type == discord.InteractionType.component:
-            return
-        custom_id = interaction.data.get("custom_id", "")
-        if custom_id.startswith("suggest_yes_") or custom_id.startswith("suggest_no_"):
-            suggestion_id = int(custom_id.split("_")[-1])
-            user_id = interaction.user.id
-            if suggestion_id not in self.votes:
-                self.votes[suggestion_id] = {"yes": set(), "no": set()}
-            # Remove from both sets to allow changing vote
-            self.votes[suggestion_id]["yes"].discard(user_id)
-            self.votes[suggestion_id]["no"].discard(user_id)
-            if custom_id.startswith("suggest_yes_"):
-                self.votes[suggestion_id]["yes"].add(user_id)
-            else:
-                self.votes[suggestion_id]["no"].add(user_id)
-
-            # Update embed
-            channel = interaction.channel
-            message = await channel.fetch_message(interaction.message.id)
-            embed = message.embeds[0]
-            yes = len(self.votes[suggestion_id]["yes"])
-            no = len(self.votes[suggestion_id]["no"])
-            embed.set_field_at(2, name="Votes", value=progress_bar(yes, no), inline=False)
-            view = SuggestionView(suggestion_id, yes=yes, no=no)
-            await message.edit(embed=embed, view=view)
-            await interaction.response.defer()
-
-    # ...existing code...
-
     @app_commands.command(name="suggestion-approve", description="Approve a suggestion (managers only)")
     @app_commands.describe(suggestion_id="Suggestion ID to approve")
     async def suggestion_approve(self, interaction: discord.Interaction, suggestion_id: int):
@@ -121,7 +154,6 @@ class Suggestion(commands.Cog):
         embed.color = APPROVED_COLOR
         yes = len(self.votes.get(suggestion_id, {}).get("yes", []))
         embed.set_field_at(2, name="Votes", value=progress_bar(yes, 0).replace("🟩", "🟩").replace("🟥", "🟩").replace("%", "100%"), inline=False)
-        # Add APPROVED in big letters at the top
         embed.insert_field_at(0, name="✅ **APPROVED**", value="This suggestion has been approved.", inline=False)
         view = SuggestionView(suggestion_id, yes=yes, no=0, disabled=True)
         await msg.edit(embed=embed, view=view)
@@ -143,15 +175,12 @@ class Suggestion(commands.Cog):
         embed.color = DENIED_COLOR
         no = len(self.votes.get(suggestion_id, {}).get("no", []))
         embed.set_field_at(2, name="Votes", value=progress_bar(0, no).replace("🟩", "🟥").replace("%", "100%"), inline=False)
-        # Add DENIED in big letters at the top
         embed.insert_field_at(0, name="❌ **DENIED**", value="This suggestion has been denied.", inline=False)
         if reason:
             embed.add_field(name="Denial Reason", value=reason, inline=False)
         view = SuggestionView(suggestion_id, yes=0, no=no, disabled=True)
         await msg.edit(embed=embed, view=view)
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)
-
-# ...existing
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Suggestion(bot))
