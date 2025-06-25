@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import View, Select
 
 EMBED_COLOR = 0xd0b47b
 ABOUT_US_CHANNEL_ID = 1329910454059008101
@@ -10,7 +9,7 @@ OWNER_ID = 840949634071658507
 FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
 FOOTER_TEXT = "High Rock Military Corps"
 
-class RankInfoSelect(Select):
+class RankInfoSelect(discord.ui.Select):
     def __init__(self):
         options = [
             discord.SelectOption(label="Commissioned Officers", value="commissioned", description="View Commissioned Officers"),
@@ -96,7 +95,7 @@ class RankInfoSelect(Select):
         embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-class RankInfoView(View):
+class RankInfoView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(RankInfoSelect())
