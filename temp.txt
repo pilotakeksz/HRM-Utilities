@@ -1,0 +1,201 @@
+import discord
+from discord.ext import commands
+from discord import app_commands
+import json
+import os
+import random
+from datetime import datetime, timedelta
+
+DATA_FILE = "economy_data.json"
+
+SHOP_ITEMS = {
+    "can of tuna": 150,
+    "wooden sword": 300,
+    "lucky coin": 500
+}
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "w") as f:
+            json.dump({}, f)
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+class Economy(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.data = load_data()
+
+    def ensure_user(self, user_id):
+        if str(user_id) not in self.data:
+            self.data[str(user_id)] = {
+                "wallet": 100,
+                "last_daily": None,
+                "inventory": []
+            }
+
+    @app_commands.command(name="balance", description="Check your coin balance.")
+    async def balance(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        self.ensure_user(user_id)
+        balance = self.data[user_id]["wallet"]
+        await interaction.response.send_message(
+            f"\U0001F4B0 {interaction.user.mention}, you have **{balance} coins**.", ephemeral=True
+        )
+
+    @app_commands.command(name="daily", description="Claim your daily reward.")
+    async def daily(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        self.ensure_user(user_id)
+        last_daily = self.data[user_id]["last_daily"]
+        now = datetime.utcnow()
+
+        if last_daily:
+            last_time = datetime.fromisoformat(last_daily)
+            if now - last_time < timedelta(hours=24):
+                next_time = last_time + timedelta(hours=24)
+                time_left = next_time - now
+                h, m = divmod(time_left.seconds // 60, 60)
+                return await interaction.response.send_message(
+                    f"\u23F3 You need to wait {h}h {m}m before claiming again.", ephemeral=True
+                )
+
+        reward = random.randint(100, 250)
+        self.data[user_id]["wallet"] += reward
+        self.data[user_id]["last_daily"] = now.isoformat()
+        save_data(self.data)
+        await interaction.response.send_message(
+            f"\U0001F389 You claimed **{reward} coins** as your daily reward!", ephemeral=True
+        )
+
+    @app_commands.command(name="work", description="Do some work to earn coins.")
+    async def work(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        self.ensure_user(user_id)
+        reward = random.randint(50, 150)
+        self.data[user_id]["wallet"] += reward
+        save_data(self.data)
+        await interaction.response.send_message(
+            f"\U0001F6E0️ You worked and earned **{reward} coins**!", ephemeral=True
+        )
+
+    @app_commands.command(name="gamble", description="Gamble coins and try your luck!")
+    @app_commands.describe(amount="Amount to gamble")
+    async def gamble(self, interaction: discord.Interaction, amount: int):
+        user_id = str(interaction.user.id)
+        self.ensure_user(user_id)
+
+        wallet = self.data[user_id]["wallet"]
+        if amount <= 0:
+            return await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+        if amount > wallet:
+            return await interaction.response.send_message("💸 You don't have enough coins!", ephemeral=True)
+
+        inventory = self.data[user_id].get("inventory", [])
+        has_lucky_coin = "Lucky Coin" in inventory
+        win_chance = 0.75 if has_lucky_coin else 0.5
+
+        if random.random() < win_chance:
+            self.data[user_id]["wallet"] += amount
+            outcome = f"🎉 You won **{amount} coins**!"
+            if has_lucky_coin:
+                inventory.remove("Lucky Coin")
+                outcome += "\n🍀 Your Lucky Coin was used up!"
+        else:
+            self.data[user_id]["wallet"] -= amount
+            outcome = f"😢 You lost **{amount} coins**."
+
+        save_data(self.data)
+        await interaction.response.send_message(outcome, ephemeral=True)
+
+    @app_commands.command(name="leaderboard", description="Show the top coin holders.")
+    async def leaderboard(self, interaction: discord.Interaction):
+        sorted_users = sorted(
+            self.data.items(),
+            key=lambda item: item[1]["wallet"],
+            reverse=True
+        )[:5]
+
+        embed = discord.Embed(title="🏆 Leaderboard", color=discord.Color.gold())
+        for i, (user_id, info) in enumerate(sorted_users, start=1):
+            user = await self.bot.fetch_user(int(user_id))
+            embed.add_field(name=f"{i}. {user.name}", value=f"{info['wallet']} coins", inline=False)
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="buy", description="Buy an item from the shop.")
+    @app_commands.describe(item="Item name (e.g. 'Can of Tuna')")
+    async def buy(self, interaction: discord.Interaction, item: str):
+        user_id = str(interaction.user.id)
+        self.ensure_user(user_id)
+        item_key = item.lower()
+
+        if item_key not in SHOP_ITEMS:
+            return await interaction.response.send_message("❌ Item not found in shop.", ephemeral=True)
+
+        price = SHOP_ITEMS[item_key]
+        if self.data[user_id]["wallet"] < price:
+            return await interaction.response.send_message("❌ Not enough coins.", ephemeral=True)
+
+        self.data[user_id]["wallet"] -= price
+        self.data[user_id]["inventory"].append(item.title())
+        save_data(self.data)
+        await interaction.response.send_message(f"✅ You bought **{item.title()}** for {price} coins!", ephemeral=True)
+
+    @commands.command(name="shop")
+    async def shop(self, ctx):
+        embed = discord.Embed(title="🛒 Shop", description="Items you can buy", color=discord.Color.green())
+        for item, price in SHOP_ITEMS.items():
+            embed.add_field(name=item.title(), value=f"{price} coins", inline=False)
+        await ctx.send(embed=embed)
+
+    @commands.command(name="rob")
+    async def rob(self, ctx, target: discord.Member):
+        thief_id = str(ctx.author.id)
+        target_id = str(target.id)
+        self.ensure_user(thief_id)
+        self.ensure_user(target_id)
+
+        if thief_id == target_id:
+            return await ctx.send("❌ You can't rob yourself.")
+
+        target_wallet = self.data[target_id]["wallet"]
+        if target_wallet < 100:
+            return await ctx.send("❌ Target is too poor to rob.")
+
+        success = random.random() < 0.5
+        if success:
+            stolen = random.randint(1, int(target_wallet * 0.3))
+            self.data[thief_id]["wallet"] += stolen
+            self.data[target_id]["wallet"] -= stolen
+            save_data(self.data)
+            await ctx.send(f"💀 You robbed {target.mention} and stole **{stolen} coins**!")
+        else:
+            fine = random.randint(20, 50)
+            self.data[thief_id]["wallet"] = max(0, self.data[thief_id]["wallet"] - fine)
+            save_data(self.data)
+            await ctx.send(f"🚨 You got caught and paid **{fine} coins** in fines!")
+
+    @commands.command(name="inventory")
+    async def inventory(self, ctx):
+        user_id = str(ctx.author.id)
+        self.ensure_user(user_id)
+        inventory = self.data[user_id].get("inventory", [])
+
+        if not inventory:
+            return await ctx.send("🎒 Your inventory is empty.")
+
+        item_counts = {}
+        for item in inventory:
+            item_counts[item] = item_counts.get(item, 0) + 1
+
+        desc = "\n".join([f"{item} × {count}" for item, count in item_counts.items()])
+        embed = discord.Embed(title=f"{ctx.author.name}'s Inventory", description=desc, color=discord.Color.blue())
+        await ctx.send(embed=embed)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Economy(bot))
