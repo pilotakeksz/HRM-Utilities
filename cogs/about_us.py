@@ -158,6 +158,7 @@ class AboutUs(commands.Cog):
         await interaction.response.send_message("About Us sent.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
+    bot.add_view(RankInfoView())
     await bot.add_cog(AboutUs(bot))
 
 # To enable persistent views, add this to your main bot.py after creating the bot:
