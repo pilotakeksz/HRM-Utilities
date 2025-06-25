@@ -108,13 +108,15 @@ class TicketModal(ui.Modal, title="Open a Ticket"):
         if log_channel:
             await log_channel.send(log_msg)
 
+        # Ping ticket handlers in the ticket channel (not in embed)
+        await channel.send(f"{guild.get_role(TICKET_HANDLER_ROLE).mention}")
+
         # Send embeds in ticket channel
         embed1 = discord.Embed(colour=EMBED_COLOUR)
         embed1.set_image(url=EMBED1_IMAGE)
 
         embed2 = discord.Embed(
             description=(
-                f"{channel.guild.get_role(TICKET_HANDLER_ROLE).mention}\n"
                 "Our personnel will be with you shortly. Please do not ping them unnecessarily.\n\n"
                 "In the mean time, please add details your initial inquiry.\n\n"
                 f"**Request / Inquiry:**\n\"{self.concern.value}\""
@@ -136,6 +138,7 @@ class TicketButtons(ui.View):
         self.ticket_type = ticket_type
         self.claimed_by = None
         self.opener = opener
+        self.ticket_channel_id = None
 
     @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
     async def claim(self, interaction: Interaction, button: ui.Button):
@@ -172,11 +175,13 @@ class TicketButtons(ui.View):
     async def close(self, interaction: Interaction, button: ui.Button):
         # Confirm close (send as a normal message in the channel, not ephemeral)
         confirm_view = ConfirmCloseView(self, self.opener)
-        await interaction.channel.send(
+        msg = await interaction.channel.send(
             f"{interaction.user.mention} Are you sure you want to close this ticket? Click the button below to confirm.",
             view=confirm_view
         )
         await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
+        # Store the message id for later reference if needed
+        self.ticket_channel_id = msg.channel.id
 
 class ConfirmCloseView(ui.View):
     def __init__(self, ticket_view, opener):
@@ -219,8 +224,12 @@ class ConfirmCloseView(ui.View):
                         )
             except Exception:
                 pass
+        # Wait 15 minutes then delete the channel
         await asyncio.sleep(900)
-        await channel.delete()
+        try:
+            await channel.delete()
+        except Exception:
+            pass
 
 async def save_transcript(channel):
     messages = []
@@ -250,7 +259,6 @@ class TicketSystem(commands.Cog):
         embed2 = discord.Embed(
             title="🛰️ Assistance",
             description=(
-                f"{interaction.guild.get_role(TICKET_HANDLER_ROLE).mention}\n"
                 "Welcome to the HRMC Assistance Hub. We're here to help with all inquiries too specific for public channels. "
                 "Should you be in need of help, open a ticket any time."
             ),
