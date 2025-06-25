@@ -46,6 +46,7 @@ async def main():
         await bot.load_extension("cogs.Rules")
         await bot.load_extension("cogs.about_us")
         await bot.load_extension("cogs.applications")
+        await bot.load_extension("cogs.ticket_system")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
