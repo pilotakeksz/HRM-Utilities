@@ -5,7 +5,6 @@ import os
 import datetime
 import asyncio
 
-# Load from .env or hardcode for this example
 CIVILIAN_ROLE = 1329910391840702515
 MC_ROLE = 1329910285594525886
 HC_ROLE = 1329910265264869387
@@ -125,17 +124,18 @@ class TicketModal(ui.Modal, title="Open a Ticket"):
         embed2.set_image(url=EMBED2_IMAGE)
         embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-        view = TicketButtons(opener_id=user.id, ticket_type=self.ticket_type)
+        view = TicketButtons(opener_id=user.id, ticket_type=self.ticket_type, opener=user)
         await channel.send(embeds=[embed1, embed2], view=view)
 
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
 class TicketButtons(ui.View):
-    def __init__(self, opener_id, ticket_type):
+    def __init__(self, opener_id, ticket_type, opener):
         super().__init__(timeout=None)
         self.opener_id = opener_id
         self.ticket_type = ticket_type
         self.claimed_by = None
+        self.opener = opener
 
     @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
     async def claim(self, interaction: Interaction, button: ui.Button):
@@ -157,15 +157,32 @@ class TicketButtons(ui.View):
                 await channel.set_permissions(member, overwrite=overwrite)
         await interaction.response.send_message(f"Ticket claimed by {interaction.user.mention}.", ephemeral=False)
 
+        # Log claim
+        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
+        now = discord.utils.utcnow()
+        log_msg = (
+            f"Ticket claimed: {channel.mention}\n"
+            f"Claimed by: {interaction.user.mention} ({interaction.user.id})\n"
+            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        )
+        if log_channel:
+            await log_channel.send(log_msg)
+
     @ui.button(label="Close", style=ButtonStyle.red, custom_id="ticket_close")
     async def close(self, interaction: Interaction, button: ui.Button):
-        # Confirm close
-        await interaction.response.send_message("Are you sure you want to close this ticket? Click the button below to confirm.", view=ConfirmCloseView(self), ephemeral=True)
+        # Confirm close (send as a normal message in the channel, not ephemeral)
+        confirm_view = ConfirmCloseView(self, self.opener)
+        await interaction.channel.send(
+            f"{interaction.user.mention} Are you sure you want to close this ticket? Click the button below to confirm.",
+            view=confirm_view
+        )
+        await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
 
 class ConfirmCloseView(ui.View):
-    def __init__(self, ticket_view):
+    def __init__(self, ticket_view, opener):
         super().__init__(timeout=60)
         self.ticket_view = ticket_view
+        self.opener = opener
 
     @ui.button(label="Confirm Close", style=ButtonStyle.red)
     async def confirm(self, interaction: Interaction, button: ui.Button):
@@ -178,7 +195,30 @@ class ConfirmCloseView(ui.View):
             await channel.set_permissions(member, send_messages=False, read_message_history=True, view_channel=True)
         await interaction.response.send_message("Ticket archived. This channel will be deleted in 15 minutes.", ephemeral=False)
         # Save transcript
-        await save_transcript(channel)
+        transcript_path = await save_transcript(channel)
+        # Log close
+        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
+        now = discord.utils.utcnow()
+        log_msg = (
+            f"Ticket closed: {channel.mention}\n"
+            f"Closed by: {interaction.user.mention} ({interaction.user.id})\n"
+            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"Transcript attached."
+        )
+        if log_channel and transcript_path:
+            with open(transcript_path, "rb") as f:
+                await log_channel.send(log_msg, file=discord.File(f, filename=os.path.basename(transcript_path)))
+        # DM transcript to opener
+        if self.opener:
+            try:
+                if transcript_path:
+                    with open(transcript_path, "rb") as f:
+                        await self.opener.send(
+                            "Your ticket has been closed. Here is the transcript:",
+                            file=discord.File(f, filename=os.path.basename(transcript_path))
+                        )
+            except Exception:
+                pass
         await asyncio.sleep(900)
         await channel.delete()
 
@@ -192,6 +232,7 @@ async def save_transcript(channel):
     filename = os.path.join(LOGS_DIR, f"{channel.name}_{channel.id}.txt")
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n".join(messages))
+    return filename
 
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
@@ -209,6 +250,7 @@ class TicketSystem(commands.Cog):
         embed2 = discord.Embed(
             title="🛰️ Assistance",
             description=(
+                f"{interaction.guild.get_role(TICKET_HANDLER_ROLE).mention}\n"
                 "Welcome to the HRMC Assistance Hub. We're here to help with all inquiries too specific for public channels. "
                 "Should you be in need of help, open a ticket any time."
             ),
