@@ -5,7 +5,8 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(".env")         # Load public config
+load_dotenv(".env.token") 
 APPLICATION_ID = int(os.getenv("APPLICATION_ID"))
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 if TOKEN is None:
