@@ -122,4 +122,5 @@ class Rules(commands.Cog):
         await interaction.response.send_message("Regulations sent.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
+    bot.add_view(RegulationsView())  # Register persistent view for regulations select
     await bot.add_cog(Rules(bot))

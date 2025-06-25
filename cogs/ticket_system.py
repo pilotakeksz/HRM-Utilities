@@ -251,8 +251,6 @@ async def save_transcript(channel):
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Register persistent view for ticket buttons
-        bot.add_view(TicketButtons(opener_id=0, ticket_type="general", opener=None))
 
     @app_commands.command(name="ticket-system-setup", description="Setup the ticket system (admin only)")
     async def ticket_system_setup(self, interaction: Interaction):
@@ -316,5 +314,6 @@ class TicketSystem(commands.Cog):
         await channel.set_permissions(user, overwrite=None)
         await interaction.response.send_message(f"{user.mention} removed from the ticket.", ephemeral=False)
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
+    bot.add_view(TicketButtons(opener_id=0, ticket_type="general", opener=None))  # Register persistent view for ticket buttons
     await bot.add_cog(TicketSystem(bot))

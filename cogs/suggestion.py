@@ -183,4 +183,5 @@ class Suggestion(commands.Cog):
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
+    bot.add_view(SuggestionView(0))  # Register persistent view for voting
     await bot.add_cog(Suggestion(bot))
