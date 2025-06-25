@@ -31,20 +31,6 @@ async def on_ready():
         bot._synced = True
         print("⏳ Slash commands synced!")
 
-from cogs.suggestion import SuggestionView
-from cogs.about_us import RankInfoView
-from cogs.Rules import RegulationsView
-from cogs.ticket_system import TicketButtons
-
-# Register persistent view for suggestion voting
-bot.add_view(SuggestionView(suggestion_id=0))  # 0 is a dummy id, but registers the view
-# Register persistent view for About Us rank info select menu
-bot.add_view(RankInfoView())
-# Register persistent view for Regulations select menu
-bot.add_view(RegulationsView())
-# Register persistent view for ticket buttons (required for persistent buttons after restart)
-bot.add_view(TicketButtons(opener_id=0, ticket_type="general", opener=None))
-
 async def main():
     async with bot:
         await bot.load_extension("cogs.welcome")
