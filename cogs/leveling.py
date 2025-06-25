@@ -133,7 +133,7 @@ class Leveling(commands.Cog):
             )
             top = await cur.fetchall()
 
-        embed = discord.Embed(title="🏆 Leaderboard - Top 10 XP", color=0xd0b47b())
+        embed = discord.Embed(title="🏆 Leaderboard - Top 10 XP", color=0xd0b47b)
         for idx, (uid, xp, lvl) in enumerate(top, start=1):
             user = self.bot.get_user(uid) or await self.bot.fetch_user(uid)
             embed.add_field(
@@ -163,7 +163,7 @@ class Leveling(commands.Cog):
                 f"Next level in: **{xp_to_next}** XP\n"
                 f"Leaderboard rank: **#{rank}**"
             ),
-            color=0x7289da
+            color=0x697dc6
         )
 
         if isinstance(dest, discord.Interaction):
