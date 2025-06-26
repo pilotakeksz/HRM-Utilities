@@ -9,6 +9,7 @@ import math
 from datetime import datetime, timedelta
 from discord.ui import View, Button
 from typing import Optional
+import datetime
 
 DB_PATH = os.getenv("ECONOMY_DB_FILE", "data/economy.db")
 DAILY_AMOUNT = int(os.getenv("DAILY_AMOUNT", 250))
@@ -769,6 +770,27 @@ def get_fish_types():
                 value_range = (max(5, price - 40), price + 20)
             fish_types.append((name, value_range))
     return fish_types
+
+def log_econ_action(command: str, user: discord.User, amount: int = None, item: str = None, extra: str = ""):
+    log_dir = os.path.join(os.path.dirname(__file__), "../logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "economy_actions.txt")
+    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    user_str = f"{user} ({user.id})"
+    parts = [f"[{timestamp}]", f"User: {user_str}", f"Command: {command}"]
+    if amount is not None:
+        parts.append(f"Amount: {amount}")
+    if item:
+        parts.append(f"Item: {item}")
+    if extra:
+        parts.append(f"Extra: {extra}")
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(" | ".join(parts) + "\n")
+
+# Example usage: Call log_econ_action in each command after the action is performed.
+# For example, in your buy command after a successful purchase:
+# log_econ_action("buy", user, amount=price, item=item)
+# Do the same for sell, work, daily, deposit, withdraw, fish, crime, rob, etc.
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
