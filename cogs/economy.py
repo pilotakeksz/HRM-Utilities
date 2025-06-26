@@ -331,43 +331,42 @@ class Economy(commands.Cog):
     # --- SELL ---
     @commands.command(name="sell")
     async def sell_command(self, ctx, item: str, amount: int = 1):
-        if item.lower() == "alll":
-            await self.sell_all_inventory(ctx.author, ctx)
-        else:
-            await self.sell(ctx.author, item.lower(), amount, ctx)
+        await self.sell(ctx.author, item.lower(), amount, ctx)
 
-    @app_commands.command(name="sell", description="Sell an item from your inventory. Use 'alll' to sell everything.")
-    @app_commands.describe(item="The item to sell or 'alll' to sell everything", amount="How many to sell")
+    @app_commands.command(name="sell", description="Sell an item from your inventory.")
+    @app_commands.describe(item="The item to sell", amount="How many to sell")
     async def sell_slash(self, interaction: discord.Interaction, item: str, amount: int = 1):
-        if item.lower() == "alll":
-            await self.sell_all_inventory(interaction.user, interaction)
-        else:
-            await self.sell(interaction.user, item.lower(), amount, interaction)
+        await self.sell(interaction.user, item.lower(), amount, interaction)
 
-    async def sell_all_inventory(self, user, destination):
-        inventory = dict(await self.get_inventory(user.id))
-        total_earned = 0
-        sold_items = []
-        for item, amount in inventory.items():
-            if amount > 0 and item in SHOP_ITEMS:
-                price = SHOP_ITEMS[item]["price"]
-                earned = price * amount
-                await self.add_item(user.id, item, -amount)
-                data = await self.get_user(user.id)
-                await self.update_user(user.id, balance=data["balance"] + earned)
-                total_earned += earned
-                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
-                log_econ_action("sell-alll", user, amount=earned, item=item, extra=f"Quantity: {amount}")
-        if sold_items:
-            desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
+    async def sell(self, user, item, amount, destination):
+        items = dict(await self.get_inventory(user.id))
+        if item not in SHOP_ITEMS:
+            embed = discord.Embed(
+                title="Sell",
+                description="That item doesn't exist.",
+                color=0xd0b47b
+            )
+            log_econ_action("sell_fail", user, item=item)
+        elif items.get(item, 0) < 1:
+            embed = discord.Embed(
+                title="Sell",
+                description=f"You don't have any **{item.title()}** to sell.",
+                color=0xd0b47b
+            )
+            log_econ_action("sell_fail", user, item=item, extra="No items")
         else:
-            desc = "You have nothing in your inventory to sell."
-        embed = discord.Embed(
-            title="Sell All Inventory",
-            description=desc,
-            color=0xd0b47b
-        )
-        log_econ_action("sell-alll-summary", user, amount=total_earned, extra="All inventory sold")
+            sell_amount = min(amount, items[item])
+            price = SHOP_ITEMS[item]["price"]
+            total = price * sell_amount
+            data = await self.get_user(user.id)
+            await self.add_item(user.id, item, -sell_amount)
+            await self.update_user(user.id, balance=data["balance"] + total)
+            embed = discord.Embed(
+                title="Sell",
+                description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
+                color=0xd0b47b
+            )
+            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
