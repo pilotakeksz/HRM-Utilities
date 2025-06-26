@@ -836,7 +836,59 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
+# ...existing code...
 
+    # --- BUY ---
+    @commands.command(name="buy")
+    async def buy_command(self, ctx, item: str, amount: int = 1):
+        await self.buy(ctx.author, item.lower(), amount, ctx)
+
+    @app_commands.command(name="buy", description="Buy an item from the shop.")
+    @app_commands.describe(item="The item to buy", amount="How many to buy")
+    async def buy_slash(self, interaction: discord.Interaction, item: str, amount: int = 1):
+        await self.buy(interaction.user, item.lower(), amount, interaction)
+
+    async def buy(self, user, item, amount, destination):
+        if item not in SHOP_ITEMS:
+            embed = discord.Embed(
+                title="Buy",
+                description="That item doesn't exist in the shop.",
+                color=0xd0b47b
+            )
+            log_econ_action("buy_fail", user, item=item, extra="Not in shop")
+        elif amount <= 0:
+            embed = discord.Embed(
+                title="Buy",
+                description="Amount must be at least 1.",
+                color=0xd0b47b
+            )
+            log_econ_action("buy_fail", user, item=item, extra="Invalid amount")
+        else:
+            price = SHOP_ITEMS[item]["price"]
+            total_cost = price * amount
+            data = await self.get_user(user.id)
+            if data["balance"] < total_cost:
+                embed = discord.Embed(
+                    title="Buy",
+                    description=f"You don't have enough coins. You need **{total_cost}** coins.",
+                    color=0xd0b47b
+                )
+                log_econ_action("buy_fail", user, item=item, amount=total_cost, extra="Insufficient funds")
+            else:
+                await self.update_user(user.id, balance=data["balance"] - total_cost)
+                await self.add_item(user.id, item, amount)
+                embed = discord.Embed(
+                    title="Buy",
+                    description=f"You bought **{amount} {item.title()}** for **{total_cost}** coins!",
+                    color=0xd0b47b
+                )
+                log_econ_action("buy", user, amount=total_cost, item=item, extra=f"Quantity: {amount}")
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+# ...existing code...
     # --- WITHDRAW ---
     @commands.command(name="withdraw", aliases=["with"])
     async def withdraw_command(self, ctx, amount: int):
