@@ -372,6 +372,47 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
+    # --- INVENTORY ---
+    @commands.command(name="inventory", aliases=["inv"])
+    async def inventory_command(self, ctx):
+        await self.show_inventory(ctx.author, ctx)
+
+    @app_commands.command(name="inventory", description="Show your inventory.")
+    async def inventory_slash(self, interaction: discord.Interaction):
+        await self.show_inventory(interaction.user, interaction)
+
+    async def show_inventory(self, user, destination):
+        inventory = dict(await self.get_inventory(user.id))
+        nonzero_items = [(item, amount) for item, amount in inventory.items() if amount > 0]
+        if not nonzero_items:
+            desc = "Your inventory is empty."
+        else:
+            desc = "\n".join(f"**{item.title()}** × {amount}" for item, amount in nonzero_items)
+        embed = discord.Embed(
+            title=f"{user.name}'s Inventory",
+            description=desc,
+            color=0xd0b47b
+        )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- SELL AUTOCOMPLETE FOR SLASH COMMAND ---
+    @sell_slash.autocomplete("item")
+    async def sell_item_autocomplete(self, interaction: discord.Interaction, current: str):
+        inventory = dict(await self.get_inventory(interaction.user.id))
+        # Always suggest all items with amount > 0, ignore 'current'
+        choices = [
+            app_commands.Choice(
+                name=f"{item.title()} ({amount})",
+                value=item
+            )
+            for item, amount in inventory.items()
+            if amount > 0
+        ]
+        return choices[:25]
+
     # --- SELL ALL FISH/JUNK ---
     @commands.command(name="sellallfish")
     async def sellallfish_command(self, ctx):
