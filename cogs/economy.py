@@ -805,7 +805,7 @@ class Economy(commands.Cog):
             color=0xf1c40f
         )
         if not top_users:
-            embed.description = "No users found."
+            embed.description = "No users found." #test
         else:
             medals = ["🥇", "🥈", "🥉"] + ["💸"] * 7
             lines = []
