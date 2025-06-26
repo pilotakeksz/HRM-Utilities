@@ -12,16 +12,16 @@ class Verification(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="send-verification", description="Send the verification embed (admin only)")
-    async def send_verification(self, ctx: commands.Context):
+    @commands.command(name="verification")
+    async def verification_command(self, ctx: commands.Context):
         # Replace with your admin ID(s) or better permission checking
         if ctx.author.id != 840949634071658507:
-            await ctx.reply("You do not have permission to run this command.", ephemeral=True)
+            await ctx.reply("You do not have permission to run this command.", delete_after=10)
             return
 
         channel = self.bot.get_channel(VERIFICATION_CHANNEL_ID)
         if channel is None:
-            await ctx.reply("Verification channel not found.", ephemeral=True)
+            await ctx.reply("Verification channel not found.", delete_after=10)
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
@@ -40,7 +40,7 @@ class Verification(commands.Cog):
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         await channel.send(embeds=[embed1, embed2])
-        await ctx.reply("Verification embed has been sent.", ephemeral=True)
+        await ctx.reply("Verification embed has been sent.", delete_after=10)
 
 async def setup(bot):
     await bot.add_cog(Verification(bot))
