@@ -247,7 +247,22 @@ class Economy(commands.Cog):
     async def balance_slash(self, interaction: discord.Interaction):
         await self.send_balance_embed(interaction.user, interaction)
 
-    # --- BALANCE ---
+    # --- WORK ---
+    # Remove the work command and all related methods
+    
+    # Delete these methods from your Economy class:
+    # @commands.command(name="work")
+    # async def work_command(self, ctx):
+    #     await self._work(ctx.author, ctx)
+    #
+    # @app_commands.command(name="work", description="Work a job for coins.")
+    # async def work_slash(self, interaction: discord.Interaction):
+    #     await self._work(interaction.user, interaction)
+    #
+    # async def _work(self, user, destination):
+    #     ... (entire method body)
+    
+    # Also remove any references to work in help text or command registration.    # --- BALANCE ---
     async def send_balance_embed(self, user, destination):
         data = await self.get_user(user.id)
         embed = discord.Embed(
@@ -294,48 +309,6 @@ class Economy(commands.Cog):
             log_econ_action("daily", user, amount=DAILY_AMOUNT)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-    # --- WORK ---
-    @commands.command(name="work")
-    async def work_command(self, ctx):
-        await self._work(ctx.author, ctx)
-
-    @app_commands.command(name="work", description="Work a job for coins.")
-    async def work_slash(self, interaction: discord.Interaction):
-        await self._work(interaction.user, interaction)
-
-    async def _work(self, user, destination):
-        data = await self.get_user(user.id)
-        now = datetime.utcnow()
-        last_work = datetime.fromisoformat(data["last_work"]) if data["last_work"] else None
-        if last_work and (now - last_work) < timedelta(minutes=30):
-            next_time = last_work + timedelta(minutes=30)
-            delta = next_time - now
-            embed = discord.Embed(
-                title="Work",
-                description=f"You are tired! Try again in {delta.seconds // 60}m.",
-                color=0xd0b47b
-            )
-            log_econ_action("work_fail", user, extra=f"Cooldown {delta}")
-        else:
-            amount = random.randint(10, 80) * 5
-            job_response = random.choice(WORK_RESPONSES)
-            new_balance = data["balance"] + amount
-            await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
-            embed = discord.Embed(
-                title="Work",
-                description=f"{job_response} **{amount}** coins!",
-                color=0xd0b47b
-            )
-            log_econ_action("work", user, amount=amount)
-        # Always respond, even if on cooldown
-        if isinstance(destination, discord.Interaction):
-            if destination.response.is_done():
-                await destination.followup.send(embed=embed)
-            else:
-                await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
