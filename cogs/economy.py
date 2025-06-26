@@ -533,177 +533,49 @@ class Economy(commands.Cog):
         await self.crime(interaction.user, interaction)
 
     async def crime(self, user, destination):
-        result = random.choice([
-            {"desc": "You hacked a vending machine!", "amount": 200},
-            {"desc": "You stole a bike!", "amount": 150},
-            {"desc": "You robbed a lemonade stand!", "amount": 100},
-            {"desc": "You failed and paid a fine.", "amount": -100},
-            {"desc": "You got caught and paid bail.", "amount": -200},
-            {"desc": "You spray painted a wall!", "amount": 120},
-            {"desc": "You jaywalked across a busy street!", "amount": 80},
-            {"desc": "You pickpocketed a tourist!", "amount": 140},
-            {"desc": "You snuck into a movie theater!", "amount": 90},
-            {"desc": "You ran an illegal lemonade stand!", "amount": 110},
-            {"desc": "You cheated at cards in a back alley!", "amount": 160},
-            {"desc": "You hacked a claw machine!", "amount": 130},
-            {"desc": "You tricked someone with a fake raffle!", "amount": 170},
-            {"desc": "You faked a talent show act for tips!", "amount": 100},
-            {"desc": "You shoplifted a candy bar!", "amount": 70},
-            {"desc": "You pretended to be a parking inspector!", "amount": 150},
-            {"desc": "You ran a fake car wash scam!", "amount": 180},
-            {"desc": "You siphoned Wi-Fi from your neighbor!", "amount": 90},
-            {"desc": "You resold school lunch tickets!", "amount": 110},
-            {"desc": "You forged a library card!", "amount": 60},
-            {"desc": "You got caught by mall security.", "amount": -120},
-            {"desc": "You slipped while running from the scene.", "amount": -100},
-            {"desc": "You accidentally robbed a police fundraiser.", "amount": -200},
-            {"desc": "You tripped the alarm while escaping.", "amount": -150},
-            {"desc": "You panicked and gave the money back.", "amount": -90}
-        ])
-        data = await self.get_user(user.id)
-        new_balance = max(0, data["balance"] + result["amount"])
-        await self.update_user(user.id, balance=new_balance)
-        embed = discord.Embed(
-            title="Crime",
-            description=f"{result['desc']} {'You gained' if result['amount'] > 0 else 'You lost'} **{abs(result['amount'])}** coins!",
-            color=0xd0b47b
-        )
-        log_econ_action("crime", user, amount=result["amount"], extra=result["desc"])
-        if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-    # --- DAILY ---
-    @commands.command(name="daily")
-    async def daily_command(self, ctx):
-        await self.daily(ctx.author, ctx)
-
-    @app_commands.command(name="daily", description="Claim your daily reward.")
-    async def daily_slash(self, interaction: discord.Interaction):
-        await self.daily(interaction.user, interaction)
-
-    async def daily(self, user, destination):
         data = await self.get_user(user.id)
         now = datetime.utcnow()
-        last_daily = datetime.fromisoformat(data["last_daily"]) if data["last_daily"] else None
-        if last_daily and (now - last_daily) < timedelta(hours=24):
-            next_time = last_daily + timedelta(hours=24)
+        # 3 minute cooldown for crime
+        if hasattr(data, "last_crime"):
+            last_crime = datetime.fromisoformat(data["last_crime"]) if data.get("last_crime") else None
+        else:
+            last_crime = None
+        cooldown_seconds = 180
+        # Store last_crime in users table if not present
+        if "last_crime" not in data:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("ALTER TABLE users ADD COLUMN last_crime TEXT")
+                await db.commit()
+            data["last_crime"] = None
+            last_crime = None
+        if last_crime and (now - last_crime) < timedelta(seconds=cooldown_seconds):
+            next_time = last_crime + timedelta(seconds=cooldown_seconds)
             delta = next_time - now
+            minutes, seconds = divmod(delta.seconds, 60)
             embed = discord.Embed(
-                title="Daily Reward",
-                description=f"You've already claimed your daily! Come back in {delta.seconds // 3600}h {(delta.seconds // 60) % 60}m.",
+                title="Crime",
+                description=f"You're laying low! Try again in {minutes}m {seconds}s.",
                 color=0xd0b47b
             )
-            log_econ_action("daily_fail", user, extra=f"Cooldown {delta}")
+            log_econ_action("crime_fail", user, extra=f"Cooldown {minutes}m {seconds}s")
         else:
-            # Daily roles bonus
-            bonus = 0
-            bonus_details = []
-            guild = None
-            if hasattr(destination, "guild"):
-                guild = destination.guild
-            elif hasattr(destination, "guild_id"):
-                guild = self.bot.get_guild(destination.guild_id)
-            if guild:
-                member = guild.get_member(user.id)
-                if member:
-                    for role_id, role_bonus in BANK_ROLE_TIERS:
-                        role = guild.get_role(role_id)
-                        if role and role in member.roles:
-                            bonus += 50
-                            bonus_details.append(f"{role.name}: +50 coins")
-            total = DAILY_AMOUNT + bonus
-            new_balance = data["balance"] + total
-            await self.update_user(user.id, balance=new_balance, last_daily=now.isoformat())
-            bonus_str = "\n".join(bonus_details) if bonus_details else "No daily bonus roles."
+            result = random.choice(CRIME_REWARDS)
+            new_balance = max(0, data["balance"] + result["amount"])
+            await self.update_user(user.id, balance=new_balance)
+            # Save last_crime time
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("UPDATE users SET last_crime = ? WHERE user_id = ?", (now.isoformat(), user.id))
+                await db.commit()
             embed = discord.Embed(
-                title="Daily Reward",
-                description=f"You claimed your daily and received **{DAILY_AMOUNT}** coins!\n{bonus_str}",
+                title="Crime",
+                description=f"{result['desc']} {'You gained' if result['amount'] > 0 else 'You lost'} **{abs(result['amount'])}** coins!",
                 color=0xd0b47b
             )
-            log_econ_action("daily", user, amount=total, extra=bonus_str)
+            log_econ_action("crime", user, amount=result["amount"], extra=result["desc"])
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-
-    # --- BANK ---
-    @commands.command(name="bank")
-    async def bank_command(self, ctx):
-        await self.bank(ctx.author, ctx)
-
-    @app_commands.command(name="bank", description="View your bank balance and interest.")
-    async def bank_slash(self, interaction: discord.Interaction):
-        await self.bank(interaction.user, interaction)
-
-    async def bank(self, user, destination):
-        data = await self.get_user(user.id)
-        # Calculate the user's interest rate based on their roles, if available
-        interest = 0
-        guild = None
-        if hasattr(destination, "guild"):
-            guild = destination.guild
-        elif hasattr(destination, "guild_id"):
-            guild = self.bot.get_guild(destination.guild_id)
-        if guild:
-            member = guild.get_member(user.id)
-            if member:
-                for role_id, role_bonus in BANK_ROLE_TIERS:
-                    role = guild.get_role(role_id)
-                    if role and role in member.roles:
-                        interest = max(interest, role_bonus)
-        embed = discord.Embed(
-            title=f"{user.name}'s Bank",
-            description=f"🏦 Bank Balance: **{data['bank']}** coins\nInterest Rate: **{interest*100:.2f}%** per day",
-            color=0xd0b47b
-        )
-        log_econ_action("bank", user)
-        if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-    # --- DEPOSIT ---
-    @commands.command(name="deposit")
-    async def deposit_command(self, ctx, amount: int):
-        await self.deposit(ctx.author, amount, ctx)
-
-    @app_commands.command(name="deposit", description="Deposit coins from your wallet to your bank.")
-    @app_commands.describe(amount="Amount to deposit")
-    async def deposit_slash(self, interaction: discord.Interaction, amount: int):
-        await self.deposit(interaction.user, amount, interaction)
-
-    async def deposit(self, user, amount, destination):
-        data = await self.get_user(user.id)
-        if amount <= 0 or data["balance"] < amount:
-            embed = discord.Embed(
-                title="Deposit",
-                description="Invalid amount or insufficient funds.",
-                color=0xd0b47b
-            )
-            log_econ_action("deposit_fail", user, amount=amount)
-        else:
-            await self.update_user(user.id, balance=data["balance"] - amount, bank=data["bank"] + amount)
-            embed = discord.Embed(
-                title="Deposit",
-                description=f"You deposited **{amount}** coins into your bank.",
-                color=0xd0b47b
-            )
-            log_econ_action("deposit", user, amount=amount)
-        if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-    # --- INTEREST ---
-    async def apply_bank_interest(self):
-        async with aiosqlite.connect(DB_PATH) as db:
-            for role_id, interest in BANK_ROLE_TIERS:
-                await db.execute(
-                    f"UPDATE users SET bank = bank + CAST(bank * {interest} AS INTEGER) WHERE user_id IN (SELECT user_id FROM users)"
-                )
-            await db.commit()
 
     # --- ROB ---
     @commands.command(name="rob")
@@ -716,44 +588,74 @@ class Economy(commands.Cog):
         await self.rob(interaction.user, target, interaction)
 
     async def rob(self, user, target, destination):
-        if user.id == target.id:
+        data = await self.get_user(user.id)
+        now = datetime.utcnow()
+        # 3 minute cooldown for rob
+        if hasattr(data, "last_rob"):
+            last_rob = datetime.fromisoformat(data["last_rob"]) if data.get("last_rob") else None
+        else:
+            last_rob = None
+        # Store last_rob in users table if not present
+        if "last_rob" not in data:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("ALTER TABLE users ADD COLUMN last_rob TEXT")
+                await db.commit()
+            data["last_rob"] = None
+            last_rob = None
+        cooldown_seconds = 180
+        if last_rob and (now - last_rob) < timedelta(seconds=cooldown_seconds):
+            next_time = last_rob + timedelta(seconds=cooldown_seconds)
+            delta = next_time - now
+            minutes, seconds = divmod(delta.seconds, 60)
             embed = discord.Embed(
                 title="Rob",
-                description="You can't rob yourself!",
+                description=f"You're hiding from the police! Try again in {minutes}m {seconds}s.",
                 color=0xd0b47b
             )
-            log_econ_action("rob_fail", user, extra="Tried to rob self")
+            log_econ_action("rob_fail", user, extra=f"Cooldown {minutes}m {seconds}s")
         else:
-            user_data = await self.get_user(user.id)
-            target_data = await self.get_user(target.id)
-            if target_data["balance"] < 100:
+            if user.id == target.id:
                 embed = discord.Embed(
                     title="Rob",
-                    description="Target doesn't have enough coins to rob!",
+                    description="You can't rob yourself!",
                     color=0xd0b47b
                 )
-                log_econ_action("rob_fail", user, extra=f"Target {target} ({target.id}) too poor")
+                log_econ_action("rob_fail", user, extra="Tried to rob self")
             else:
-                success = random.random() < 0.5
-                if success:
-                    stolen = random.randint(50, min(500, target_data["balance"]))
-                    await self.update_user(user.id, balance=user_data["balance"] + stolen)
-                    await self.update_user(target.id, balance=target_data["balance"] - stolen)
+                user_data = data
+                target_data = await self.get_user(target.id)
+                if target_data["balance"] < 100:
                     embed = discord.Embed(
                         title="Rob",
-                        description=f"You robbed {target.mention} and stole **{stolen}** coins!",
+                        description="Target doesn't have enough coins to rob!",
                         color=0xd0b47b
                     )
-                    log_econ_action("rob", user, amount=stolen, extra=f"target={target} ({target.id})")
+                    log_econ_action("rob_fail", user, extra=f"Target {target} ({target.id}) too poor")
                 else:
-                    loss = random.randint(20, 100)
-                    await self.update_user(user.id, balance=max(0, user_data["balance"] - loss))
-                    embed = discord.Embed(
-                        title="Rob",
-                        description=f"You got caught and lost **{loss}** coins!",
-                        color=0xd0b47b
-                    )
-                    log_econ_action("rob_fail", user, amount=loss, extra=f"target={target} ({target.id})")
+                    success = random.random() < 0.5
+                    if success:
+                        stolen = random.randint(50, min(500, target_data["balance"]))
+                        await self.update_user(user.id, balance=user_data["balance"] + stolen)
+                        await self.update_user(target.id, balance=target_data["balance"] - stolen)
+                        embed = discord.Embed(
+                            title="Rob",
+                            description=f"You robbed {target.mention} and stole **{stolen}** coins!",
+                            color=0xd0b47b
+                        )
+                        log_econ_action("rob", user, amount=stolen, extra=f"target={target} ({target.id})")
+                    else:
+                        loss = random.randint(20, 100)
+                        await self.update_user(user.id, balance=max(0, user_data["balance"] - loss))
+                        embed = discord.Embed(
+                            title="Rob",
+                            description=f"You got caught and lost **{loss}** coins!",
+                            color=0xd0b47b
+                        )
+                        log_econ_action("rob_fail", user, amount=loss, extra=f"target={target} ({target.id})")
+            # Save last_rob time
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("UPDATE users SET last_rob = ? WHERE user_id = ?", (now.isoformat(), user.id))
+                await db.commit()
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -771,32 +673,61 @@ class Economy(commands.Cog):
 
     async def bankheist(self, user, amount, destination):
         data = await self.get_user(user.id)
-        if amount <= 0 or data["bank"] < amount:
+        now = datetime.utcnow()
+        # 5 minute cooldown for bankheist
+        if hasattr(data, "last_bankheist"):
+            last_bankheist = datetime.fromisoformat(data["last_bankheist"]) if data.get("last_bankheist") else None
+        else:
+            last_bankheist = None
+        # Store last_bankheist in users table if not present
+        if "last_bankheist" not in data:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("ALTER TABLE users ADD COLUMN last_bankheist TEXT")
+                await db.commit()
+            data["last_bankheist"] = None
+            last_bankheist = None
+        cooldown_seconds = 300
+        if last_bankheist and (now - last_bankheist) < timedelta(seconds=cooldown_seconds):
+            next_time = last_bankheist + timedelta(seconds=cooldown_seconds)
+            delta = next_time - now
+            minutes, seconds = divmod(delta.seconds, 60)
             embed = discord.Embed(
                 title="Bank Heist",
-                description="Invalid amount or insufficient bank funds.",
+                description=f"You're planning your next heist! Try again in {minutes}m {seconds}s.",
                 color=0xd0b47b
             )
-            log_econ_action("bankheist_fail", user, amount=amount)
+            log_econ_action("bankheist_fail", user, extra=f"Cooldown {minutes}m {seconds}s")
         else:
-            success = random.random() < 0.3  # 30% chance to succeed
-            if success:
-                winnings = amount * 2
-                await self.update_user(user.id, bank=data["bank"] - amount, balance=data["balance"] + winnings)
+            if amount <= 0 or data["bank"] < amount:
                 embed = discord.Embed(
                     title="Bank Heist",
-                    description=f"You pulled off the heist and got **{winnings}** coins!",
-                    color=0xd0b47b
-                )
-                log_econ_action("bankheist", user, amount=winnings)
-            else:
-                await self.update_user(user.id, bank=data["bank"] - amount)
-                embed = discord.Embed(
-                    title="Bank Heist",
-                    description=f"You got caught! You lost **{amount}** coins from your bank.",
+                    description="Invalid amount or insufficient bank funds.",
                     color=0xd0b47b
                 )
                 log_econ_action("bankheist_fail", user, amount=amount)
+            else:
+                success = random.random() < 0.3  # 30% chance to succeed
+                if success:
+                    winnings = amount * 2
+                    await self.update_user(user.id, bank=data["bank"] - amount, balance=data["balance"] + winnings)
+                    embed = discord.Embed(
+                        title="Bank Heist",
+                        description=f"You pulled off the heist and got **{winnings}** coins!",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("bankheist", user, amount=winnings)
+                else:
+                    await self.update_user(user.id, bank=data["bank"] - amount)
+                    embed = discord.Embed(
+                        title="Bank Heist",
+                        description=f"You got caught! You lost **{amount}** coins from your bank.",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("bankheist_fail", user, amount=amount)
+            # Save last_bankheist time
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("UPDATE users SET last_bankheist = ? WHERE user_id = ?", (now.isoformat(), user.id))
+                await db.commit()
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -858,7 +789,6 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-# ...existing code...
 
     # --- SELL ALL ITEMS ---
     @commands.command(name="sellall")
@@ -897,9 +827,6 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-
-# ...existing code...
-
 
     # --- WITHDRAW ---
     @commands.command(name="withdraw", aliases=["with"])
