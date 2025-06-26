@@ -89,9 +89,16 @@ class Rules(commands.Cog):
             await ctx.send("You do not have permission to use this command.")
             return
 
-        channel = ctx.guild.get_channel(REGS_CHANNEL_ID)
+        # Try to fetch the channel globally in case it's not cached
+        channel = ctx.bot.get_channel(REGS_CHANNEL_ID)
         if not channel:
-            await ctx.send("Regulations channel not found.")
+            try:
+                channel = await ctx.bot.fetch_channel(REGS_CHANNEL_ID)
+            except Exception:
+                channel = None
+
+        if not channel:
+            await ctx.send("Regulations channel not found or I don't have access.")
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
