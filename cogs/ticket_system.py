@@ -31,7 +31,9 @@ PERSIST_FILE = os.path.join(LOGS_DIR, "ticket_embed_id.txt")
 DELETION_SCHEDULE_FILE = os.path.join(LOGS_DIR, "pending_ticket_deletions.txt")
 
 def log_transcript(channel, messages):
-    filename = os.path.join(LOGS_DIR, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
+    transcripts_dir = os.path.join(LOGS_DIR, "transcripts")
+    os.makedirs(transcripts_dir, exist_ok=True)
+    filename = os.path.join(transcripts_dir, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
     with open(filename, "w", encoding="utf-8") as f:
         for msg in messages:
             time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
