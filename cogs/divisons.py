@@ -31,7 +31,8 @@ class DivisionSelect(discord.ui.Select):
             placeholder="Select a division:",
             min_values=1,
             max_values=1,
-            options=options
+            options=options,
+            custom_id="division_select"  # <-- Add this line for persistence!
         )
 
     async def callback(self, interaction: discord.Interaction):
