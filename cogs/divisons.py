@@ -2,8 +2,6 @@ import discord
 from discord.ext import commands
 import os
 
-from discord import app_commands
-
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -166,45 +164,14 @@ class Divisions(commands.Cog):
         if ctx.author.id != ADMIN_ID:
             await ctx.send("❌ Only the bot admin can use this command.")
             return
-        embeds = get_main_embeds()
-        await ctx.send(embeds=embeds, view=DivisionView())
-
-    @app_commands.command(name="send-divisions", description="Send the persistent divisions embed (admin only).")
-    async def send_divisions(self, interaction: discord.Interaction):
-        if interaction.user.id != ADMIN_ID:
-            await interaction.response.send_message("❌ Only the bot admin can use this command.", ephemeral=True)
-            return
         # Always send in the specified channel
-        guild = interaction.guild
-        channel = guild.get_channel(1332065491266834493)
+        channel = ctx.guild.get_channel(DIVISIONS_CHANNEL)
         if not channel:
-            await interaction.response.send_message("❌ Could not find the divisions channel.", ephemeral=True)
+            await ctx.send("❌ Could not find the divisions channel.")
             return
-
-        # Use a custom embed1 image for this channel
-        def get_main_embeds_override():
-            embed1 = discord.Embed(
-                color=EMBED_COLOUR
-            )
-            embed1.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376933999871524975/divisions.png?ex=685e0577&is=685cb3f7&hm=cd64107b3eb66bd6218bddf1cbabe165fcfc217a1ea73922ec49cd6b549b9df4&format=webp&quality=lossless&width=1630&height=544&")
-
-            embed2 = discord.Embed(
-                title="<:termsinfo1:1376649353770434610> HRMC Divisions",
-                description=(
-                    "<:HRMdot:1376648507859144765> **Welcome to the High Rock Military Divisions Hub**\n"
-                    "> You will be  able to find all our divisions and information about them. All divisions are open and friendly to chat! We recommend you join and experience them!"
-                ),
-                color=EMBED_COLOUR
-            )
-            if EMBED2_IMAGE:
-                embed2.set_image(url=EMBED2_IMAGE)
-            embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-            return [embed1, embed2]
-
-        # Send the embed in the correct channel
-        embeds = get_main_embeds_override()
+        embeds = get_main_embeds()
         await channel.send(embeds=embeds, view=DivisionView())
-        await interaction.response.send_message("✅ Divisions embed sent in the divisions channel!", ephemeral=True)
+        await ctx.send("✅ Divisions embed sent in the divisions channel!", delete_after=10)
 
     @commands.Cog.listener()
     async def on_ready(self):
