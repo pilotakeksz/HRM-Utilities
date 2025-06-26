@@ -79,6 +79,25 @@ ROULETTE_COLORS = {
     "green": 14
 }
 
+WORK_RESPONSES = [
+    "You worked as a **Barista** and earned",
+    "You delivered **Pizza** and earned",
+    "You coded a **Website** and earned",
+    "You cleaned a **Park** and earned",
+    "You fixed a **Car** and earned",
+    "You walked a **Dog** and earned",
+    "You painted a **House** and earned",
+    "You worked as a **Cashier** and earned",
+    "You helped at a **Library** and earned",
+    "You did some **Freelance Art** and earned",
+    "You worked as a **Waiter** and earned",
+    "You did some **Gardening** and earned",
+    "You worked as a **Security Guard** and earned",
+    "You ran a **Lemonade Stand** and earned",
+    "You worked as a **Delivery Driver** and earned",
+    "You opened a **LVS Parking Lot** and earned",
+]
+
 class ShopView(View):
     def __init__(self, page=1):
         super().__init__(timeout=60)
@@ -153,6 +172,17 @@ class Economy(commands.Cog):
                 )
             """)
             await db.commit()
+        # Ensure bank column exists
+        try:
+            await self.ensure_bank_column()
+        except Exception:
+            pass  # Already exists
+
+    async def ensure_bank_column(self):
+        async with self.db_lock:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("ALTER TABLE users ADD COLUMN bank INTEGER DEFAULT 0")
+                await db.commit()
 
     async def get_user(self, user_id):
         async with self.db_lock:
@@ -275,17 +305,14 @@ class Economy(commands.Cog):
                 color=0xd0b47b
             )
         else:
-            # Progressive work: earn more as you work more
-            work_count = (now - datetime(2020, 1, 1)).days  # Just a dummy progressive factor
-            amount = WORK_BASE + (work_count % 10) * WORK_INCREMENT
-            # Add role income
-            if isinstance(user, discord.Member):
-                amount += self.get_role_income(user)
+            # Random earning between 50 and 400, rounded to nearest 5
+            amount = random.randint(10, 80) * 5
+            job_response = random.choice(WORK_RESPONSES)
             new_balance = data["balance"] + amount
             await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
             embed = discord.Embed(
                 title="Work",
-                description=f"You worked hard and earned **{amount}** coins!",
+                description=f"{job_response} **{amount}** coins!",
                 color=0xd0b47b
             )
         if isinstance(destination, discord.Interaction):
@@ -535,22 +562,17 @@ class Economy(commands.Cog):
         await self.fish(interaction.user, interaction)
 
     async def fish(self, user, destination):
-        # Check if user has a "fish" in inventory (optional: require a fishing rod or bait)
-        catch_chance = random.random()
-        if catch_chance < 0.7:
-            # Caught a fish!
-            await self.add_item(user.id, "fish", 1)
-            embed = discord.Embed(
-                title="🎣 Fishing",
-                description="You cast your line and caught a **fish**! Use `/sell fish` or `!sell fish` to sell it.",
-                color=0xd0b47b
-            )
-        else:
-            embed = discord.Embed(
-                title="🎣 Fishing",
-                description="You didn't catch anything this time. Try again later!",
-                color=0xd0b47b
-            )
+        fish_types = get_fish_types()
+        # Assign probabilities (rarer fish are less likely)
+        weights = [30, 20, 18, 15, 10, 5, 2]  # Adjust as needed for your fish_names order
+        fish, value_range = random.choices(fish_types, weights=weights, k=1)[0]
+        value = random.randint(value_range[0] // 5, value_range[1] // 5) * 5
+        await self.add_item(user.id, fish, 1)
+        embed = discord.Embed(
+            title="🎣 Fishing",
+            description=f"You caught a **{fish.title()}** worth **{value}** coins! Use `/sell {fish}` or `!sell {fish}` to sell it.",
+            color=0xd0b47b
+        )
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -596,6 +618,143 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
+
+    @commands.command(name="bank")
+    async def bank_command(self, ctx):
+        await self.bank(ctx.author, ctx)
+
+    @app_commands.command(name="bank", description="View your bank balance and interest.")
+    async def bank_slash(self, interaction: discord.Interaction):
+        await self.bank(interaction.user, interaction)
+
+    async def bank(self, user, destination):
+        async with self.db_lock:
+            async with aiosqlite.connect(DB_PATH) as db:
+                row = await db.execute_fetchone("SELECT bank FROM users WHERE user_id = ?", (user.id,))
+                bank_balance = row[0] if row else 0
+        interest = self.get_bank_interest(user) * 100
+        embed = discord.Embed(
+            title=f"{user.name}'s Bank",
+            description=f"🏦 Bank Balance: **{bank_balance}** coins\nInterest Rate: **{interest:.2f}%** per day",
+            color=0xd0b47b
+        )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    def get_bank_interest(self, member: discord.Member):
+        for role_id, rate in reversed(BANK_ROLE_TIERS):
+            if discord.utils.get(member.roles, id=role_id):
+                return rate
+        return 0.01
+
+    @commands.command(name="deposit")
+    async def deposit_command(self, ctx, amount: int):
+        await self.deposit(ctx.author, amount, ctx)
+
+    @app_commands.command(name="deposit", description="Deposit coins into your bank.")
+    @app_commands.describe(amount="Amount to deposit")
+    async def deposit_slash(self, interaction: discord.Interaction, amount: int):
+        await self.deposit(interaction.user, amount, interaction)
+
+    async def deposit(self, user, amount, destination):
+        data = await self.get_user(user.id)
+        if amount <= 0 or data["balance"] < amount:
+            embed = discord.Embed(
+                title="Deposit",
+                description="Invalid amount or insufficient funds.",
+                color=0xd0b47b
+            )
+        else:
+            async with self.db_lock:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute("UPDATE users SET balance = balance - ?, bank = bank + ? WHERE user_id = ?", (amount, amount, user.id))
+                    await db.commit()
+            embed = discord.Embed(
+                title="Deposit",
+                description=f"You deposited **{amount}** coins into your bank.",
+                color=0xd0b47b
+            )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    @commands.command(name="withdraw")
+    async def withdraw_command(self, ctx, amount: int):
+        await self.withdraw(ctx.author, amount, ctx)
+
+    @app_commands.command(name="withdraw", description="Withdraw coins from your bank.")
+    @app_commands.describe(amount="Amount to withdraw")
+    async def withdraw_slash(self, interaction: discord.Interaction, amount: int):
+        await self.withdraw(interaction.user, amount, interaction)
+
+    async def withdraw(self, user, amount, destination):
+        async with self.db_lock:
+            async with aiosqlite.connect(DB_PATH) as db:
+                row = await db.execute_fetchone("SELECT bank FROM users WHERE user_id = ?", (user.id,))
+                bank_balance = row[0] if row else 0
+        if amount <= 0 or bank_balance < amount:
+            embed = discord.Embed(
+                title="Withdraw",
+                description="Invalid amount or insufficient bank funds.",
+                color=0xd0b47b
+            )
+        else:
+            async with self.db_lock:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute("UPDATE users SET bank = bank - ?, balance = balance + ? WHERE user_id = ?", (amount, amount, user.id))
+                    await db.commit()
+            embed = discord.Embed(
+                title="Withdraw",
+                description=f"You withdrew **{amount}** coins from your bank.",
+                color=0xd0b47b
+            )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    @commands.command(name="applyinterest")
+    async def apply_interest_command(self, ctx):
+        await self.apply_interest_and_inflation()
+
+    async def apply_interest_and_inflation(self):
+        async with self.db_lock:
+            async with aiosqlite.connect(DB_PATH) as db:
+                async for row in db.execute("SELECT user_id, bank FROM users WHERE bank > 0"):
+                    user_id, bank = row
+                    member = self.bot.get_guild(YOUR_GUILD_ID).get_member(user_id)
+                    rate = self.get_bank_interest(member) if member else 0.01
+                    new_bank = int(bank * (1 + rate - INFLATION_RATE))
+                    await db.execute("UPDATE users SET bank = ? WHERE user_id = ?", (new_bank, user_id))
+                await db.commit()
+
+INFLATION_RATE = 0.02  # 2% per day
+BANK_ROLE_TIERS = [
+    (1329910329701830686, 0.01),  # Lowest role, 1% interest
+    (1329910389437104220, 0.015), # Middle role, 1.5% interest
+    (1329910391840702515, 0.02),  # Highest role, 2% interest
+]
+
+def get_fish_types():
+    # Only include items that are fish (customize as needed)
+    fish_names = ["salmon", "trout", "bass", "catfish", "carp", "goldfish", "boot"]
+    fish_types = []
+    for name in fish_names:
+        if name in SHOP_ITEMS:
+            price = SHOP_ITEMS[name]["price"]
+            # Value range: 60-140 for most, 100-200 for goldfish, 5-15 for boot, etc.
+            if name == "goldfish":
+                value_range = (100, 200)
+            elif name == "boot":
+                value_range = (5, 15)
+            else:
+                value_range = (max(5, price - 40), price + 20)
+            # Probability can be customized per fish
+            fish_types.append((name, value_range))
+    return fish_types
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))

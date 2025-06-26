@@ -19,3 +19,10 @@ keyboard cleaner|75|Because your crimes are dirty.
 fake mustache|60|Instant disguise, 60% effective.
 alien plushie|130|It's watching you. Always.
 time machine manual|9999|Too bad the machine's sold separately.
+salmon|120|A tasty salmon.
+trout|80|A fresh trout.
+bass|90|A strong bass.
+catfish|140|A slippery catfish.
+carp|60|A common carp.
+goldfish|200|A rare goldfish!
+boot|10|Just an old boot...
