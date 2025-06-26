@@ -1,272 +1,236 @@
+import os
 import discord
 from discord.ext import commands
-from discord import app_commands, ui, Interaction, SelectOption, ButtonStyle
-import os
-import datetime
+from discord import app_commands
+from discord.ui import View, Select, Button, Modal, TextInput
 import asyncio
+import datetime
 
-# --- CONFIGURATION ---
-CIVILIAN_ROLE = 1329910391840702515
-MC_ROLE = 1329910285594525886
-HC_ROLE = 1329910265264869387
-TICKET_HANDLER_ROLE = 1329910341219389440
-ADMIN_ID = 840949634071658507
-
-CATEGORY_GENERAL = 1330504054744416308
-CATEGORY_MANAGEMENT = 1340667032835723285
-CATEGORY_ARCHIVED = 1367771350877470720
-
-CHANNEL_TICKET_LOGS = 1331665561372852275
-CHANNEL_ASSISTANCE = 1329910457409994772
-
-EMBED_COLOUR = 0xd0b47b
-EMBED_FOOTER = "High Rock Military Corps"
-EMBED_ICON = "https://images-ext-1.discordapp.net/external/88RDdZ0JKsH7btZpsxKfyhbsbyHLz4hF2VUTFdaLXSA/https/images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
-EMBED1_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376933977125818469/assistance.png?ex=685d5cb2&is=685c0b32&hm=58fd22c756178ca6fc40c446cd68b5dcc0408777675394c5a324592d746ea05e&"
-EMBED2_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376648782359433316/bottom.png?ex=685cfbd6&is=685baa56&hm=8e024541f2cdf6bc41b83e1ab03f3da441b653dc98fa03f5c58aa2ccee0e3ad4&"
-MIA_REDIRECT = "https://discord.gg/xRashKPAKt"
+# Load from environment
+CIVILIAN_ROLE = int(os.getenv("CIVILIAN_ROLE"))
+MC_ROLE = int(os.getenv("MC_ROLE"))
+HC_ROLE = int(os.getenv("HC_ROLE"))
+TICKET_HANDLER_ROLE = int(os.getenv("TICKET_HANDLER_ROLE"))
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+CATEGORY_GENERAL = int(os.getenv("CATEGORY_GENERAL"))
+CATEGORY_MANAGEMENT = int(os.getenv("CATEGORY_MANAGEMENT"))
+CATEGORY_ARCHIVED = int(os.getenv("CATEGORY_ARCHIVED"))
+CHANNEL_TICKET_LOGS = int(os.getenv("CHANNEL_TICKET_LOGS"))
+CHANNEL_ASSISTANCE = int(os.getenv("CHANNEL_ASSISTANCE"))
+EMBED_COLOUR = int(os.getenv("EMBED_COLOUR"), 16)
+EMBED_FOOTER = os.getenv("EMBED_FOOTER")
+EMBED_ICON = os.getenv("EMBED_ICON")
+EMBED1_IMAGE = os.getenv("EMBED1_IMAGE")
+EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
+MIA_REDIRECT = os.getenv("MIA_REDIRECT")
 
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 
-# --- TICKET TYPES ---
-class TicketType:
-    GENERAL = "general"
-    MANAGEMENT = "management"
-    MIA = "mia"
-
-# --- SELECT MENU ---
-class TicketSelect(ui.Select):
-    def __init__(self):
-        options = [
-            SelectOption(label="General Support", value=TicketType.GENERAL, emoji="<:HighRockMilitary:1376605942765977800>"),
-            SelectOption(label="Management", value=TicketType.MANAGEMENT, emoji="<:HC:1343192841676914712>"),
-            SelectOption(label="MIA", value=TicketType.MIA, emoji="<:MIA:1364309116859715654>")
-        ]
-        super().__init__(placeholder="Choose ticket type...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: Interaction):
-        if self.values[0] == TicketType.MIA:
-            await interaction.response.send_message(
-                f"Appeals and reports are now handled by MIA. Please head over there: {MIA_REDIRECT}",
-                ephemeral=True
-            )
-            return
-        await interaction.response.send_modal(TicketModal(self.values[0]))
-
-# --- TICKET MODAL ---
-class TicketModal(ui.Modal, title="Open a Ticket"):
-    concern = ui.TextInput(label="Concern / Inquiry", style=discord.TextStyle.paragraph, required=True, max_length=500)
-    def __init__(self, ticket_type):
-        super().__init__()
-        self.ticket_type = ticket_type
-
-    async def on_submit(self, interaction: Interaction):
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        user = interaction.user
-        guild = interaction.guild
-
-        # Channel name and category
-        if self.ticket_type == TicketType.GENERAL:
-            cat_id = CATEGORY_GENERAL
-            channel_name = f"general-ticket-{user.name}".replace(" ", "-").lower()
-            allowed_roles = [MC_ROLE, HC_ROLE]
-        elif self.ticket_type == TicketType.MANAGEMENT:
-            cat_id = CATEGORY_MANAGEMENT
-            channel_name = f"management-ticket-{user.name}".replace(" ", "-").lower()
-            allowed_roles = [HC_ROLE]
-        else:
-            await interaction.followup.send("Invalid ticket type.", ephemeral=True)
-            return
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-            guild.get_role(TICKET_HANDLER_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-        }
-        for role_id in allowed_roles:
-            role = guild.get_role(role_id)
-            if role:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-
-        channel = await guild.create_text_channel(
-            channel_name,
-            category=guild.get_channel(cat_id),
-            overwrites=overwrites,
-            reason=f"Ticket opened by {user} ({user.id})"
-        )
-
-        # Log ticket creation
-        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
-        now = discord.utils.utcnow()
-        log_msg = (
-            f"Ticket opened: {channel.mention}\n"
-            f"Type: {self.ticket_type}\n"
-            f"Opener: {user.mention} ({user.id})\n"
-            f"Reason: {self.concern.value}\n"
-            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}"
-        )
-        if log_channel:
-            await log_channel.send(log_msg)
-
-        # Ping ticket handlers in the ticket channel (not in embed)
-        await channel.send(f"{guild.get_role(TICKET_HANDLER_ROLE).mention}")
-
-        # Send embeds in ticket channel
-        embed1 = discord.Embed(colour=EMBED_COLOUR)
-        embed1.set_image(url=EMBED1_IMAGE)
-
-        embed2 = discord.Embed(
-            description=(
-                "Our personnel will be with you shortly. Please do not ping them unnecessarily.\n\n"
-                "In the mean time, please add details your initial inquiry.\n\n"
-                f"**Request / Inquiry:**\n\"{self.concern.value}\""
-            ),
-            colour=EMBED_COLOUR
-        )
-        embed2.set_image(url=EMBED2_IMAGE)
-        embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-
-        view = TicketButtons(opener_id=user.id, ticket_type=self.ticket_type, opener=user)
-        await channel.send(embeds=[embed1, embed2], view=view)
-
-        await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
-
-# --- BUTTONS VIEW ---
-class TicketButtons(ui.View):
-    def __init__(self, opener_id, ticket_type, opener):
-        super().__init__(timeout=None)
-        self.opener_id = opener_id
-        self.ticket_type = ticket_type
-        self.claimed_by = None
-        self.opener = opener
-
-    @ui.button(label="Claim", style=ButtonStyle.green, custom_id="ticket_claim")
-    async def claim(self, interaction: Interaction, button: ui.Button):
-        # Only MC and HC can claim
-        if not any(role.id in [MC_ROLE, HC_ROLE] for role in interaction.user.roles):
-            await interaction.response.send_message("Only MC and HC can claim tickets.", ephemeral=True)
-            return
-        if self.claimed_by:
-            await interaction.response.send_message(f"Already claimed by <@{self.claimed_by}>.", ephemeral=True)
-            return
-        self.claimed_by = interaction.user.id
-        channel = interaction.channel
-        guild = interaction.guild
-        handler_role = guild.get_role(TICKET_HANDLER_ROLE)
-        # Only claimer can send messages, others read only
-        for member in channel.members:
-            if handler_role in member.roles:
-                overwrite = channel.overwrites_for(member)
-                if member.id == self.claimed_by:
-                    overwrite.send_messages = True
-                else:
-                    overwrite.send_messages = False
-                await channel.set_permissions(member, overwrite=overwrite)
-        await interaction.response.send_message(f"Ticket claimed by {interaction.user.mention}. You now have exclusive write access as a handler.", ephemeral=False)
-        await channel.send(f"{interaction.user.mention} has claimed this ticket and will assist you shortly.")
-
-        # Log claim
-        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
-        now = discord.utils.utcnow()
-        log_msg = (
-            f"Ticket claimed: {channel.mention}\n"
-            f"Claimed by: {interaction.user.mention} ({interaction.user.id})\n"
-            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}"
-        )
-        if log_channel:
-            await log_channel.send(log_msg)
-
-    @ui.button(label="Close", style=ButtonStyle.red, custom_id="ticket_close")
-    async def close(self, interaction: Interaction, button: ui.Button):
-        confirm_view = ConfirmCloseView(self, self.opener)
-        await interaction.channel.send(
-            f"{interaction.user.mention} Are you sure you want to close this ticket? Click the button below to confirm.",
-            view=confirm_view
-        )
-        await interaction.response.send_message("Confirmation sent in channel.", ephemeral=True)
-
-class ConfirmCloseView(ui.View):
-    def __init__(self, ticket_view, opener):
-        super().__init__(timeout=60)
-        self.ticket_view = ticket_view
-        self.opener = opener
-
-    @ui.button(label="Confirm Close", style=ButtonStyle.red)
-    async def confirm(self, interaction: Interaction, button: ui.Button):
-        channel = interaction.channel
-        guild = interaction.guild
-        await channel.send("Archiving this ticket and restricting permissions. The channel will be deleted in 15 minutes.")
-        await channel.edit(category=guild.get_channel(CATEGORY_ARCHIVED))
-        for member in channel.members:
-            await channel.set_permissions(member, send_messages=False, read_message_history=True, view_channel=True)
-        await interaction.response.send_message("Ticket archived. This channel will be deleted in 15 minutes.", ephemeral=True)
-        transcript_path = await save_transcript(channel)
-        log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
-        now = discord.utils.utcnow()
-        log_msg = (
-            f"Ticket closed: {channel.mention}\n"
-            f"Closed by: {interaction.user.mention} ({interaction.user.id})\n"
-            f"Time: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-            f"Transcript attached."
-        )
-        if log_channel and transcript_path:
-            with open(transcript_path, "rb") as f:
-                await log_channel.send(log_msg, file=discord.File(f, filename=os.path.basename(transcript_path)))
-        if self.opener:
-            try:
-                if transcript_path:
-                    with open(transcript_path, "rb") as f:
-                        await self.opener.send(
-                            "Your ticket has been closed. Here is the transcript:",
-                            file=discord.File(f, filename=os.path.basename(transcript_path))
-                        )
-            except Exception:
-                pass
-        # Wait 15 minutes then delete the channel
-        await asyncio.sleep(900)
-        try:
-            await channel.send("Deleting this ticket channel now. Thank you for contacting support!")
-        except Exception:
-            pass
-        try:
-            await channel.delete()
-        except Exception:
-            pass
-
-# --- TRANSCRIPT ---
-async def save_transcript(channel):
-    messages = []
-    async for msg in channel.history(limit=None, oldest_first=True):
-        time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        author = f"{msg.author} ({msg.author.id})"
-        content = msg.content
-        messages.append(f"[{time}] {author}: {content}")
-    filename = os.path.join(LOGS_DIR, f"{channel.name}_{channel.id}.txt")
+def log_transcript(channel, messages):
+    filename = os.path.join(LOGS_DIR, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
     with open(filename, "w", encoding="utf-8") as f:
-        f.write("\n".join(messages))
+        for msg in messages:
+            time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{time}] {msg.author} ({msg.author.id}): {msg.content}\n")
     return filename
 
-# --- MAIN COG ---
+class TicketTypeSelect(Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="General Support", value="general", emoji="<:HighRockMilitary:1376605942765977800>"),
+            discord.SelectOption(label="Management", value="management", emoji="<:HC:1343192841676914712>"),
+            discord.SelectOption(label="MIA", value="mia", emoji="<:MIA:1364309116859715654>"),
+        ]
+        super().__init__(placeholder="Select ticket type...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "mia":
+            await interaction.response.send_message(f"Please head to our MIA server for appeals and reports: {MIA_REDIRECT}", ephemeral=True)
+            return
+        elif self.values[0] == "management":
+            await interaction.response.send_modal(ManagementTicketModal())
+        elif self.values[0] == "general":
+            await interaction.response.send_modal(GeneralTicketModal())
+
+class TicketTypeView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketTypeSelect())
+
+class ManagementTicketModal(Modal, title="Management Ticket"):
+    request = TextInput(label="Request / Inquiry", style=discord.TextStyle.paragraph, required=True, max_length=1024)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await create_ticket(interaction, "management", self.request.value)
+
+class GeneralTicketModal(Modal, title="General Support Ticket"):
+    request = TextInput(label="Request / Inquiry", style=discord.TextStyle.paragraph, required=True, max_length=1024)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await create_ticket(interaction, "general", self.request.value)
+
+async def create_ticket(interaction, ticket_type, request_content):
+    guild = interaction.guild
+    user = interaction.user
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True),
+    }
+    ticket_name = f"📨-{'m-ticket' if ticket_type == 'management' else 'g-ticket'}-{user.name}".replace(" ", "-").lower()
+    category_id = CATEGORY_MANAGEMENT if ticket_type == "management" else CATEGORY_GENERAL
+
+    # Add roles
+    if ticket_type == "management":
+        overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+    else:
+        overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+        overwrites[guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+
+    channel = await guild.create_text_channel(
+        ticket_name,
+        category=guild.get_channel(category_id),
+        overwrites=overwrites,
+        reason=f"Ticket opened by {user}"
+    )
+
+    # Embed 1 (image)
+    embed1 = discord.Embed(color=EMBED_COLOUR)
+    embed1.set_image(url=EMBED1_IMAGE)
+
+    # Embed 2 (info)
+    embed2 = discord.Embed(
+        description="Our personnel will be with you shortly. Please do not ping them unnecessarily.\n\nIn the mean time, please add details your initial inquiry.\n\n**Request / Inquiry:**\n" + request_content,
+        color=EMBED_COLOUR
+    )
+    embed2.set_image(url=EMBED2_IMAGE)
+    embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
+
+    await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], view=TicketActionView(channel, user, ticket_type))
+
+    await interaction.response.send_message(f"Your ticket has been created: {channel.mention}", ephemeral=True)
+
+class TicketActionView(View):
+    def __init__(self, channel, opener, ticket_type):
+        super().__init__(timeout=None)
+        self.channel = channel
+        self.opener = opener
+        self.ticket_type = ticket_type
+        self.claimed_by = None
+        self.add_item(ClaimButton(self))
+        self.add_item(CloseButton(self))
+
+class ClaimButton(Button):
+    def __init__(self, parent_view):
+        super().__init__(label="Claim", style=discord.ButtonStyle.success, emoji="✅")
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        hc_role = interaction.guild.get_role(HC_ROLE)
+        if hc_role not in interaction.user.roles:
+            await interaction.response.send_message("Only HC can claim this ticket.", ephemeral=True)
+            return
+        self.parent_view.claimed_by = interaction.user
+        # Change permissions: only claimer can type, others can view
+        await self.parent_view.channel.set_permissions(hc_role, send_messages=False)
+        await self.parent_view.channel.set_permissions(interaction.user, send_messages=True)
+        await self.parent_view.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
+        # Change button to unclaim
+        self.disabled = True
+        self.parent_view.clear_items()
+        self.parent_view.add_item(UnclaimButton(self.parent_view))
+        self.parent_view.add_item(CloseButton(self.parent_view))
+        await interaction.response.edit_message(view=self.parent_view)
+
+class UnclaimButton(Button):
+    def __init__(self, parent_view):
+        super().__init__(label="Unclaim", style=discord.ButtonStyle.secondary, emoji="🟦")
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        hc_role = interaction.guild.get_role(HC_ROLE)
+        if hc_role not in interaction.user.roles:
+            await interaction.response.send_message("Only HC can unclaim this ticket.", ephemeral=True)
+            return
+        self.parent_view.claimed_by = None
+        await self.parent_view.channel.set_permissions(hc_role, send_messages=True)
+        await self.parent_view.channel.send("This ticket is now unclaimed.")
+        # Change button back to claim
+        self.disabled = True
+        self.parent_view.clear_items()
+        self.parent_view.add_item(ClaimButton(self.parent_view))
+        self.parent_view.add_item(CloseButton(self.parent_view))
+        await interaction.response.edit_message(view=self.parent_view)
+
+class CloseButton(Button):
+    def __init__(self, parent_view):
+        super().__init__(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="Confirm Close",
+                description="Are you sure you want to close this ticket? This action cannot be undone.",
+                color=discord.Color.red()
+            ),
+            view=ConfirmCloseView(self.parent_view.channel, self.parent_view.opener, self.parent_view.ticket_type),
+            ephemeral=True
+        )
+
+class ConfirmCloseView(View):
+    def __init__(self, channel, opener, ticket_type):
+        super().__init__(timeout=60)
+        self.channel = channel
+        self.opener = opener
+        self.ticket_type = ticket_type
+
+    @discord.ui.button(label="Confirm Close", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        # Archive
+        await self.channel.edit(category=interaction.guild.get_channel(CATEGORY_ARCHIVED))
+        await self.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+        await self.channel.send(embed=discord.Embed(
+            description="This ticket is being archived. It will permanently be deleted in 15 minutes.",
+            color=discord.Color.red()
+        ))
+        # Transcript
+        messages = [msg async for msg in self.channel.history(limit=None, oldest_first=True)]
+        transcript_path = log_transcript(self.channel, messages)
+        # Wait 15 minutes
+        await asyncio.sleep(15 * 60)
+        await self.channel.send("This ticket will be deleted in 20 seconds.")
+        await asyncio.sleep(20)
+        await self.channel.delete()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("Ticket close cancelled.", ephemeral=True)
+        self.stop()
+
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @app_commands.command(name="ticket-system-setup", description="Setup the ticket system (admin only)")
-    async def ticket_system_setup(self, interaction: Interaction):
+    async def ticket_system_setup(self, interaction: discord.Interaction):
         if interaction.user.id != ADMIN_ID:
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
 
-        embed1 = discord.Embed(colour=EMBED_COLOUR)
+        channel = interaction.guild.get_channel(CHANNEL_ASSISTANCE)
+        if not channel:
+            await interaction.response.send_message("Assistance channel not found.", ephemeral=True)
+            return
+
+        embed1 = discord.Embed(color=EMBED_COLOUR)
         embed1.set_image(url=EMBED1_IMAGE)
+
         embed2 = discord.Embed(
-            title="🛰️ Assistance",
-            description=(
-                "Welcome to the HRMC Assistance Hub. We're here to help with all inquiries too specific for public channels. "
-                "Should you be in need of help, open a ticket any time."
-            ),
-            colour=EMBED_COLOUR
+            title="📡 HRMC Assistance Hub",
+            description="Welcome to the High Rock Military Corps Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
+            color=EMBED_COLOUR
         )
         embed2.add_field(
             name="<:HighRockMilitary:1376605942765977800> General Support",
@@ -286,34 +250,25 @@ class TicketSystem(commands.Cog):
         embed2.set_image(url=EMBED2_IMAGE)
         embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-        view = ui.View()
-        view.add_item(TicketSelect())
-
-        channel = interaction.guild.get_channel(CHANNEL_ASSISTANCE)
-        await channel.send(embed=embed1)
-        await channel.send(embed=embed2, view=view)
+        await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
         await interaction.response.send_message("Ticket system setup complete.", ephemeral=True)
 
-    @app_commands.command(name="ticket-add", description="Add a user to a ticket (MC/HC only)")
+    @app_commands.command(name="ticket-add", description="Add a user to your ticket (civilians only)")
     @app_commands.describe(user="User to add")
-    async def ticket_add(self, interaction: Interaction, user: discord.Member):
-        if not any(role.id in [MC_ROLE, HC_ROLE] for role in interaction.user.roles):
+    async def ticket_add(self, interaction: discord.Interaction, user: discord.Member):
+        if not any(role.id == CIVILIAN_ROLE for role in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
-        channel = interaction.channel
-        await channel.set_permissions(user, view_channel=True, send_messages=True, read_message_history=True)
-        await interaction.response.send_message(f"{user.mention} added to the ticket.", ephemeral=False)
+        await interaction.channel.set_permissions(user, view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+        await interaction.response.send_message(f"{user.mention} has been added to the ticket.", ephemeral=True)
 
-    @app_commands.command(name="ticket-remove", description="Remove a user from a ticket (MC/HC only)")
+    @app_commands.command(name="ticket-remove", description="Remove a user from your ticket (civilians only)")
     @app_commands.describe(user="User to remove")
-    async def ticket_remove(self, interaction: Interaction, user: discord.Member):
-        if not any(role.id in [MC_ROLE, HC_ROLE] for role in interaction.user.roles):
+    async def ticket_remove(self, interaction: discord.Interaction, user: discord.Member):
+        if not any(role.id == CIVILIAN_ROLE for role in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
-        channel = interaction.channel
-        await channel.set_permissions(user, overwrite=None)
-        await interaction.response.send_message(f"{user.mention} removed from the ticket.", ephemeral=False)
+        await interaction.channel.set_permissions(user, overwrite=None)
+        await interaction.response.send_message(f"{user.mention} has been removed from the ticket.", ephemeral=True)
 
-async def setup(bot: commands.Bot):
-    bot.add_view(TicketButtons(opener_id=0, ticket_type="general", opener=None))  # Register persistent view for ticket buttons
-    await bot.add_cog(TicketSystem(bot))
+async def setup(bot):
