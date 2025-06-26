@@ -27,6 +27,8 @@ MIA_REDIRECT = os.getenv("MIA_REDIRECT")
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 
+PERSIST_FILE = os.path.join(LOGS_DIR, "ticket_embed_id.txt")
+
 def log_transcript(channel, messages):
     filename = os.path.join(LOGS_DIR, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
     with open(filename, "w", encoding="utf-8") as f:
@@ -209,9 +211,60 @@ class ConfirmCloseView(View):
         await interaction.response.send_message("Ticket close cancelled.", ephemeral=True)
         self.stop()
 
+async def ensure_persistent_ticket_embed(bot):
+    channel = bot.get_channel(CHANNEL_ASSISTANCE)
+    if not channel:
+        return
+    embed_id = None
+    if os.path.exists(PERSIST_FILE):
+        with open(PERSIST_FILE, "r") as f:
+            try:
+                embed_id = int(f.read().strip())
+            except Exception:
+                embed_id = None
+    message = None
+    if embed_id:
+        try:
+            message = await channel.fetch_message(embed_id)
+        except Exception:
+            message = None
+    if not message:
+        embed1 = discord.Embed(color=EMBED_COLOUR)
+        embed1.set_image(url=EMBED1_IMAGE)
+        embed2 = discord.Embed(
+            title="📡 HRMC Assistance Hub",
+            description="Welcome to the High Rock Military Corps Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
+            color=EMBED_COLOUR
+        )
+        embed2.add_field(
+            name="<:HighRockMilitary:1376605942765977800> General Support",
+            value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
+            inline=True
+        )
+        embed2.add_field(
+            name="<:HC:1343192841676914712> Management",
+            value="Interested in speaking to a HC+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
+            inline=True
+        )
+        embed2.add_field(
+            name="<:MIA:1364309116859715654> MIA",
+            value="Appeals, and reports are now handled by MIA. Please head over there for such concerns.",
+            inline=True
+        )
+        embed2.set_image(url=EMBED2_IMAGE)
+        embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
+        sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
+        with open(PERSIST_FILE, "w") as f:
+            f.write(str(sent.id))
+
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.bot.loop.create_task(self._startup_embed())
+
+    async def _startup_embed(self):
+        await self.bot.wait_until_ready()
+        await ensure_persistent_ticket_embed(self.bot)
 
     @app_commands.command(name="ticket-system-setup", description="Setup the ticket system (admin only)")
     async def ticket_system_setup(self, interaction: discord.Interaction):
@@ -272,3 +325,4 @@ class TicketSystem(commands.Cog):
         await interaction.response.send_message(f"{user.mention} has been removed from the ticket.", ephemeral=True)
 
 async def setup(bot):
+    await bot.add_cog(TicketSystem(bot))
