@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+from discord import app_commands
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -166,6 +167,14 @@ class Divisions(commands.Cog):
             return
         embeds = get_main_embeds()
         await ctx.send(embeds=embeds, view=DivisionView())
+
+    @app_commands.command(name="send-divisions", description="Send the persistent divisions embed (admin only).")
+    async def send_divisions(self, interaction: discord.Interaction):
+        if interaction.user.id != ADMIN_ID:
+            await interaction.response.send_message("❌ Only the bot admin can use this command.", ephemeral=True)
+            return
+        await DivisionView.send_or_edit(interaction.channel)
+        await interaction.response.send_message("✅ Divisions embed sent!", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_ready(self):
