@@ -9,68 +9,74 @@ import math
 
 DB_PATH = os.getenv("ECONOMY_DB_FILE", "data/economy.db")
 DAILY_AMOUNT = int(os.getenv("DAILY_AMOUNT", 250))
-BANK_INTEREST = 0.01  # 1% daily interest, can be made dynamic per-role
-ROULETTE_COLORS = {"red": 2, "black": 2, "green": 14}
+BANK_ROLE_TIERS = [
+    (1329910391840702515, 0.02),  # Highest role, 2%
+    (1329910389437104220, 0.015), # Middle role, 1.5%
+    (1329910329701830686, 0.01),  # Lowest role, 1%
+]
+SHOP_ITEMS_PER_PAGE = 5
 
-WORK_RESPONSES = [
-    "You worked as a **Barista** ☕ and earned",
-    "You delivered **Pizza** 🍕 and earned",
-    "You walked a **Dog** 🐕 and earned",
-    "You mowed a **Lawn** 🌱 and earned",
-    "You washed a **Car** 🚗 and earned",
-    "You coded a **Website** 💻 and earned",
-    "You painted a **Fence** 🎨 and earned",
-    "You helped at a **Bakery** 🥐 and earned",
-    "You tutored a **Student** 📚 and earned",
-    "You cleaned a **Pool** 🏊 and earned",
-    "You worked as a **Cashier** 🛒 and earned",
-    "You fixed a **Bike** 🚲 and earned",
-    "You organized a **Garage** 🧰 and earned",
-    "You delivered **Groceries** 🥦 and earned",
-    "You worked as a **Receptionist** ☎️ and earned",
-    "You DJ'd a **Party** 🎧 and earned",
-    "You streamed on **Twitch** 🎮 and earned",
-    "You made a **YouTube video** 📹 and earned",
-    "You walked a neighbor's **iguana** 🦎 and earned",
-    "You ran a **lemonade stand** 🍋 and earned",
-    "You did **yard work** 🧹 and earned",
-    "You cleaned gutters 🧽 and earned",
-    "You assembled IKEA furniture 🔧 and earned",
-    "You did someone's taxes 🧾 and earned",
-    "You ran a bake sale 🧁 and earned",
-    "You played music on the street 🎸 and earned",
-    "You fixed a computer 🖥️ and earned",
-    "You did voice acting 🎤 and earned",
-    "You made balloon animals 🎈 and earned",
-    "You worked as a mascot 🦁 and earned"
+def load_shop_items():
+    items = {}
+    items_file = os.path.join(os.path.dirname(__file__), "econ", "items.txt")
+    if not os.path.exists(items_file):
+        return items
+    with open(items_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                name, price, desc = line.split("|", 2)
+                items[name.lower()] = {"price": int(price), "desc": desc}
+            except Exception:
+                continue
+    return items
+
+SHOP_ITEMS = load_shop_items()
+
+FISH_TYPES = [
+    "salmon", "trout", "bass", "catfish", "carp", "goldfish", "pike", "perch", "sturgeon", "eel",
+    "anchovy", "sardine", "mackerel", "tuna", "marlin", "snapper", "grouper", "halibut", "flounder", "tilapia",
+    "herring", "barracuda", "shad", "sunfish", "bluegill", "crappie", "drum", "gar", "mullet", "walleye"
+]
+JUNK_TYPES = [
+    "boot", "tin can", "torn newspaper", "broken bottle", "driftwood", "old tire", "rusty key", "plastic bag",
+    "soggy sock", "broken rod", "bottle cap", "old phone", "sunglasses", "license plate", "toy car", "spoon",
+    "fork", "old wallet", "empty wallet", "broken watch"
 ]
 
-CRIME_REWARDS = [
-    {"desc": "You hacked a vending machine! 🤖", "amount": 200},
-    {"desc": "You stole a bike! 🚲", "amount": 150},
-    {"desc": "You robbed a lemonade stand! 🍋", "amount": 100},
-    {"desc": "You failed and paid a fine. 💸", "amount": -100},
-    {"desc": "You got caught and paid bail. 🚔", "amount": -200},
-    {"desc": "You spray painted a wall! 🎨", "amount": 120},
-    {"desc": "You jaywalked across a busy street! 🚦", "amount": 80},
-    {"desc": "You pickpocketed a tourist! 🎒", "amount": 140},
-    {"desc": "You snuck into a movie theater! 🎬", "amount": 90},
-    {"desc": "You ran an illegal lemonade stand! 🍋", "amount": 110},
-    {"desc": "You cheated at cards in a back alley! 🃏", "amount": 160},
-    {"desc": "You hacked a claw machine! 🕹️", "amount": 130},
-    {"desc": "You tricked someone with a fake raffle! 🎟️", "amount": 170},
-    {"desc": "You faked a talent show act for tips! 🎤", "amount": 100},
-    {"desc": "You shoplifted a candy bar! 🍫", "amount": 70},
-    {"desc": "You pretended to be a parking inspector! 🅿️", "amount": 150},
-    {"desc": "You ran a fake car wash scam! 🚗", "amount": 180},
-    {"desc": "You siphoned Wi-Fi from your neighbor! 📶", "amount": 90},
-    {"desc": "You resold school lunch tickets! 🥪", "amount": 110},
-    {"desc": "You forged a library card! 📖", "amount": 60},
-    {"desc": "You got caught by mall security. 🚨", "amount": -120},
-    {"desc": "You slipped while running from the scene. 🏃", "amount": -100},
-    {"desc": "You accidentally robbed a police fundraiser. 🚓", "amount": -200},
-    {"desc": "You tripped the alarm while escaping. 🔔", "amount": -150},
-    {"desc": "You panicked and gave the money back. 😱", "amount": -90}
+WORK_RESPONSES = [
+    "You worked as a **Barista** and earned",
+    "You delivered **Pizza** and earned",
+    "You walked a **Dog** and earned",
+    "You mowed a **Lawn** and earned",
+    "You washed a **Car** and earned",
+    "You coded a **Website** and earned",
+    "You painted a **Fence** and earned",
+    "You helped at a **Bakery** and earned",
+    "You tutored a **Student** and earned",
+    "You cleaned a **Pool** and earned",
+    "You worked as a **Cashier** and earned",
+    "You fixed a **Bike** and earned",
+    "You organized a **Garage** and earned",
+    "You delivered **Groceries** and earned",
+    "You worked as a **Receptionist** and earned",
+    "You DJ'd a **Party** and earned",
+    "You streamed on **Twitch** and earned",
+    "You made a **YouTube video** and earned",
+    "You walked a neighbor's **iguana** and earned",
+    "You ran a **lemonade stand** and earned",
+    "You did **yard work** and earned",
+    "You cleaned gutters and earned",
+    "You assembled IKEA furniture and earned",
+    "You did someone's taxes and earned",
+    "You ran a bake sale and earned",
+    "You played music on the street and earned",
+    "You fixed a computer and earned",
+    "You did voice acting and earned",
+    "You made balloon animals and earned",
+    "You worked as a mascot and earned"
 ]
 
 def log_econ_action(command: str, user: discord.User, amount: int = None, item: str = None, extra: str = ""):
@@ -407,6 +413,7 @@ class Economy(commands.Cog):
         await self.roulette(interaction.user, color.lower(), amount, interaction)
 
     async def roulette(self, user, color, amount, destination):
+        ROULETTE_COLORS = {"red": 2, "black": 2, "green": 14}
         if color not in ROULETTE_COLORS:
             embed = discord.Embed(
                 title="Roulette",
@@ -457,7 +464,33 @@ class Economy(commands.Cog):
         await self.crime(interaction.user, interaction)
 
     async def crime(self, user, destination):
-        result = random.choice(CRIME_REWARDS)
+        result = random.choice([
+            {"desc": "You hacked a vending machine!", "amount": 200},
+            {"desc": "You stole a bike!", "amount": 150},
+            {"desc": "You robbed a lemonade stand!", "amount": 100},
+            {"desc": "You failed and paid a fine.", "amount": -100},
+            {"desc": "You got caught and paid bail.", "amount": -200},
+            {"desc": "You spray painted a wall!", "amount": 120},
+            {"desc": "You jaywalked across a busy street!", "amount": 80},
+            {"desc": "You pickpocketed a tourist!", "amount": 140},
+            {"desc": "You snuck into a movie theater!", "amount": 90},
+            {"desc": "You ran an illegal lemonade stand!", "amount": 110},
+            {"desc": "You cheated at cards in a back alley!", "amount": 160},
+            {"desc": "You hacked a claw machine!", "amount": 130},
+            {"desc": "You tricked someone with a fake raffle!", "amount": 170},
+            {"desc": "You faked a talent show act for tips!", "amount": 100},
+            {"desc": "You shoplifted a candy bar!", "amount": 70},
+            {"desc": "You pretended to be a parking inspector!", "amount": 150},
+            {"desc": "You ran a fake car wash scam!", "amount": 180},
+            {"desc": "You siphoned Wi-Fi from your neighbor!", "amount": 90},
+            {"desc": "You resold school lunch tickets!", "amount": 110},
+            {"desc": "You forged a library card!", "amount": 60},
+            {"desc": "You got caught by mall security.", "amount": -120},
+            {"desc": "You slipped while running from the scene.", "amount": -100},
+            {"desc": "You accidentally robbed a police fundraiser.", "amount": -200},
+            {"desc": "You tripped the alarm while escaping.", "amount": -150},
+            {"desc": "You panicked and gave the money back.", "amount": -90}
+        ])
         data = await self.get_user(user.id)
         new_balance = max(0, data["balance"] + result["amount"])
         await self.update_user(user.id, balance=new_balance)
@@ -495,6 +528,7 @@ class Economy(commands.Cog):
             )
             log_econ_action("daily_fail", user, extra=f"Cooldown {delta}")
         else:
+            # Daily roles bonus
             bonus = 0
             bonus_details = []
             guild = None
@@ -681,42 +715,6 @@ class Economy(commands.Cog):
                     color=0xd0b47b
                 )
                 log_econ_action("bankheist_fail", user, amount=amount)
-        if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-    # --- LEADERBOARD ---
-    @commands.command(name="leaderboard", aliases=["lb", "top"])
-    async def leaderboard_command(self, ctx):
-        await self.leaderboard(ctx)
-
-    @app_commands.command(name="leaderboard", description="Show the top 10 richest users.")
-    async def leaderboard_slash(self, interaction: discord.Interaction):
-        await self.leaderboard(interaction)
-
-    async def leaderboard(self, destination):
-        async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute(
-                "SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 10"
-            )
-            top_users = await cursor.fetchall()
-        embed = discord.Embed(
-            title="🏆 Economy Leaderboard",
-            description="Top 10 richest users 💰",
-            color=0xf1c40f
-        )
-        if not top_users:
-            embed.description = "No users found."
-        else:
-            medals = ["🥇", "🥈", "🥉"] + ["💸"] * 7
-            lines = []
-            for idx, (user_id, balance) in enumerate(top_users, start=1):
-                user = self.bot.get_user(user_id)
-                name = user.mention if user else f"User ID {user_id}"
-                medal = medals[idx - 1] if idx <= len(medals) else ""
-                lines.append(f"{medal} **#{idx}** {name} — **{balance}** coins")
-            embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
