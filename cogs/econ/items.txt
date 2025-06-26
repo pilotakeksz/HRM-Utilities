@@ -3,8 +3,6 @@ can of tuna|50|A delicious can of tuna. Maybe a cat will follow you.
 fish|100|A fresh fish. Smells... fishy.
 plane|5000|A private plane. Flex on your friends.
 skittles|25|Taste the rainbow!
-enderman|5|A Blocky reference.
-grappling hook|750|Scale walls and escape in style.
 banana|15|A slippery snack. Watch your step!
 beanbag chair|200|Perfect for chilling after a heist.
 toy sword|100|Not very sharp, but it looks cool.
@@ -30,3 +28,42 @@ tin can|1|A rusty tin can.
 torn newspaper|1|A soggy, unreadable newspaper.
 broken bottle|1|A broken glass bottle.
 driftwood|1|A piece of driftwood.
+old tire|1|A worn-out tire.
+rusty key|1|A key to nowhere.
+plastic bag|1|A plastic bag, not very useful.
+soggy sock|1|A wet, smelly sock.
+broken rod|1|A snapped fishing rod.
+bottle cap|1|A bottle cap, maybe collectible?
+old phone|1|A phone from the stone age.
+sunglasses|1|Scratched but stylish.
+license plate|1|From a mysterious car.
+toy car|1|A tiny toy car.
+spoon|1|A bent spoon.
+fork|1|A rusty fork.
+old wallet|1|Empty, of course.
+empty wallet|1|Even emptier.
+broken watch|1|It’s always 4:20.
+pike|150|A sharp-toothed pike.
+perch|110|A tasty perch.
+sturgeon|300|A big sturgeon.
+eel|200|A slippery eel.
+anchovy|100|A salty anchovy.
+sardine|105|A small sardine.
+mackerel|120|A shiny mackerel.
+tuna|250|A huge tuna.
+marlin|400|A prized marlin.
+snapper|130|A red snapper.
+grouper|180|A heavy grouper.
+halibut|220|A flat halibut.
+flounder|115|A camouflaged flounder.
+tilapia|125|A mild tilapia.
+herring|110|A silvery herring.
+barracuda|350|A fierce barracuda.
+shad|100|A common shad.
+sunfish|140|A round sunfish.
+bluegill|120|A bluegill.
+crappie|110|A crappie.
+drum|160|A drum fish.
+gar|170|A long gar.
+mullet|130|A jumping mullet.
+walleye|200|A sharp-eyed walleye.

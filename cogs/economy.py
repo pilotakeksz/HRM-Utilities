@@ -5,6 +5,7 @@ import aiosqlite
 import os
 import random
 from datetime import datetime, timedelta
+import math
 
 DB_PATH = os.getenv("ECONOMY_DB_FILE", "data/economy.db")
 DAILY_AMOUNT = int(os.getenv("DAILY_AMOUNT", 250))
@@ -12,70 +13,64 @@ BANK_INTEREST = 0.01  # 1% daily interest, can be made dynamic per-role
 ROULETTE_COLORS = {"red": 2, "black": 2, "green": 14}
 
 WORK_RESPONSES = [
-    "You worked as a **Barista** and earned",
-    "You delivered **Pizza** and earned",
-    "You walked a **Dog** and earned",
-    "You mowed a **Lawn** and earned",
-    "You washed a **Car** and earned",
-    "You coded a **Website** and earned",
-    "You painted a **Fence** and earned",
-    "You helped at a **Bakery** and earned",
-    "You tutored a **Student** and earned",
-    "You cleaned a **Pool** and earned",
-    "You worked as a **Cashier** and earned",
-    "You fixed a **Bike** and earned",
-    "You organized a **Garage** and earned",
-    "You delivered **Groceries** and earned",
-    "You worked as a **Receptionist** and earned"
+    "You worked as a **Barista** ☕ and earned",
+    "You delivered **Pizza** 🍕 and earned",
+    "You walked a **Dog** 🐕 and earned",
+    "You mowed a **Lawn** 🌱 and earned",
+    "You washed a **Car** 🚗 and earned",
+    "You coded a **Website** 💻 and earned",
+    "You painted a **Fence** 🎨 and earned",
+    "You helped at a **Bakery** 🥐 and earned",
+    "You tutored a **Student** 📚 and earned",
+    "You cleaned a **Pool** 🏊 and earned",
+    "You worked as a **Cashier** 🛒 and earned",
+    "You fixed a **Bike** 🚲 and earned",
+    "You organized a **Garage** 🧰 and earned",
+    "You delivered **Groceries** 🥦 and earned",
+    "You worked as a **Receptionist** ☎️ and earned",
+    "You DJ'd a **Party** 🎧 and earned",
+    "You streamed on **Twitch** 🎮 and earned",
+    "You made a **YouTube video** 📹 and earned",
+    "You walked a neighbor's **iguana** 🦎 and earned",
+    "You ran a **lemonade stand** 🍋 and earned",
+    "You did **yard work** 🧹 and earned",
+    "You cleaned gutters 🧽 and earned",
+    "You assembled IKEA furniture 🔧 and earned",
+    "You did someone's taxes 🧾 and earned",
+    "You ran a bake sale 🧁 and earned",
+    "You played music on the street 🎸 and earned",
+    "You fixed a computer 🖥️ and earned",
+    "You did voice acting 🎤 and earned",
+    "You made balloon animals 🎈 and earned",
+    "You worked as a mascot 🦁 and earned"
 ]
 
-SHOP_ITEMS = {
-    "can of tuna": {"price": 50, "desc": "A delicious can of tuna."},
-    "fish": {"price": 100, "desc": "A fresh fish."},
-    "plane": {"price": 5000, "desc": "A private plane."},
-    "skittles": {"price": 25, "desc": "Taste the rainbow!"},
-    "banana": {"price": 15, "desc": "A slippery snack."},
-    "beanbag chair": {"price": 200, "desc": "Perfect for chilling."},
-    "toy sword": {"price": 100, "desc": "Not very sharp, but it looks cool."},
-    "cursed amulet": {"price": 400, "desc": "Gives mysterious powers."},
-    "RC car": {"price": 300, "desc": "Zoom around and annoy your friends."},
-    "lava lamp": {"price": 150, "desc": "Groovy vibes in a bottle."},
-    "invisibility cloak": {"price": 2500, "desc": "Totally real and not just a bedsheet."},
-    "rubber duck": {"price": 10, "desc": "Squeaky and suspiciously judgmental."},
-    "wifi booster": {"price": 800, "desc": "Steal signals from across the street."},
-    "golden shovel": {"price": 450, "desc": "For digging... or flexing."},
-    "keyboard cleaner": {"price": 75, "desc": "Because your crimes are dirty."},
-    "fake mustache": {"price": 60, "desc": "Instant disguise, 60% effective."},
-    "alien plushie": {"price": 130, "desc": "It's watching you. Always."},
-    "time machine manual": {"price": 9999, "desc": "Too bad the machine's sold separately."},
-}
-
 CRIME_REWARDS = [
-    {"desc": "You hacked a vending machine!", "amount": 200},
-    {"desc": "You stole a bike!", "amount": 150},
-    {"desc": "You robbed a lemonade stand!", "amount": 100},
-    {"desc": "You failed and paid a fine.", "amount": -100},
-    {"desc": "You got caught and paid bail.", "amount": -200},
-    {"desc": "You spray painted a wall!", "amount": 120},
-    {"desc": "You jaywalked across a busy street!", "amount": 80},
-    {"desc": "You pickpocketed a tourist!", "amount": 140},
-    {"desc": "You snuck into a movie theater!", "amount": 90},
-    {"desc": "You ran an illegal lemonade stand!", "amount": 110},
-    {"desc": "You cheated at cards in a back alley!", "amount": 160},
-    {"desc": "You hacked a claw machine!", "amount": 130},
-    {"desc": "You tricked someone with a fake raffle!", "amount": 170},
-    {"desc": "You faked a talent show act for tips!", "amount": 100},
-    {"desc": "You shoplifted a candy bar!", "amount": 70},
-    {"desc": "You pretended to be a parking inspector!", "amount": 150},
-    {"desc": "You ran a fake car wash scam!", "amount": 180},
-    {"desc": "You siphoned Wi-Fi from your neighbor!", "amount": 90},
-    {"desc": "You resold school lunch tickets!", "amount": 110},
-    {"desc": "You forged a library card!", "amount": 60},
-    {"desc": "You got caught by mall security.", "amount": -120},
-    {"desc": "You slipped while running from the scene.", "amount": -100},
-    {"desc": "You accidentally robbed a police fundraiser.", "amount": -200},
-    {"desc": "You tripped the alarm while escaping.", "amount": -150},
-    {"desc": "You panicked and gave the money back.", "amount": -90}
+    {"desc": "You hacked a vending machine! 🤖", "amount": 200},
+    {"desc": "You stole a bike! 🚲", "amount": 150},
+    {"desc": "You robbed a lemonade stand! 🍋", "amount": 100},
+    {"desc": "You failed and paid a fine. 💸", "amount": -100},
+    {"desc": "You got caught and paid bail. 🚔", "amount": -200},
+    {"desc": "You spray painted a wall! 🎨", "amount": 120},
+    {"desc": "You jaywalked across a busy street! 🚦", "amount": 80},
+    {"desc": "You pickpocketed a tourist! 🎒", "amount": 140},
+    {"desc": "You snuck into a movie theater! 🎬", "amount": 90},
+    {"desc": "You ran an illegal lemonade stand! 🍋", "amount": 110},
+    {"desc": "You cheated at cards in a back alley! 🃏", "amount": 160},
+    {"desc": "You hacked a claw machine! 🕹️", "amount": 130},
+    {"desc": "You tricked someone with a fake raffle! 🎟️", "amount": 170},
+    {"desc": "You faked a talent show act for tips! 🎤", "amount": 100},
+    {"desc": "You shoplifted a candy bar! 🍫", "amount": 70},
+    {"desc": "You pretended to be a parking inspector! 🅿️", "amount": 150},
+    {"desc": "You ran a fake car wash scam! 🚗", "amount": 180},
+    {"desc": "You siphoned Wi-Fi from your neighbor! 📶", "amount": 90},
+    {"desc": "You resold school lunch tickets! 🥪", "amount": 110},
+    {"desc": "You forged a library card! 📖", "amount": 60},
+    {"desc": "You got caught by mall security. 🚨", "amount": -120},
+    {"desc": "You slipped while running from the scene. 🏃", "amount": -100},
+    {"desc": "You accidentally robbed a police fundraiser. 🚓", "amount": -200},
+    {"desc": "You tripped the alarm while escaping. 🔔", "amount": -150},
+    {"desc": "You panicked and gave the money back. 😱", "amount": -90}
 ]
 
 def log_econ_action(command: str, user: discord.User, amount: int = None, item: str = None, extra: str = ""):
@@ -93,6 +88,46 @@ def log_econ_action(command: str, user: discord.User, amount: int = None, item: 
         parts.append(f"Extra: {extra}")
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(" | ".join(parts) + "\n")
+
+class ShopView(discord.ui.View):
+    def __init__(self, page=1):
+        super().__init__(timeout=60)
+        self.page = page
+
+    async def update(self, interaction, page):
+        self.page = page
+        embed = get_shop_embed(page)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, row=0)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page > 1:
+            await self.update(interaction, self.page - 1)
+        else:
+            await interaction.response.defer()
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, row=0)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        max_page = math.ceil(len(SHOP_ITEMS) / SHOP_ITEMS_PER_PAGE)
+        if self.page < max_page:
+            await self.update(interaction, self.page + 1)
+        else:
+            await interaction.response.defer()
+
+def get_shop_embed(page=1):
+    embed = discord.Embed(
+        title="🛒 Item Shop",
+        color=0xd0b47b
+    )
+    items = list(SHOP_ITEMS.items())
+    max_page = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
+    page = max(1, min(page, max_page))
+    start = (page - 1) * SHOP_ITEMS_PER_PAGE
+    end = start + SHOP_ITEMS_PER_PAGE
+    for item, info in items[start:end]:
+        embed.add_field(name=f"{item.title()} - {info['price']} coins", value=info["desc"], inline=False)
+    embed.set_footer(text=f"Page {page}/{max_page}")
+    return embed
 
 class Economy(commands.Cog):
     def __init__(self, bot):
@@ -149,6 +184,21 @@ class Economy(commands.Cog):
             )
             await db.commit()
 
+    async def add_item(self, user_id, item, amount):
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT amount FROM inventory WHERE user_id = ? AND item = ?", (user_id, item))
+            row = await cursor.fetchone()
+            if row:
+                await db.execute("UPDATE inventory SET amount = amount + ? WHERE user_id = ? AND item = ?", (amount, user_id, item))
+            else:
+                await db.execute("INSERT INTO inventory (user_id, item, amount) VALUES (?, ?, ?)", (user_id, item, amount))
+            await db.commit()
+
+    async def get_inventory(self, user_id):
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT item, amount FROM inventory WHERE user_id = ?", (user_id,))
+            return await cursor.fetchall()
+
     # --- WORK ---
     @commands.command(name="work")
     async def work_command(self, ctx):
@@ -174,7 +224,7 @@ class Economy(commands.Cog):
             )
             log_econ_action("work_fail", user, extra=f"Cooldown {minutes}m {seconds}s")
         else:
-            amount = round(random.randint(50, 500) / 5) * 5
+            amount = round(random.randint(5, 500) / 5) * 5
             job_response = random.choice(WORK_RESPONSES)
             new_balance = data["balance"] + amount
             await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
@@ -189,26 +239,162 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- STORE ---
-    @commands.command(name="shop")
-    async def shop_command(self, ctx):
-        await self.shop(ctx)
+    # --- GARAGE ---
+    @commands.command(name="garage")
+    async def garage_command(self, ctx):
+        await self.garage(ctx.author, ctx)
 
-    @app_commands.command(name="shop", description="View the item shop.")
-    async def shop_slash(self, interaction: discord.Interaction):
-        await self.shop(interaction)
+    @app_commands.command(name="garage", description="Do garage jobs for $1 each (20 jobs).")
+    async def garage_slash(self, interaction: discord.Interaction):
+        await self.garage(interaction.user, interaction)
 
-    async def shop(self, destination):
+    async def garage(self, user, destination):
+        jobs = 20
+        amount = jobs * 1
+        data = await self.get_user(user.id)
+        new_balance = data["balance"] + amount
+        await self.update_user(user.id, balance=new_balance)
         embed = discord.Embed(
-            title="🛒 Item Shop",
+            title="Garage Jobs",
+            description=f"You completed {jobs} garage jobs and earned **{amount}** coins!",
             color=0xd0b47b
         )
-        for item, info in SHOP_ITEMS.items():
-            embed.add_field(name=f"{item.title()} - {info['price']} coins", value=info["desc"], inline=False)
+        log_econ_action("garage", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
+
+    # --- FISHING ---
+    @commands.command(name="fish")
+    async def fish_command(self, ctx):
+        await self.fish(ctx.author, ctx)
+
+    @app_commands.command(name="fish", description="Go fishing for a random fish or junk!")
+    async def fish_slash(self, interaction: discord.Interaction):
+        await self.fish(interaction.user, interaction)
+
+    async def fish(self, user, destination):
+        # 80% chance fish, 20% junk
+        if random.random() < 0.8:
+            fish = random.choice(FISH_TYPES)
+            value = round(random.randint(100, 1000) / 5) * 5
+        else:
+            fish = random.choice(JUNK_TYPES)
+            value = 1
+        await self.add_item(user.id, fish, 1)
+        embed = discord.Embed(
+            title="🎣 Fishing",
+            description=f"You caught a **{fish.title()}** worth **{value}** coins! Use `/sell {fish}` or `!sell {fish}` to sell it.",
+            color=0xd0b47b
+        )
+        log_econ_action("fish", user, amount=value, item=fish)
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- SELL ---
+    @commands.command(name="sell")
+    async def sell_command(self, ctx, item: str, amount: int = 1):
+        await self.sell(ctx.author, item.lower(), amount, ctx)
+
+    @app_commands.command(name="sell", description="Sell an item from your inventory.")
+    @app_commands.describe(item="The item to sell", amount="How many to sell")
+    async def sell_slash(self, interaction: discord.Interaction, item: str, amount: int = 1):
+        await self.sell(interaction.user, item.lower(), amount, interaction)
+
+    async def sell(self, user, item, amount, destination):
+        items = dict(await self.get_inventory(user.id))
+        if item not in SHOP_ITEMS:
+            embed = discord.Embed(
+                title="Sell",
+                description="That item doesn't exist.",
+                color=0xd0b47b
+            )
+            log_econ_action("sell_fail", user, item=item)
+        elif items.get(item, 0) < 1:
+            embed = discord.Embed(
+                title="Sell",
+                description=f"You don't have any **{item.title()}** to sell.",
+                color=0xd0b47b
+            )
+            log_econ_action("sell_fail", user, item=item, extra="No items")
+        else:
+            sell_amount = min(amount, items[item])
+            price = SHOP_ITEMS[item]["price"]
+            total = price * sell_amount
+            data = await self.get_user(user.id)
+            await self.add_item(user.id, item, -sell_amount)
+            await self.update_user(user.id, balance=data["balance"] + total)
+            embed = discord.Embed(
+                title="Sell",
+                description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
+                color=0xd0b47b
+            )
+            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- SELL ALL FISH/JUNK ---
+    @commands.command(name="sellallfish")
+    async def sellallfish_command(self, ctx):
+        await self.sell_all_fish(ctx.author, ctx)
+
+    @app_commands.command(name="sellallfish", description="Sell all fish and junk items in your inventory.")
+    async def sellallfish_slash(self, interaction: discord.Interaction):
+        await self.sell_all_fish(interaction.user, interaction)
+
+    async def sell_all_fish(self, user, destination):
+        inventory = dict(await self.get_inventory(user.id))
+        fish_types = FISH_TYPES + JUNK_TYPES
+        total_earned = 0
+        sold_items = []
+        for item in fish_types:
+            amount = inventory.get(item, 0)
+            if amount > 0 and item in SHOP_ITEMS:
+                price = SHOP_ITEMS[item]["price"]
+                earned = price * amount
+                await self.add_item(user.id, item, -amount)
+                data = await self.get_user(user.id)
+                await self.update_user(user.id, balance=data["balance"] + earned)
+                total_earned += earned
+                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
+                log_econ_action("sell-all-fish", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+        if sold_items:
+            desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
+        else:
+            desc = "You have no fish or junk items to sell."
+        embed = discord.Embed(
+            title="Sell All Fish",
+            description=desc,
+            color=0xd0b47b
+        )
+        log_econ_action("sell-all-fish-summary", user, amount=total_earned, extra="All fish sold")
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- SHOP ---
+    @commands.command(name="shop")
+    async def shop_command(self, ctx, page: int = 1):
+        await self.shop(ctx, page)
+
+    @app_commands.command(name="shop", description="View the item shop.")
+    @app_commands.describe(page="Page number")
+    async def shop_slash(self, interaction: discord.Interaction, page: int = 1):
+        await self.shop(interaction, page)
+
+    async def shop(self, destination, page=1):
+        embed = get_shop_embed(page)
+        view = ShopView(page=page)
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed, view=view)
+        else:
+            await destination.send(embed=embed, view=view)
 
     # --- ROULETTE ---
     @commands.command(name="roulette")
@@ -309,8 +495,8 @@ class Economy(commands.Cog):
             )
             log_econ_action("daily_fail", user, extra=f"Cooldown {delta}")
         else:
-            # Daily roles bonus
             bonus = 0
+            bonus_details = []
             guild = None
             if hasattr(destination, "guild"):
                 guild = destination.guild
@@ -319,18 +505,21 @@ class Economy(commands.Cog):
             if guild:
                 member = guild.get_member(user.id)
                 if member:
-                    for role in member.roles:
-                        if role.name.lower().startswith("daily"):
-                            bonus += 50  # Example: +50 per daily role
+                    for role_id, role_bonus in BANK_ROLE_TIERS:
+                        role = guild.get_role(role_id)
+                        if role and role in member.roles:
+                            bonus += 50
+                            bonus_details.append(f"{role.name}: +50 coins")
             total = DAILY_AMOUNT + bonus
             new_balance = data["balance"] + total
             await self.update_user(user.id, balance=new_balance, last_daily=now.isoformat())
+            bonus_str = "\n".join(bonus_details) if bonus_details else "No daily bonus roles."
             embed = discord.Embed(
                 title="Daily Reward",
-                description=f"You claimed your daily and received **{DAILY_AMOUNT}** coins!{' Bonus: ' + str(bonus) if bonus else ''}",
+                description=f"You claimed your daily and received **{DAILY_AMOUNT}** coins!\n{bonus_str}",
                 color=0xd0b47b
             )
-            log_econ_action("daily", user, amount=total)
+            log_econ_action("daily", user, amount=total, extra=bonus_str)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -347,9 +536,10 @@ class Economy(commands.Cog):
 
     async def bank(self, user, destination):
         data = await self.get_user(user.id)
+        interest = self.get_bank_interest(user)
         embed = discord.Embed(
             title=f"{user.name}'s Bank",
-            description=f"🏦 Bank Balance: **{data['bank']}** coins\nInterest Rate: **{BANK_INTEREST*100:.2f}%** per day",
+            description=f"🏦 Bank Balance: **{data['bank']}** coins\nInterest Rate: **{interest*100:.2f}%** per day",
             color=0xd0b47b
         )
         log_econ_action("bank", user)
@@ -358,12 +548,45 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- BANK INTEREST (run daily, example only) ---
+    # --- DEPOSIT ---
+    @commands.command(name="deposit")
+    async def deposit_command(self, ctx, amount: int):
+        await self.deposit(ctx.author, amount, ctx)
+
+    @app_commands.command(name="deposit", description="Deposit coins from your wallet to your bank.")
+    @app_commands.describe(amount="Amount to deposit")
+    async def deposit_slash(self, interaction: discord.Interaction, amount: int):
+        await self.deposit(interaction.user, amount, interaction)
+
+    async def deposit(self, user, amount, destination):
+        data = await self.get_user(user.id)
+        if amount <= 0 or data["balance"] < amount:
+            embed = discord.Embed(
+                title="Deposit",
+                description="Invalid amount or insufficient funds.",
+                color=0xd0b47b
+            )
+            log_econ_action("deposit_fail", user, amount=amount)
+        else:
+            await self.update_user(user.id, balance=data["balance"] - amount, bank=data["bank"] + amount)
+            embed = discord.Embed(
+                title="Deposit",
+                description=f"You deposited **{amount}** coins into your bank.",
+                color=0xd0b47b
+            )
+            log_econ_action("deposit", user, amount=amount)
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- INTEREST ---
     async def apply_bank_interest(self):
         async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "UPDATE users SET bank = bank + CAST(bank * ? AS INTEGER)", (BANK_INTEREST,)
-            )
+            for role_id, interest in BANK_ROLE_TIERS:
+                await db.execute(
+                    f"UPDATE users SET bank = bank + CAST(bank * {interest} AS INTEGER) WHERE user_id IN (SELECT user_id FROM users)"
+                )
             await db.commit()
 
     # --- ROB ---
@@ -420,7 +643,7 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- BANK HEIST (simple version) ---
+    # --- BANK HEIST ---
     @commands.command(name="bankheist")
     async def bankheist_command(self, ctx, amount: int):
         await self.bankheist(ctx.author, amount, ctx)
@@ -458,6 +681,42 @@ class Economy(commands.Cog):
                     color=0xd0b47b
                 )
                 log_econ_action("bankheist_fail", user, amount=amount)
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- LEADERBOARD ---
+    @commands.command(name="leaderboard", aliases=["lb", "top"])
+    async def leaderboard_command(self, ctx):
+        await self.leaderboard(ctx)
+
+    @app_commands.command(name="leaderboard", description="Show the top 10 richest users.")
+    async def leaderboard_slash(self, interaction: discord.Interaction):
+        await self.leaderboard(interaction)
+
+    async def leaderboard(self, destination):
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 10"
+            )
+            top_users = await cursor.fetchall()
+        embed = discord.Embed(
+            title="🏆 Economy Leaderboard",
+            description="Top 10 richest users 💰",
+            color=0xf1c40f
+        )
+        if not top_users:
+            embed.description = "No users found."
+        else:
+            medals = ["🥇", "🥈", "🥉"] + ["💸"] * 7
+            lines = []
+            for idx, (user_id, balance) in enumerate(top_users, start=1):
+                user = self.bot.get_user(user_id)
+                name = user.mention if user else f"User ID {user_id}"
+                medal = medals[idx - 1] if idx <= len(medals) else ""
+                lines.append(f"{medal} **#{idx}** {name} — **{balance}** coins")
+            embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
