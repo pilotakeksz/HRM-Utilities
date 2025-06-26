@@ -247,6 +247,7 @@ class Economy(commands.Cog):
     async def balance_slash(self, interaction: discord.Interaction):
         await self.send_balance_embed(interaction.user, interaction)
 
+    # --- BALANCE ---
     async def send_balance_embed(self, user, destination):
         data = await self.get_user(user.id)
         embed = discord.Embed(
@@ -254,11 +255,13 @@ class Economy(commands.Cog):
             description=f"💰 Balance: **{data['balance']}** coins",
             color=0xd0b47b
         )
+        log_econ_action("balance", user)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
+    # --- DAILY ---
     @commands.command(name="daily")
     async def daily_command(self, ctx):
         await self.daily(ctx.author, ctx)
@@ -279,6 +282,7 @@ class Economy(commands.Cog):
                 description=f"You've already claimed your daily! Come back in {delta.seconds // 3600}h {(delta.seconds // 60) % 60}m.",
                 color=0xd0b47b
             )
+            log_econ_action("daily_fail", user, extra=f"Cooldown {delta}")
         else:
             new_balance = data["balance"] + DAILY_AMOUNT
             await self.update_user(user.id, balance=new_balance, last_daily=now.isoformat())
@@ -287,11 +291,13 @@ class Economy(commands.Cog):
                 description=f"You claimed your daily and received **{DAILY_AMOUNT}** coins!",
                 color=0xd0b47b
             )
+            log_econ_action("daily", user, amount=DAILY_AMOUNT)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
+    # --- WORK ---
     @commands.command(name="work")
     async def work_command(self, ctx):
         await self._work(ctx.author, ctx)
@@ -312,6 +318,7 @@ class Economy(commands.Cog):
                 description=f"You are tired! Try again in {delta.seconds // 60}m.",
                 color=0xd0b47b
             )
+            log_econ_action("work_fail", user, extra=f"Cooldown {delta}")
         else:
             amount = random.randint(10, 80) * 5
             job_response = random.choice(WORK_RESPONSES)
@@ -332,6 +339,7 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
+    # --- ROB ---
     @commands.command(name="rob")
     async def rob_command(self, ctx, target: discord.Member):
         await self.rob(ctx.author, target, ctx)
@@ -348,6 +356,7 @@ class Economy(commands.Cog):
                 description="You can't rob yourself!",
                 color=0xd0b47b
             )
+            log_econ_action("rob_fail", user, extra="Tried to rob self")
         else:
             user_data = await self.get_user(user.id)
             target_data = await self.get_user(target.id)
@@ -357,6 +366,7 @@ class Economy(commands.Cog):
                     description="Target doesn't have enough coins to rob!",
                     color=0xd0b47b
                 )
+                log_econ_action("rob_fail", user, extra=f"Target {target} ({target.id}) too poor")
             else:
                 success = random.random() < 0.5
                 if success:
@@ -368,6 +378,7 @@ class Economy(commands.Cog):
                         description=f"You robbed {target.mention} and stole **{stolen}** coins!",
                         color=0xd0b47b
                     )
+                    log_econ_action("rob", user, amount=stolen, extra=f"target={target} ({target.id})")
                 else:
                     loss = random.randint(20, 100)
                     await self.update_user(user.id, balance=max(0, user_data["balance"] - loss))
@@ -376,11 +387,13 @@ class Economy(commands.Cog):
                         description=f"You got caught and lost **{loss}** coins!",
                         color=0xd0b47b
                     )
+                    log_econ_action("rob_fail", user, amount=loss, extra=f"target={target} ({target.id})")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
+    # --- CRIME ---
     @commands.command(name="crime")
     async def crime_command(self, ctx):
         await self.crime(ctx.author, ctx)
@@ -399,11 +412,13 @@ class Economy(commands.Cog):
             description=f"{result['desc']} {'You gained' if result['amount'] > 0 else 'You lost'} **{abs(result['amount'])}** coins!",
             color=0xd0b47b
         )
+        log_econ_action("crime", user, amount=result["amount"], extra=result["desc"])
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
+    # --- SHOP ---
     @commands.command(name="shop")
     async def shop_command(self, ctx):
         await self.shop(ctx)
@@ -573,26 +588,23 @@ class Economy(commands.Cog):
     async def fish_slash(self, interaction: discord.Interaction):
         await self.fish(interaction.user, interaction)
 
+    # --- FISHING ---
     async def fish(self, user, destination):
         fish_types = get_fish_types()
-        # Assign weights: 1/4 of total weight to junk, 3/4 to normal fish, then random within each group
         junk = [ft for ft in fish_types if ft[1] == (1, 1)]
         normal = [ft for ft in fish_types if ft[1] != (1, 1)]
         all_fish = []
         weights = []
         if junk:
-            # Distribute 25% of weight equally among junk items
             junk_weight = 0.25 / len(junk)
             for ft in junk:
                 all_fish.append(ft)
                 weights.append(junk_weight)
         if normal:
-            # Distribute 75% of weight equally among normal fish
             normal_weight = 0.75 / len(normal)
             for ft in normal:
                 all_fish.append(ft)
                 weights.append(normal_weight)
-        # Pick a fish truly randomly according to weights
         fish, value_range = random.choices(all_fish, weights=weights, k=1)[0]
         value = value_range[0] if value_range[0] == value_range[1] else random.randint(value_range[0] // 5, value_range[1] // 5) * 5
         await self.add_item(user.id, fish, 1)
@@ -601,21 +613,13 @@ class Economy(commands.Cog):
             description=f"You caught a **{fish.title()}** worth **{value}** coin{'s' if value != 1 else ''}! Use `/sell {fish}` or `!sell {fish}` to sell it.",
             color=0xd0b47b
         )
+        log_econ_action("fish", user, amount=value, item=fish)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
-    @commands.command(name="sell")
-    async def sell_command(self, ctx, item: str, amount: Optional[int] = 1):
-        await self.sell(ctx.author, item.lower(), amount, ctx)
-
-    @app_commands.command(name="sell", description="Sell an item from your inventory.")
-    @app_commands.describe(item="The item to sell", amount="How many to sell")
-    @app_commands.autocomplete(item=SellItemAutocomplete().autocomplete)
-    async def sell_slash(self, interaction: discord.Interaction, item: str, amount: Optional[int] = 1):
-        await self.sell(interaction.user, item.lower(), amount, interaction)
-
+    # --- SELL ---
     async def sell(self, user, item, amount, destination):
         items = dict(await self.get_inventory(user.id))
         if item not in SHOP_ITEMS:
@@ -624,12 +628,14 @@ class Economy(commands.Cog):
                 description="That item doesn't exist.",
                 color=0xd0b47b
             )
+            log_econ_action("sell_fail", user, item=item)
         elif items.get(item, 0) < 1:
             embed = discord.Embed(
                 title="Sell",
                 description=f"You don't have any **{item.title()}** to sell.",
                 color=0xd0b47b
             )
+            log_econ_action("sell_fail", user, item=item, extra="No items")
         else:
             sell_amount = min(amount, items[item])
             price = SHOP_ITEMS[item]["price"]
@@ -642,11 +648,13 @@ class Economy(commands.Cog):
                 description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
                 color=0xd0b47b
             )
+            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
+    # --- BANK ---
     @commands.command(name="bank")
     async def bank_command(self, ctx):
         await self.bank(ctx.author, ctx)
@@ -663,25 +671,11 @@ class Economy(commands.Cog):
             description=f"🏦 Bank Balance: **{data['bank']}** coins\nInterest Rate: **{interest:.2f}%** per day",
             color=0xd0b47b
         )
+        log_econ_action("bank", user)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-
-    def get_bank_interest(self, member: discord.Member):
-        for role_id, rate in reversed(BANK_ROLE_TIERS):
-            if discord.utils.get(member.roles, id=role_id):
-                return rate
-        return 0.01
-
-    @commands.command(name="deposit")
-    async def deposit_command(self, ctx, amount: int):
-        await self.deposit(ctx.author, amount, ctx)
-
-    @app_commands.command(name="deposit", description="Deposit coins into your bank.")
-    @app_commands.describe(amount="Amount to deposit")
-    async def deposit_slash(self, interaction: discord.Interaction, amount: int):
-        await self.deposit(interaction.user, amount, interaction)
 
     async def deposit(self, user, amount, destination):
         data = await self.get_user(user.id)
@@ -691,6 +685,7 @@ class Economy(commands.Cog):
                 description="Invalid amount or insufficient funds.",
                 color=0xd0b47b
             )
+            log_econ_action("deposit_fail", user, amount=amount)
         else:
             await self.update_user(user.id, balance=data["balance"] - amount, bank=data["bank"] + amount)
             embed = discord.Embed(
@@ -698,19 +693,11 @@ class Economy(commands.Cog):
                 description=f"You deposited **{amount}** coins into your bank.",
                 color=0xd0b47b
             )
+            log_econ_action("deposit", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-
-    @commands.command(name="withdraw")
-    async def withdraw_command(self, ctx, amount: int):
-        await self.withdraw(ctx.author, amount, ctx)
-
-    @app_commands.command(name="withdraw", description="Withdraw coins from your bank.")
-    @app_commands.describe(amount="Amount to withdraw")
-    async def withdraw_slash(self, interaction: discord.Interaction, amount: int):
-        await self.withdraw(interaction.user, amount, interaction)
 
     async def withdraw(self, user, amount, destination):
         data = await self.get_user(user.id)
@@ -720,6 +707,7 @@ class Economy(commands.Cog):
                 description="Invalid amount or insufficient bank funds.",
                 color=0xd0b47b
             )
+            log_econ_action("withdraw_fail", user, amount=amount)
         else:
             await self.update_user(user.id, balance=data["balance"] + amount, bank=data["bank"] - amount)
             embed = discord.Embed(
@@ -727,25 +715,43 @@ class Economy(commands.Cog):
                 description=f"You withdrew **{amount}** coins from your bank.",
                 color=0xd0b47b
             )
+            log_econ_action("withdraw", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
-    @commands.command(name="applyinterest")
-    async def apply_interest_command(self, ctx):
-        await self.apply_interest_and_inflation()
-
-    async def apply_interest_and_inflation(self):
-        async with self.db_lock:
-            async with aiosqlite.connect(DB_PATH) as db:
-                async for row in db.execute("SELECT user_id, bank FROM users WHERE bank > 0"):
-                    user_id, bank = row
-                    member = self.bot.get_guild(YOUR_GUILD_ID).get_member(user_id)
-                    rate = self.get_bank_interest(member) if member else 0.01
-                    new_bank = int(bank * (1 + rate - INFLATION_RATE))
-                    await db.execute("UPDATE users SET bank = ? WHERE user_id = ?", (new_bank, user_id))
-                await db.commit()
+    # --- FISH SELL ALL (if you have this feature) ---
+    async def sell_all_fish(self, user, destination):
+        inventory = dict(await self.get_inventory(user.id))
+        fish_types = [name for name, _ in get_fish_types()]
+        total_earned = 0
+        sold_items = []
+        for item in fish_types:
+            amount = inventory.get(item, 0)
+            if amount > 0 and item in SHOP_ITEMS:
+                price = SHOP_ITEMS[item]["price"]
+                earned = price * amount
+                await self.add_item(user.id, item, -amount)
+                data = await self.get_user(user.id)
+                await self.update_user(user.id, balance=data["balance"] + earned)
+                total_earned += earned
+                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
+                log_econ_action("sell-all-fish", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+        if sold_items:
+            desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
+        else:
+            desc = "You have no fish or junk items to sell."
+        embed = discord.Embed(
+            title="Sell All Fish",
+            description=desc,
+            color=0xd0b47b
+        )
+        log_econ_action("sell-all-fish-summary", user, amount=total_earned, extra="All fish sold")
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
 
 INFLATION_RATE = 0.02  # 2% per day
 BANK_ROLE_TIERS = [
