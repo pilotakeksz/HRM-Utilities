@@ -287,6 +287,7 @@ class Economy(commands.Cog):
                 description=f"You claimed your daily and received **{DAILY_AMOUNT}** coins!",
                 color=0xd0b47b
             )
+            log_econ_action("daily", user, amount=DAILY_AMOUNT)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -313,7 +314,6 @@ class Economy(commands.Cog):
                 color=0xd0b47b
             )
         else:
-            # Random earning between 50 and 400, rounded to nearest 5
             amount = random.randint(10, 80) * 5
             job_response = random.choice(WORK_RESPONSES)
             new_balance = data["balance"] + amount
@@ -323,6 +323,7 @@ class Economy(commands.Cog):
                 description=f"{job_response} **{amount}** coins!",
                 color=0xd0b47b
             )
+            log_econ_action("work", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -364,6 +365,7 @@ class Economy(commands.Cog):
                         description=f"You robbed {target.mention} and stole **{stolen}** coins!",
                         color=0xd0b47b
                     )
+                    log_econ_action("rob", user, amount=stolen, extra=f"target={target} ({target.id})")
                 else:
                     loss = random.randint(20, 100)
                     await self.update_user(user.id, balance=max(0, user_data["balance"] - loss))
@@ -372,6 +374,7 @@ class Economy(commands.Cog):
                         description=f"You got caught and lost **{loss}** coins!",
                         color=0xd0b47b
                     )
+                    log_econ_action("rob_fail", user, amount=loss, extra=f"target={target} ({target.id})")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -395,6 +398,7 @@ class Economy(commands.Cog):
             description=f"{result['desc']} {'You gained' if result['amount'] > 0 else 'You lost'} **{abs(result['amount'])}** coins!",
             color=0xd0b47b
         )
+        log_econ_action("crime", user, amount=result["amount"], extra=result["desc"])
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -449,6 +453,7 @@ class Economy(commands.Cog):
                     description=f"You bought a **{item}**!",
                     color=0xd0b47b
                 )
+                log_econ_action("buy", user, amount=price, item=item)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -523,6 +528,7 @@ class Economy(commands.Cog):
                     description=result,
                     color=0xd0b47b
                 )
+                log_econ_action("roulette", user, amount=winnings, extra=f"bet_color={color}, result_color={win_color}")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -571,24 +577,21 @@ class Economy(commands.Cog):
 
     async def fish(self, user, destination):
         fish_types = get_fish_types()
-        # Assign weights: 1/4 of total weight to junk, 3/4 to normal fish, then random within each group
+        # Make 1-coin junk items 40% and normal fish 60%
         junk = [ft for ft in fish_types if ft[1] == (1, 1)]
         normal = [ft for ft in fish_types if ft[1] != (1, 1)]
         all_fish = []
         weights = []
         if junk:
-            # Distribute 25% of weight equally among junk items
-            junk_weight = 0.25 / len(junk)
+            junk_weight = 0.4 / len(junk)
             for ft in junk:
                 all_fish.append(ft)
                 weights.append(junk_weight)
         if normal:
-            # Distribute 75% of weight equally among normal fish
-            normal_weight = 0.75 / len(normal)
+            normal_weight = 0.6 / len(normal)
             for ft in normal:
                 all_fish.append(ft)
                 weights.append(normal_weight)
-        # Pick a fish truly randomly according to weights
         fish, value_range = random.choices(all_fish, weights=weights, k=1)[0]
         value = value_range[0] if value_range[0] == value_range[1] else random.randint(value_range[0] // 5, value_range[1] // 5) * 5
         await self.add_item(user.id, fish, 1)
@@ -597,6 +600,7 @@ class Economy(commands.Cog):
             description=f"You caught a **{fish.title()}** worth **{value}** coin{'s' if value != 1 else ''}! Use `/sell {fish}` or `!sell {fish}` to sell it.",
             color=0xd0b47b
         )
+        log_econ_action("fish", user, amount=value, item=fish)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -638,6 +642,7 @@ class Economy(commands.Cog):
                 description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
                 color=0xd0b47b
             )
+            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -694,6 +699,7 @@ class Economy(commands.Cog):
                 description=f"You deposited **{amount}** coins into your bank.",
                 color=0xd0b47b
             )
+            log_econ_action("deposit", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -723,6 +729,7 @@ class Economy(commands.Cog):
                 description=f"You withdrew **{amount}** coins from your bank.",
                 color=0xd0b47b
             )
+            log_econ_action("withdraw", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
