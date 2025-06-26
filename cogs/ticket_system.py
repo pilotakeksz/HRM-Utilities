@@ -60,7 +60,7 @@ async def send_transcript_and_logs(channel, opener, guild):
     # Action log
     action_log_path = os.path.join(LOGS_DIR, f"ticket_{channel.id}_actions.txt")
 
-    # DM transcript to opener
+    # DM transcript to opener (embed only, no files)
     try:
         summary_embed = discord.Embed(
             title="Your Ticket Transcript",
@@ -71,14 +71,11 @@ async def send_transcript_and_logs(channel, opener, guild):
             color=discord.Color.blue()
         )
         summary_embed.set_footer(text="Thank you for contacting support!")
-        await opener.send(embed=summary_embed, files=[
-            discord.File(html_path, filename="transcript.html"),
-            discord.File(transcript_path)
-        ])
+        await opener.send(embed=summary_embed)
     except Exception:
         pass
 
-    # Send summary embed + transcript and action log to logging channel
+    # Send summary embed + transcript and action log to logging channel (embed on top, files below)
     log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
     if log_channel:
         summary_embed = discord.Embed(
@@ -90,10 +87,15 @@ async def send_transcript_and_logs(channel, opener, guild):
             color=discord.Color.blue()
         )
         summary_embed.set_footer(text="Transcript and action log attached.")
-        files = [discord.File(transcript_path), discord.File(html_path, filename="transcript.html")]
+        files = [
+            discord.File(transcript_path),
+            discord.File(html_path, filename="transcript.html")
+        ]
         if os.path.exists(action_log_path):
             files.append(discord.File(action_log_path))
-        await log_channel.send(embed=summary_embed, files=files)
+        # Send embed first, then files as a followup message
+        await log_channel.send(embed=summary_embed)
+        await log_channel.send(files=files)
         await log_channel.send(f"Transcript and logs for closed ticket {channel.mention} ({channel.id}):",
             files=files
         )
