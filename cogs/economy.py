@@ -739,31 +739,39 @@ class Economy(commands.Cog):
     async def eclb_command(self, ctx):
         await self.eclb(ctx)
 
-    @app_commands.command(name="eclb", description="Show the top 10 richest users (economy).")
-    async def eclb_slash(self, interaction: discord.Interaction):
+    @app_commands.command(name="econ-leaderboard", description="Show the top 10 richest users (wallet + bank).")
+    async def econ_leaderboard_slash(self, interaction: discord.Interaction):
         await self.eclb(interaction)
 
     async def eclb(self, destination):
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute(
-                "SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 10"
+                "SELECT user_id, balance, bank FROM users"
             )
-            top_users = await cursor.fetchall()
+            all_users = await cursor.fetchall()
+        # Calculate total wealth (wallet + bank)
+        sorted_users = sorted(
+            all_users,
+            key=lambda row: (row[1] if row[1] else 0) + (row[2] if row[2] else 0),
+            reverse=True
+        )
+        top_users = sorted_users[:10]
         embed = discord.Embed(
             title="🏆 Economy Leaderboard",
-            description="Top 10 richest users 💰",
+            description="Top 10 richest users (wallet + bank) 💰",
             color=0xf1c40f
         )
         if not top_users:
-            embed.description = "No users found." #test
+            embed.description = "No users found."
         else:
             medals = ["🥇", "🥈", "🥉"] + ["💸"] * 7
             lines = []
-            for idx, (user_id, balance) in enumerate(top_users, start=1):
+            for idx, (user_id, balance, bank) in enumerate(top_users, start=1):
                 user = self.bot.get_user(user_id)
                 name = user.mention if user else f"User ID {user_id}"
                 medal = medals[idx - 1] if idx <= len(medals) else ""
-                lines.append(f"{medal} **#{idx}** {name} — **{balance}** coins")
+                total = (balance if balance else 0) + (bank if bank else 0)
+                lines.append(f"{medal} **#{idx}** {name} — **{total}** coins")
             embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
