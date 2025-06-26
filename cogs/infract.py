@@ -39,10 +39,11 @@ def get_next_case_id():
         return 1
     with open(CASE_ID_FILE, "r+") as f:
         cid = int(f.read().strip())
+        new_cid = cid + 1
         f.seek(0)
-        f.write(str(cid + 1))
+        f.write(str(new_cid))
         f.truncate()
-    return cid
+    return new_cid
 
 def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof):
     ensure_log_dir()
@@ -52,8 +53,8 @@ def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof):
         f.write(f"Case ID: {case_id}\n")
         f.write(f"Date: {now}\n")
         f.write(f"Action: {action}\n")
-        f.write(f"Issued-by: {issued_by} ({issued_by.id})\n")
-        f.write(f"User: {user} ({user.id})\n")
+        f.write(f"Issued-by: {issued_by} ({getattr(issued_by, 'id', issued_by)})\n")
+        f.write(f"User: {user} ({getattr(user, 'id', user)})\n")
         f.write(f"Type: {inf_type}\n")
         f.write(f"Reason: {reason}\n")
         f.write(f"Proof: {proof}\n")
@@ -90,14 +91,20 @@ class Infraction(commands.Cog):
             """)
             await db.commit()
 
-    async def get_user_infractions(self, user_id):
+    async def get_user_infractions(self, user_id, include_voided=False):
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT * FROM infractions WHERE user_id = ? AND voided = 0 ORDER BY date DESC", (user_id,))
+            if include_voided:
+                cursor = await db.execute("SELECT * FROM infractions WHERE user_id = ? ORDER BY date DESC", (user_id,))
+            else:
+                cursor = await db.execute("SELECT * FROM infractions WHERE user_id = ? AND voided = 0 ORDER BY date DESC", (user_id,))
             return await cursor.fetchall()
 
-    async def get_case(self, case_id):
+    async def get_case(self, case_id, include_voided=True):
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT * FROM infractions WHERE case_id = ? AND voided = 0", (case_id,))
+            if include_voided:
+                cursor = await db.execute("SELECT * FROM infractions WHERE case_id = ?", (case_id,))
+            else:
+                cursor = await db.execute("SELECT * FROM infractions WHERE case_id = ? AND voided = 0", (case_id,))
             return await cursor.fetchone()
 
     async def add_infraction(self, case_id, user, issued_by, action, reason, proof, message_id=None):
@@ -222,7 +229,7 @@ class Infraction(commands.Cog):
             msg = await inf_channel.send(content=personnel.mention, embed=embed)
         await self.add_infraction(case_id, personnel, interaction.user, action, reason, proof_url, msg.id)
         await self.update_roles(personnel, action, interaction.guild, add=True)
-        # DM user
+        # DM user (always attempt, log error if fails)
         try:
             if proof and proof.content_type and proof.content_type.startswith("image/"):
                 await personnel.send(embed=embed)
@@ -230,8 +237,8 @@ class Infraction(commands.Cog):
                 await personnel.send(embed=embed, file=await proof.to_file())
             else:
                 await personnel.send(embed=embed)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Failed to DM user: {e}")
         # Log to logging channel
         log_channel = interaction.guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
         if proof and proof.content_type and proof.content_type.startswith("image/"):
@@ -258,7 +265,7 @@ class Infraction(commands.Cog):
         if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to void infractions.", ephemeral=True)
             return
-        case = await self.get_case(case_id)
+        case = await self.get_case(case_id, include_voided=True)
         if not case:
             await interaction.response.send_message("Case not found.", ephemeral=True)
             return
@@ -325,7 +332,7 @@ class Infraction(commands.Cog):
         if not (is_infraction_staff or is_personnel):
             await interaction.response.send_message("You do not have permission to view infractions.", ephemeral=True)
             return
-        case = await self.get_case(case_id)
+        case = await self.get_case(case_id, include_voided=True)
         if not case:
             await interaction.response.send_message("Case not found.", ephemeral=True)
             return
