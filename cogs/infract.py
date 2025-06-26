@@ -9,6 +9,9 @@ import uuid
 INFRACTION_DB = "data/infractions.db"
 LOG_FILE = "logs/infraction_command.log"
 
+INFRACTION_LOG_TEXT = os.path.join("logs", "infraction.txt")
+INFRACTION_VIEW_CHANNEL_ID = 1343686645815181382
+
 INFRACTION_CHANNEL_ID = int(os.getenv("INFRACTION_CHANNEL_ID"))
 INFRACTION_LOG_CHANNEL_ID = int(os.getenv("INFRACTION_LOG_CHANNEL_ID"))
 PERSONNEL_ROLE_ID = int(os.getenv("PERSONNEL_ROLE_ID"))
@@ -32,6 +35,9 @@ def log_to_file(user_id, channel_id, message, embed=False):
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{now}] User: {user_id} | Channel: {channel_id} | Embed: {embed} | Message: {message}\n")
+    # Also log to infraction.txt in logs folder (plain text, one line per infraction)
+    with open(INFRACTION_LOG_TEXT, "a", encoding="utf-8") as f:
+        f.write(f"[{now}] User: {user_id} | Channel: {channel_id} | {message}\n")
 
 class ConfirmView(discord.ui.View):
     def __init__(self):
@@ -85,6 +91,9 @@ class Infraction(commands.Cog):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (infraction_id, user.id, str(user), issued_by.id, str(issued_by), action, reason, proof, now, message_id))
             await db.commit()
+        # Log to infraction.txt as well (for easy viewing)
+        with open(INFRACTION_LOG_TEXT, "a", encoding="utf-8") as f:
+            f.write(f"[{now}] {user} ({user.id}) | By: {issued_by} ({issued_by.id}) | {action} | Reason: {reason} | Proof: {proof or 'None'} | Infraction ID: {infraction_id}\n")
 
     def get_infraction_embed(self, infraction_id, user, issued_by, action, reason, proof, date):
         color = INFRACTION_TYPES.get(action, {}).get("color", discord.Color.default())
@@ -222,6 +231,81 @@ class Infraction(commands.Cog):
             app_commands.Choice(name=action, value=action)
             for action in actions if current.lower() in action.lower()
         ][:25]
+
+    @app_commands.command(name="infraction-log", description="View the infraction log (last 10 entries).")
+    async def infraction_log(self, interaction: discord.Interaction):
+        """Show the last 10 infractions in an embed, for channel 1343686645815181382."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT infraction_id, user_name, moderator_name, action, reason, proof, date FROM infractions ORDER BY date DESC LIMIT 10"
+            )
+            rows = await cursor.fetchall()
+        if not rows:
+            embed = discord.Embed(
+                title="Infraction Log",
+                description="No infractions found.",
+                color=discord.Color.orange()
+            )
+        else:
+            embed = discord.Embed(
+                title="Recent Infractions",
+                description="Last 10 infractions issued.",
+                color=discord.Color.orange()
+            )
+            for row in rows:
+                infraction_id, user_name, moderator_name, action, reason, proof, date = row
+                date_fmt = datetime.datetime.fromisoformat(date).strftime("%Y-%m-%d %H:%M")
+                value = (
+                    f"**User:** {user_name}\n"
+                    f"**By:** {moderator_name}\n"
+                    f"**Type:** {action}\n"
+                    f"**Reason:** {reason}\n"
+                    f"**Proof:** {proof or 'None'}\n"
+                    f"**Date:** {date_fmt}\n"
+                    f"**ID:** `{infraction_id}`"
+                )
+                embed.add_field(name="\u200b", value=value, inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @commands.command(name="infractionlog")
+    async def infractionlog_command(self, ctx):
+        """Send the last 10 infractions to the log channel as an embed."""
+        channel = self.bot.get_channel(INFRACTION_VIEW_CHANNEL_ID)
+        if not channel:
+            await ctx.send("Log channel not found.")
+            return
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT infraction_id, user_name, moderator_name, action, reason, proof, date FROM infractions ORDER BY date DESC LIMIT 10"
+            )
+            rows = await cursor.fetchall()
+        if not rows:
+            embed = discord.Embed(
+                title="Infraction Log",
+                description="No infractions found.",
+                color=discord.Color.orange()
+            )
+        else:
+            embed = discord.Embed(
+                title="Recent Infractions",
+                description="Last 10 infractions issued.",
+                color=discord.Color.orange()
+            )
+            for row in rows:
+                infraction_id, user_name, moderator_name, action, reason, proof, date = row
+                date_fmt = datetime.datetime.fromisoformat(date).strftime("%Y-%m-%d %H:%M")
+                value = (
+                    f"**User:** {user_name}\n"
+                    f"**By:** {moderator_name}\n"
+                    f"**Type:** {action}\n"
+                    f"**Reason:** {reason}\n"
+                    f"**Proof:** {proof or 'None'}\n"
+                    f"**Date:** {date_fmt}\n"
+                    f"**ID:** `{infraction_id}`"
+                )
+                embed.add_field(name="\u200b", value=value, inline=False)
+        await channel.send(embed=embed)
+        await ctx.send("Infraction log sent.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Infraction(bot))
