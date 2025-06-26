@@ -312,17 +312,22 @@ class Economy(commands.Cog):
                 description=f"You are tired! Try again in {delta.seconds // 60}m.",
                 color=0xd0b47b
             )
-        else:
-            # Random earning between 50 and 400, rounded to nearest 5
-            amount = random.randint(10, 80) * 5
-            job_response = random.choice(WORK_RESPONSES)
-            new_balance = data["balance"] + amount
-            await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
-            embed = discord.Embed(
-                title="Work",
-                description=f"{job_response} **{amount}** coins!",
-                color=0xd0b47b
-            )
+            if isinstance(destination, discord.Interaction):
+                await destination.response.send_message(embed=embed)
+            else:
+                await destination.send(embed=embed)
+            return  # <-- This prevents giving coins when on cooldown
+        # Random earning between 50 and 400, rounded to nearest 5
+        amount = random.randint(10, 80) * 5
+        job_response = random.choice(WORK_RESPONSES)
+        new_balance = data["balance"] + amount
+        await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
+        embed = discord.Embed(
+            title="Work",
+            description=f"{job_response} **{amount}** coins!",
+            color=0xd0b47b
+        )
+        log_econ_action("work", user, amount=amount)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
