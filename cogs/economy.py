@@ -5,7 +5,10 @@ import aiosqlite
 import asyncio
 import os
 import random
+import math
 from datetime import datetime, timedelta
+from discord.ui import View, Button
+from typing import Optional
 
 DB_PATH = os.getenv("ECONOMY_DB_FILE", "data/economy.db")
 DAILY_AMOUNT = int(os.getenv("DAILY_AMOUNT", 250))
@@ -18,6 +21,8 @@ ROLES_INCOME = [
 ]
 
 ITEMS_FILE = os.path.join(os.path.dirname(__file__), "econ", "items.txt")
+
+SHOP_ITEMS_PER_PAGE = 5
 
 def load_shop_items():
     items = {}
@@ -43,6 +48,29 @@ CRIME_REWARDS = [
     {"desc": "You robbed a lemonade stand!", "amount": 100},
     {"desc": "You failed and paid a fine.", "amount": -100},
     {"desc": "You got caught and paid bail.", "amount": -200},
+    {"desc": "You spray painted a wall!", "amount": 120},
+    {"desc": "You jaywalked across a busy street!", "amount": 80},
+    {"desc": "You pickpocketed a tourist!", "amount": 140},
+    {"desc": "You snuck into a movie theater!", "amount": 90},
+    {"desc": "You ran an illegal lemonade stand!", "amount": 110},
+    {"desc": "You cheated at cards in a back alley!", "amount": 160},
+    {"desc": "You hacked a claw machine!", "amount": 130},
+    {"desc": "You tricked someone with a fake raffle!", "amount": 170},
+    {"desc": "You faked a talent show act for tips!", "amount": 100},
+    {"desc": "You shoplifted a candy bar!", "amount": 70},
+    {"desc": "You pretended to be a parking inspector!", "amount": 150},
+    {"desc": "You ran a fake car wash scam!", "amount": 180},
+    {"desc": "You siphoned Wi-Fi from your neighbor!", "amount": 90},
+    {"desc": "You resold school lunch tickets!", "amount": 110},
+    {"desc": "You forged a library card!", "amount": 60},
+
+# Failed attempts:
+    {"desc": "You got caught by mall security.", "amount": -120},
+    {"desc": "You slipped while running from the scene.", "amount": -100},
+    {"desc": "You accidentally robbed a police fundraiser.", "amount": -200},
+    {"desc": "You tripped the alarm while escaping.", "amount": -150},
+    {"desc": "You panicked and gave the money back.", "amount": -90}
+
 ]
 
 ROULETTE_COLORS = {
@@ -50,6 +78,55 @@ ROULETTE_COLORS = {
     "black": 2,
     "green": 14
 }
+
+class ShopView(View):
+    def __init__(self, page=1):
+        super().__init__(timeout=60)
+        self.page = page
+
+    async def update(self, interaction, page):
+        self.page = page
+        embed = get_shop_embed(page)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, row=0)
+    async def previous(self, interaction: discord.Interaction, button: Button):
+        if self.page > 1:
+            await self.update(interaction, self.page - 1)
+        else:
+            await interaction.response.defer()
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, row=0)
+    async def next(self, interaction: discord.Interaction, button: Button):
+        max_page = math.ceil(len(SHOP_ITEMS) / SHOP_ITEMS_PER_PAGE)
+        if self.page < max_page:
+            await self.update(interaction, self.page + 1)
+        else:
+            await interaction.response.defer()
+
+def get_shop_embed(page=1):
+    embed = discord.Embed(
+        title="🛒 Item Shop",
+        color=0xd0b47b
+    )
+    items = list(SHOP_ITEMS.items())
+    max_page = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
+    page = max(1, min(page, max_page))
+    start = (page - 1) * SHOP_ITEMS_PER_PAGE
+    end = start + SHOP_ITEMS_PER_PAGE
+    for item, info in items[start:end]:
+        embed.add_field(name=f"{item.title()} - {info['price']} coins", value=info["desc"], inline=False)
+    embed.set_footer(text=f"Page {page}/{max_page}")
+    return embed
+
+class SellItemAutocomplete(discord.app_commands.Transformer):
+    async def autocomplete(self, interaction: discord.Interaction, current: str):
+        items = await interaction.client.get_cog("Economy").get_inventory(interaction.user.id)
+        return [
+            app_commands.Choice(name=f"{item.title()} ({amount})", value=item)
+            for item, amount in items
+            if current.lower() in item.lower()
+        ][:25]
 
 class Economy(commands.Cog):
     def __init__(self, bot):
@@ -297,16 +374,12 @@ class Economy(commands.Cog):
         await self.shop(interaction)
 
     async def shop(self, destination):
-        embed = discord.Embed(
-            title="🛒 Item Shop",
-            color=0xd0b47b
-        )
-        for item, info in SHOP_ITEMS.items():
-            embed.add_field(name=f"{item.title()} - {info['price']} coins", value=info["desc"], inline=False)
+        embed = get_shop_embed(page=1)
+        view = ShopView(page=1)
         if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
+            await destination.response.send_message(embed=embed, view=view)
         else:
-            await destination.send(embed=embed)
+            await destination.send(embed=embed, view=view)
 
     @commands.command(name="buy")
     async def buy_command(self, ctx, *, item: str):
@@ -359,7 +432,7 @@ class Economy(commands.Cog):
         if not items:
             desc = "Your inventory is empty."
         else:
-            desc = "\n".join([f"{item.title()} x{amount}" for item, amount in items])
+            desc = "\n".join([f"**{item.title()}** x{amount}" for item, amount in items])
         embed = discord.Embed(
             title=f"{user.name}'s Inventory",
             description=desc,
@@ -484,40 +557,41 @@ class Economy(commands.Cog):
             await destination.send(embed=embed)
 
     @commands.command(name="sell")
-    async def sell_command(self, ctx, *, item: str):
-        await self.sell(ctx.author, item.lower(), ctx)
+    async def sell_command(self, ctx, item: str, amount: Optional[int] = 1):
+        await self.sell(ctx.author, item.lower(), amount, ctx)
 
     @app_commands.command(name="sell", description="Sell an item from your inventory.")
-    @app_commands.describe(item="The item to sell")
-    async def sell_slash(self, interaction: discord.Interaction, item: str):
-        await self.sell(interaction.user, item.lower(), interaction)
+    @app_commands.describe(item="The item to sell", amount="How many to sell")
+    @app_commands.autocomplete(item=SellItemAutocomplete().autocomplete)
+    async def sell_slash(self, interaction: discord.Interaction, item: str, amount: Optional[int] = 1):
+        await self.sell(interaction.user, item.lower(), amount, interaction)
 
-    async def sell(self, user, item, destination):
-        # Only fish is sellable for now
-        if item != "fish":
+    async def sell(self, user, item, amount, destination):
+        items = dict(await self.get_inventory(user.id))
+        if item not in SHOP_ITEMS:
             embed = discord.Embed(
                 title="Sell",
-                description="You can only sell **fish** right now.",
+                description="That item doesn't exist.",
+                color=0xd0b47b
+            )
+        elif items.get(item, 0) < 1:
+            embed = discord.Embed(
+                title="Sell",
+                description=f"You don't have any **{item.title()}** to sell.",
                 color=0xd0b47b
             )
         else:
-            items = dict(await self.get_inventory(user.id))
-            if items.get("fish", 0) < 1:
-                embed = discord.Embed(
-                    title="Sell",
-                    description="You don't have any fish to sell.",
-                    color=0xd0b47b
-                )
-            else:
-                sell_price = 75  # You can adjust this value
-                data = await self.get_user(user.id)
-                await self.add_item(user.id, "fish", -1)
-                await self.update_user(user.id, balance=data["balance"] + sell_price)
-                embed = discord.Embed(
-                    title="Sell",
-                    description=f"You sold a **fish** for **{sell_price}** coins!",
-                    color=0xd0b47b
-                )
+            sell_amount = min(amount, items[item])
+            price = SHOP_ITEMS[item]["price"]
+            total = price * sell_amount
+            data = await self.get_user(user.id)
+            await self.add_item(user.id, item, -sell_amount)
+            await self.update_user(user.id, balance=data["balance"] + total)
+            embed = discord.Embed(
+                title="Sell",
+                description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
+                color=0xd0b47b
+            )
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
