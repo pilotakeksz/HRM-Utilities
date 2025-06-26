@@ -639,7 +639,20 @@ class Economy(commands.Cog):
 
     async def bank(self, user, destination):
         data = await self.get_user(user.id)
-        interest = self.get_bank_interest(user)
+        # Calculate the user's interest rate based on their roles, if available
+        interest = 0
+        guild = None
+        if hasattr(destination, "guild"):
+            guild = destination.guild
+        elif hasattr(destination, "guild_id"):
+            guild = self.bot.get_guild(destination.guild_id)
+        if guild:
+            member = guild.get_member(user.id)
+            if member:
+                for role_id, role_bonus in BANK_ROLE_TIERS:
+                    role = guild.get_role(role_id)
+                    if role and role in member.roles:
+                        interest = max(interest, role_bonus)
         embed = discord.Embed(
             title=f"{user.name}'s Bank",
             description=f"🏦 Bank Balance: **{data['bank']}** coins\nInterest Rate: **{interest*100:.2f}%** per day",
