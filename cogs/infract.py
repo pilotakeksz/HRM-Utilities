@@ -200,12 +200,24 @@ class Infraction(commands.Cog):
         # Permission checks
         if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to issue infractions.", ephemeral=True)
+            log_to_file(
+                "N/A", "ISSUE-FAILED", interaction.user, personnel, action, reason, proof.url if proof else "None",
+                extra_info="No permission"
+            )
             return
         if not any(r.id == PERSONNEL_ROLE_ID for r in personnel.roles):
             await interaction.response.send_message("Target is not personnel.", ephemeral=True)
+            log_to_file(
+                "N/A", "ISSUE-FAILED", interaction.user, personnel, action, reason, proof.url if proof else "None",
+                extra_info="Target not personnel"
+            )
             return
         if action not in INFRACTION_TYPES:
             await interaction.response.send_message("Invalid infraction type.", ephemeral=True)
+            log_to_file(
+                "N/A", "ISSUE-FAILED", interaction.user, personnel, action, reason, proof.url if proof else "None",
+                extra_info="Invalid infraction type"
+            )
             return
 
         proof_url = proof.url if proof else None
@@ -217,6 +229,10 @@ class Infraction(commands.Cog):
         await view.wait()
         if not view.value:
             await interaction.followup.send("Infraction cancelled.", ephemeral=True)
+            log_to_file(
+                "N/A", "ISSUE-CANCELLED", interaction.user, personnel, action, reason, proof_url,
+                extra_info="User cancelled infraction"
+            )
             return
 
         # Issue infraction
@@ -232,7 +248,9 @@ class Infraction(commands.Cog):
             msg = await inf_channel.send(content=personnel.mention, embed=embed)
         await self.add_infraction(case_id, personnel, interaction.user, action, reason, proof_url, msg.id)
         await self.update_roles(personnel, action, interaction.guild, add=True)
-        # DM user (always attempt, log error if fails)
+
+        # --- ENSURE DM IS SENT TO INFRACTEE ---
+        dm_success = False
         try:
             if proof and proof.content_type and proof.content_type.startswith("image/"):
                 await personnel.send(embed=embed)
@@ -240,8 +258,11 @@ class Infraction(commands.Cog):
                 await personnel.send(embed=embed, file=await proof.to_file())
             else:
                 await personnel.send(embed=embed)
+            dm_success = True
         except Exception as e:
             print(f"Failed to DM user: {e}")
+        # --- END DM SECTION ---
+
         # Log to logging channel
         log_channel = interaction.guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
         if proof and proof.content_type and proof.content_type.startswith("image/"):
@@ -251,26 +272,29 @@ class Infraction(commands.Cog):
         else:
             await log_channel.send(embed=embed)
         # Log to file (all actions)
-        log_to_file(case_id, "ISSUE", interaction.user, personnel, action, reason, proof_url)
+        log_to_file(
+            case_id, "ISSUE", interaction.user, personnel, action, reason, proof_url,
+            extra_info=f"DM sent: {dm_success}"
+        )
         await interaction.followup.send(f"Infraction issued and logged. Case ID: {case_id}", ephemeral=True)
-
-    @infraction_issue.autocomplete('action')
-    async def infraction_action_autocomplete(self, interaction: discord.Interaction, current: str):
-        actions = ["Warning", "Strike", "Demotion", "Termination", "Suspension"]
-        return [
-            app_commands.Choice(name=action, value=action)
-            for action in actions if current.lower() in action.lower()
-        ][:25]
 
     @app_commands.command(name="infraction-void", description="Void an infraction by case ID.")
     @app_commands.describe(case_id="Case ID to void")
     async def infraction_void(self, interaction: discord.Interaction, case_id: int):
         if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to void infractions.", ephemeral=True)
+            log_to_file(
+                case_id, "VOID-FAILED", interaction.user, "N/A", "N/A", "N/A", "N/A",
+                extra_info="No permission"
+            )
             return
         case = await self.get_case(case_id, include_voided=True)
         if not case:
             await interaction.response.send_message("Case not found.", ephemeral=True)
+            log_to_file(
+                case_id, "VOID-FAILED", interaction.user, "N/A", "N/A", "N/A", "N/A",
+                extra_info="Case not found"
+            )
             return
         user_id = case[1]
         action = case[5]
@@ -281,9 +305,11 @@ class Infraction(commands.Cog):
         if member:
             await self.update_roles(member, action, guild, add=False)
         # DM user
+        dm_success = False
         try:
             if member:
                 await member.send(f"Your infraction (Case ID: {case_id}) has been voided.")
+                dm_success = True
         except Exception:
             pass
         # Edit original infraction message to green and mark as voided
@@ -301,7 +327,10 @@ class Infraction(commands.Cog):
         log_channel = guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
         await log_channel.send(embed=embed)
         # Log to file
-        log_to_file(case_id, "VOID", interaction.user, member or user_id, action, case[6], case[7])
+        log_to_file(
+            case_id, "VOID", interaction.user, member or user_id, action, case[6], case[7],
+            extra_info=f"DM sent: {dm_success}"
+        )
         await interaction.response.send_message(f"Infraction {case_id} voided and roles updated.", ephemeral=True)
 
     @app_commands.command(name="infraction-list", description="List a user's infractions.")
@@ -311,10 +340,30 @@ class Infraction(commands.Cog):
         is_personnel = any(r.id == PERSONNEL_ROLE_ID for r in interaction.user.roles)
         if not (is_infraction_staff or (is_personnel and user.id == interaction.user.id)):
             await interaction.response.send_message("You do not have permission to view this user's infractions.", ephemeral=True)
+            log_to_file(
+                f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
+                "LIST-FAILED",
+                interaction.user,
+                user,
+                "N/A",
+                "Listed infractions",
+                "N/A",
+                extra_info="No permission"
+            )
             return
         infractions = await self.get_user_infractions(user.id)
         if not infractions:
             await interaction.response.send_message("No infractions found for this user.", ephemeral=True)
+            log_to_file(
+                f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
+                "LIST-EMPTY",
+                interaction.user,
+                user,
+                "N/A",
+                "Listed infractions",
+                "N/A",
+                extra_info="No infractions found"
+            )
             return
         pages = [infractions[i:i+5] for i in range(0, len(infractions), 5)]
         page = 0
@@ -344,10 +393,30 @@ class Infraction(commands.Cog):
         is_personnel = any(r.id == PERSONNEL_ROLE_ID for r in interaction.user.roles)
         if not (is_infraction_staff or is_personnel):
             await interaction.response.send_message("You do not have permission to view infractions.", ephemeral=True)
+            log_to_file(
+                case_id,
+                "VIEW-FAILED",
+                interaction.user,
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                extra_info="No permission"
+            )
             return
         case = await self.get_case(case_id, include_voided=True)
         if not case:
             await interaction.response.send_message("Case not found.", ephemeral=True)
+            log_to_file(
+                case_id,
+                "VIEW-FAILED",
+                interaction.user,
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                extra_info="Case not found"
+            )
             return
         embed = self.get_infraction_embed(case[0], case[2], case[4], case[5], case[6], case[7], case[8], voided=bool(case[9]))
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -369,14 +438,18 @@ class ConfirmView(discord.ui.View):
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.value = True
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
         self.stop()
-        await interaction.response.defer()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.value = False
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
         self.stop()
-        await interaction.response.defer()
 
     async def wait_for_confirm(self, interaction):
         await self.wait()
