@@ -123,7 +123,7 @@ async def create_ticket(interaction, ticket_type, request_content):
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True),
     }
-    ticket_name = f"📨-m-ticket-{user.name}".replace(" ", "-").lower()
+    ticket_name = f"📨-ticket-{user.name}".replace(" ", "-").lower()
     if ticket_type == "management":
         category_id = CATEGORY_MANAGEMENT
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
