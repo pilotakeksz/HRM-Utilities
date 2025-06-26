@@ -13,6 +13,18 @@ FOOTER_TEXT = "High Rock Military Corps"
 FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
 BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376648782359433316/bottom.png?ex=685cfbd6&is=685baa56&hm=8e024541f2cdf6bc41b83e1ab03f3da441b653dc98fa03f5c58aa2ccee0e3ad4&"
 
+LOGS_DIR = "logs"
+os.makedirs(LOGS_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOGS_DIR, "applications_command.log")
+
+def log_application_command(user_id, open_status, trainer_availability, ping):
+    import datetime
+    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(
+            f"[{timestamp}] User: {user_id} | Open: {open_status} | Trainer Availability: {trainer_availability} | Ping: {ping}\n"
+        )
+
 class ApplyButtonView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -51,6 +63,14 @@ class Applications(commands.Cog):
         if not any(role.id == APPLICATIONS_ROLE_ID for role in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
+
+        # Log the command usage
+        log_application_command(
+            user_id=interaction.user.id,
+            open_status=open,
+            trainer_availability=trainer_availability.value,
+            ping=ping
+        )
 
         channel = interaction.guild.get_channel(APPLICATIONS_CHANNEL_ID)
         if not channel:
