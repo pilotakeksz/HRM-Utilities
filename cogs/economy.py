@@ -309,12 +309,13 @@ class Economy(commands.Cog):
         await self.fish(interaction.user, interaction)
 
     async def fish(self, user, destination):
-        # 60% chance junk, 40% chance fish
-        if random.random() < 0.6:
+        # 60% chance junk, 40% chance less chance
+        # test
+        if random.random() < 0.4:
             fish = random.choice(JUNK_TYPES)
             value = 1
         else:
-            fish = random.choice(FISH_TYPES)
+            fish = random.choice(FISH_TYPES) 
             value = round(random.randint(100, 1000) / 5) * 5
         await self.add_item(user.id, fish, 1)
         embed = discord.Embed(
