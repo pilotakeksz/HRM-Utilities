@@ -3,6 +3,7 @@ can of tuna|50|A delicious can of tuna. Maybe a cat will follow you.
 fish|100|A fresh fish. Smells... fishy.
 plane|5000|A private plane. Flex on your friends.
 skittles|25|Taste the rainbow!
+borgor|35|Dine like a king.
 banana|15|A slippery snack. Watch your step!
 beanbag chair|200|Perfect for chilling after a heist.
 toy sword|100|Not very sharp, but it looks cool.
