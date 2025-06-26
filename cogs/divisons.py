@@ -158,6 +158,8 @@ def get_ng_embeds():
 class Divisions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Register persistent view on cog load
+        bot.add_view(DivisionView())
 
     @commands.command(name="divisions")
     async def divisions_command(self, ctx):
@@ -170,18 +172,22 @@ class Divisions(commands.Cog):
             await ctx.send("❌ Could not find the divisions channel.")
             return
         embeds = get_main_embeds()
-        await channel.send(embeds=embeds, view=DivisionView())
+        msg = await channel.send(embeds=embeds, view=DivisionView())
         await ctx.send("✅ Divisions embed sent in the divisions channel!", delete_after=10)
+        # Optionally, store msg.id somewhere persistent if you want to edit the same message on restart
 
     @commands.Cog.listener()
     async def on_ready(self):
         self.bot.add_view(DivisionView())  # Register persistent view
-        channel = self.bot.get_channel(DIVISIONS_CHANNEL)
-        if channel:
-            try:
-                await DivisionView.send_or_edit(channel)
-            except Exception:
-                pass
+        # Optionally, you can resend the embed here if you want to guarantee it's always present after restart
+        # If you want to edit an existing message, you need to store its message_id persistently (e.g. in a file/db)
+        # Example (if you store message_id):
+        # channel = self.bot.get_channel(DIVISIONS_CHANNEL)
+        # if channel and message_id:
+        #     try:
+        #         await DivisionView.send_or_edit(channel, message_id=message_id)
+        #     except Exception:
+        #         pass
 
 async def setup(bot):
     await bot.add_cog(Divisions(bot))
