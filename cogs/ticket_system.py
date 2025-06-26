@@ -60,7 +60,7 @@ async def send_transcript_and_logs(channel, opener, guild):
     # Action log
     action_log_path = os.path.join(LOGS_DIR, f"ticket_{channel.id}_actions.txt")
 
-    # DM transcript to opener (embed only, no files)
+    # DM transcript to opener (embed + .txt transcript file)
     try:
         summary_embed = discord.Embed(
             title="Your Ticket Transcript",
@@ -72,6 +72,7 @@ async def send_transcript_and_logs(channel, opener, guild):
         )
         summary_embed.set_footer(text="Thank you for contacting support!")
         await opener.send(embed=summary_embed)
+        await opener.send(file=discord.File(transcript_path))
     except Exception:
         pass
 
