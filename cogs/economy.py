@@ -316,7 +316,8 @@ class Economy(commands.Cog):
                 await destination.response.send_message(embed=embed)
             else:
                 await destination.send(embed=embed)
-            return  # <-- This prevents giving coins when on cooldown
+            return  # Prevents giving coins when on cooldown
+
         # Random earning between 50 and 400, rounded to nearest 5
         amount = random.randint(10, 80) * 5
         job_response = random.choice(WORK_RESPONSES)
