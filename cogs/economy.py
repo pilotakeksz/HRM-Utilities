@@ -141,10 +141,11 @@ def get_shop_embed(page=1):
 class SellItemAutocomplete(discord.app_commands.Transformer):
     async def autocomplete(self, interaction: discord.Interaction, current: str):
         items = await interaction.client.get_cog("Economy").get_inventory(interaction.user.id)
+        # Only suggest items with amount > 0
         return [
             app_commands.Choice(name=f"{item.title()} ({amount})", value=item)
             for item, amount in items
-            if current.lower() in item.lower()
+            if amount > 0 and current.lower() in item.lower()
         ][:25]
 
 class Economy(commands.Cog):
