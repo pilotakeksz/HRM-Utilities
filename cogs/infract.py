@@ -124,4 +124,4 @@ class Infraction(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
-    await
+    await bot.add_cog(Infraction(bot))
