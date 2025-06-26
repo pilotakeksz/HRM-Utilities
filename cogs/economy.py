@@ -569,14 +569,19 @@ class Economy(commands.Cog):
 
     async def fish(self, user, destination):
         fish_types = get_fish_types()
-        # Assign probabilities (rarer fish are less likely)
-        weights = [30, 20, 18, 15, 10, 5, 2]  # Adjust as needed for your fish_names order
-        fish, value_range = random.choices(fish_types, weights=weights, k=1)[0]
-        value = random.randint(value_range[0] // 5, value_range[1] // 5) * 5
+        # Split into junk and normal fish
+        junk = [ft for ft in fish_types if ft[1] == (1, 1)]
+        normal = [ft for ft in fish_types if ft[1] != (1, 1)]
+        # 1 in 4 chance for junk, 3 in 4 for normal fish
+        if random.random() < 0.25 and junk:
+            fish, value_range = random.choice(junk)
+        else:
+            fish, value_range = random.choice(normal)
+        value = value_range[0] if value_range[0] == value_range[1] else random.randint(value_range[0] // 5, value_range[1] // 5) * 5
         await self.add_item(user.id, fish, 1)
         embed = discord.Embed(
             title="🎣 Fishing",
-            description=f"You caught a **{fish.title()}** worth **{value}** coins! Use `/sell {fish}` or `!sell {fish}` to sell it.",
+            description=f"You caught a **{fish.title()}** worth **{value}** coin{'s' if value != 1 else ''}! Use `/sell {fish}` or `!sell {fish}` to sell it.",
             color=0xd0b47b
         )
         if isinstance(destination, discord.Interaction):
@@ -733,20 +738,23 @@ BANK_ROLE_TIERS = [
 ]
 
 def get_fish_types():
-    # Only include items that are fish (customize as needed)
-    fish_names = ["salmon", "trout", "bass", "catfish", "carp", "goldfish", "boot"]
+    # 1-coin junk items
+    junk_names = ["boot", "tin can", "torn newspaper", "broken bottle", "driftwood"]
+    # Normal fish
+    fish_names = ["salmon", "trout", "bass", "catfish", "carp", "goldfish"]
     fish_types = []
+    # Add junk items (always 1 coin)
+    for name in junk_names:
+        if name in SHOP_ITEMS:
+            fish_types.append((name, (1, 1)))
+    # Add normal fish
     for name in fish_names:
         if name in SHOP_ITEMS:
             price = SHOP_ITEMS[name]["price"]
-            # Value range: 60-140 for most, 100-200 for goldfish, 5-15 for boot, etc.
             if name == "goldfish":
                 value_range = (100, 200)
-            elif name == "boot":
-                value_range = (5, 15)
             else:
                 value_range = (max(5, price - 40), price + 20)
-            # Probability can be customized per fish
             fish_types.append((name, value_range))
     return fish_types
 

@@ -25,4 +25,8 @@ bass|90|A strong bass.
 catfish|140|A slippery catfish.
 carp|60|A common carp.
 goldfish|200|A rare goldfish!
-boot|10|Just an old boot...
+boot|1|Just an old boot...
+tin can|1|A rusty tin can.
+torn newspaper|1|A soggy, unreadable newspaper.
+broken bottle|1|A broken glass bottle.
+driftwood|1|A piece of driftwood.
