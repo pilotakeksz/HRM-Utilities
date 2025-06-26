@@ -391,23 +391,20 @@ class TicketSystem(commands.Cog):
         self.bot.loop.create_task(resume_pending_deletions(self.bot))
         # Register persistent views so dropdowns/buttons work after restart
         self.bot.add_view(TicketTypeView())
-        # Only add persistent views with all custom_ids set
-        # If you want to add TicketActionView and ConfirmCloseView persistently, 
-        # make sure all their buttons have custom_id and timeout=None as above.
 
     async def _startup_embed(self):
         await self.bot.wait_until_ready()
         await ensure_persistent_ticket_embed(self.bot)
 
-    @app_commands.command(name="ticket-system-setup", description="Setup the ticket system (admin only)")
-    async def ticket_system_setup(self, interaction: discord.Interaction):
-        if interaction.user.id != ADMIN_ID:
-            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+    @commands.command(name="assistance")
+    async def assistance_command(self, ctx):
+        if ctx.author.id != ADMIN_ID:
+            await ctx.send("You do not have permission to use this command.", delete_after=10)
             return
 
-        channel = interaction.guild.get_channel(CHANNEL_ASSISTANCE)
+        channel = ctx.guild.get_channel(CHANNEL_ASSISTANCE)
         if not channel:
-            await interaction.response.send_message("Assistance channel not found.", ephemeral=True)
+            await ctx.send("Assistance channel not found.", delete_after=10)
             return
 
         embed1 = discord.Embed(color=EMBED_COLOUR)
@@ -439,8 +436,9 @@ class TicketSystem(commands.Cog):
         sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
         with open(PERSIST_FILE, "w") as f:
             f.write(str(sent.id))
-        await interaction.response.send_message("Ticket system setup complete.", ephemeral=True)
+        await ctx.send("Assistance embed sent.", delete_after=10)
 
+    # Keep /ticket-add and /ticket-remove as slash commands
     @app_commands.command(name="ticket-add", description="Add a user to your ticket (civilians only)")
     @app_commands.describe(user="User to add")
     async def ticket_add(self, interaction: discord.Interaction, user: discord.Member):
