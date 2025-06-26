@@ -277,7 +277,13 @@ class Infraction(commands.Cog):
             extra_info=f"DM sent: {dm_success}"
         )
         await interaction.followup.send(f"Infraction issued and logged. Case ID: {case_id}", ephemeral=True)
-
+    @infraction_issue.autocomplete('action')
+    async def infraction_action_autocomplete(self, interaction: discord.Interaction, current: str):
+        actions = ["Warning", "Strike", "Demotion", "Termination", "Suspension"]
+        return [
+            app_commands.Choice(name=action, value=action)
+            for action in actions if current.lower() in action.lower()
+        ][:25]
     @app_commands.command(name="infraction-void", description="Void an infraction by case ID.")
     @app_commands.describe(case_id="Case ID to void")
     async def infraction_void(self, interaction: discord.Interaction, case_id: int):
