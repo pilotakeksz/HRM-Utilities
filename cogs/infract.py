@@ -252,12 +252,18 @@ class Infraction(commands.Cog):
         # --- ENSURE DM IS SENT TO INFRACTEE ---
         dm_success = False
         try:
+            dm_text = (
+                f"You have received an infraction in **{interaction.guild.name}**.\n"
+                f"**Type:** {action}\n"
+                f"**Reason:** {reason}\n"
+                f"**Case ID:** {case_id}"
+            )
             if proof and proof.content_type and proof.content_type.startswith("image/"):
-                await personnel.send(embed=embed)
+                await personnel.send(content=dm_text, embed=embed)
             elif proof:
-                await personnel.send(embed=embed, file=await proof.to_file())
+                await personnel.send(content=dm_text, embed=embed, file=await proof.to_file())
             else:
-                await personnel.send(embed=embed)
+                await personnel.send(content=dm_text, embed=embed)
             dm_success = True
         except Exception as e:
             print(f"Failed to DM user: {e}")
