@@ -4,3 +4,18 @@ fish|100|A fresh fish. Smells... fishy.
 plane|5000|A private plane. Flex on your friends.
 skittles|25|Taste the rainbow!
 enderman|5|A Blocky reference.
+grappling hook|750|Scale walls and escape in style.
+banana|15|A slippery snack. Watch your step!
+beanbag chair|200|Perfect for chilling after a heist.
+toy sword|100|Not very sharp, but it looks cool.
+cursed amulet|400|Gives mysterious powers... or not.
+RC car|300|Zoom around and annoy your friends.
+lava lamp|150|Groovy vibes in a bottle.
+invisibility cloak|2500|Totally real and not just a bedsheet.
+rubber duck|10|Squeaky and suspiciously judgmental.
+wifi booster|800|Steal signals from across the street.
+golden shovel|450|For digging... or flexing.
+keyboard cleaner|75|Because your crimes are dirty.
+fake mustache|60|Instant disguise, 60% effective.
+alien plushie|130|It's watching you. Always.
+time machine manual|9999|Too bad the machine's sold separately.
