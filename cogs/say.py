@@ -13,16 +13,13 @@ EMBED_COLOR = 0xd0b37b
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_DIR, "say_command.log")
-LOG_CHANNEL_ID = 1343686645815181382
 
 def log_say_command(user_id, channel_id, message, send_as_embed):
     timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    log_line = (
-        f"[{timestamp}] User: {user_id} | Channel: {channel_id} | Embed: {send_as_embed} | Message: {message}\n"
-    )
     with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(log_line)
-    return timestamp  # Return timestamp for embed logging
+        f.write(
+            f"[{timestamp}] User: {user_id} | Channel: {channel_id} | Embed: {send_as_embed} | Message: {message}\n"
+        )
 
 class Say(commands.Cog):
     def __init__(self, bot):
@@ -44,21 +41,21 @@ class Say(commands.Cog):
         channel: discord.TextChannel,
         send_as_embed: bool = False
     ):
+        # Permission check
         if not get(interaction.user.roles, id=ALLOWED_ROLE_ID):
             await interaction.response.send_message(
                 "You do not have permission to use this command.", ephemeral=True
             )
             return
 
-        # Log to file and get timestamp
-        timestamp = log_say_command(
+        # Log the command usage
+        log_say_command(
             user_id=interaction.user.id,
             channel_id=channel.id,
             message=message,
             send_as_embed=send_as_embed
         )
 
-        # Send the message as requested
         if send_as_embed:
             embed = discord.Embed(
                 description=message,
@@ -68,23 +65,6 @@ class Say(commands.Cog):
             await channel.send(embed=embed)
         else:
             await channel.send(message)
-
-        # Send log embed to log channel
-        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            log_embed = discord.Embed(
-                title="Say Command Log",
-                color=EMBED_COLOR,
-                description=(
-                    f"**User:** <@{interaction.user.id}> (`{interaction.user.id}`)\n"
-                    f"**Channel:** <#{channel.id}> (`{channel.id}`)\n"
-                    f"**Embed:** `{send_as_embed}`\n"
-                    f"**Message:**\n{message}"
-                ),
-                timestamp=datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-            )
-            log_embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
-            await log_channel.send(embed=log_embed)
 
         await interaction.response.send_message(
             f"Message sent to {channel.mention}.", ephemeral=True
