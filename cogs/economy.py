@@ -80,25 +80,6 @@ ROULETTE_COLORS = {
     "green": 14
 }
 
-WORK_RESPONSES = [
-    "You worked as a **Barista** and earned",
-    "You delivered **Pizza** and earned",
-    "You coded a **Website** and earned",
-    "You cleaned a **Park** and earned",
-    "You fixed a **Car** and earned",
-    "You walked a **Dog** and earned",
-    "You painted a **House** and earned",
-    "You worked as a **Cashier** and earned",
-    "You helped at a **Library** and earned",
-    "You did some **Freelance Art** and earned",
-    "You worked as a **Waiter** and earned",
-    "You did some **Gardening** and earned",
-    "You worked as a **Security Guard** and earned",
-    "You ran a **Lemonade Stand** and earned",
-    "You worked as a **Delivery Driver** and earned",
-    "You opened a **LVS Parking Lot** and earned",
-]
-
 class ShopView(View):
     def __init__(self, page=1):
         super().__init__(timeout=60)
@@ -142,7 +123,6 @@ def get_shop_embed(page=1):
 class SellItemAutocomplete(discord.app_commands.Transformer):
     async def autocomplete(self, interaction: discord.Interaction, current: str):
         items = await interaction.client.get_cog("Economy").get_inventory(interaction.user.id)
-        # Only suggest items with amount > 0
         return [
             app_commands.Choice(name=f"{item.title()} ({amount})", value=item)
             for item, amount in items
@@ -174,11 +154,10 @@ class Economy(commands.Cog):
                 )
             """)
             await db.commit()
-        # Ensure bank column exists
         try:
             await self.ensure_bank_column()
         except Exception:
-            pass  # Already exists
+            pass
 
     async def ensure_bank_column(self):
         async with self.db_lock:
@@ -247,26 +226,6 @@ class Economy(commands.Cog):
     async def balance_slash(self, interaction: discord.Interaction):
         await self.send_balance_embed(interaction.user, interaction)
 
-    # --- WORK ---
-    # Remove all work command functionality
-
-    # Delete these methods from your Economy class:
-    # @commands.command(name="work")
-    # async def work_command(self, ctx):
-    #     await self._work(ctx.author, ctx)
-    #
-    # @app_commands.command(name="work", description="Work a random job for coins.")
-    # async def work_slash(self, interaction: discord.Interaction):
-    #     await self._work(interaction.user, interaction)
-    #
-    # async def _work(self, user, destination):
-    #     ... (entire method body)
-
-    # Also remove any references to work in help text, command registration, and WORK_RESPONSES if not used elsewhere.
-
-    # If you want to fully remove all traces, also remove WORK_RESPONSES and any work-related logging.
-
-    # --- BALANCE ---
     async def send_balance_embed(self, user, destination):
         data = await self.get_user(user.id)
         embed = discord.Embed(
@@ -280,7 +239,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- DAILY ---
     @commands.command(name="daily")
     async def daily_command(self, ctx):
         await self.daily(ctx.author, ctx)
@@ -316,7 +274,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- ROB ---
     @commands.command(name="rob")
     async def rob_command(self, ctx, target: discord.Member):
         await self.rob(ctx.author, target, ctx)
@@ -370,7 +327,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- CRIME ---
     @commands.command(name="crime")
     async def crime_command(self, ctx):
         await self.crime(ctx.author, ctx)
@@ -395,7 +351,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- SHOP ---
     @commands.command(name="shop")
     async def shop_command(self, ctx):
         await self.shop(ctx)
@@ -565,7 +520,6 @@ class Economy(commands.Cog):
     async def fish_slash(self, interaction: discord.Interaction):
         await self.fish(interaction.user, interaction)
 
-    # --- FISHING ---
     async def fish(self, user, destination):
         fish_types = get_fish_types()
         junk = [ft for ft in fish_types if ft[1] == (1, 1)]
@@ -596,7 +550,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- SELL ---
     async def sell(self, user, item, amount, destination):
         items = dict(await self.get_inventory(user.id))
         if item not in SHOP_ITEMS:
@@ -631,7 +584,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- BANK ---
     @commands.command(name="bank")
     async def bank_command(self, ctx):
         await self.bank(ctx.author, ctx)
@@ -698,7 +650,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- FISH SELL ALL (if you have this feature) ---
     async def sell_all_fish(self, user, destination):
         inventory = dict(await self.get_inventory(user.id))
         fish_types = [name for name, _ in get_fish_types()]
@@ -730,6 +681,10 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
+    def get_bank_interest(self, user):
+        # Placeholder: always return 0.01 (1%)
+        return 0.01
+
 INFLATION_RATE = 0.02  # 2% per day
 BANK_ROLE_TIERS = [
     (1329910329701830686, 0.01),  # Lowest role, 1% interest
@@ -738,16 +693,12 @@ BANK_ROLE_TIERS = [
 ]
 
 def get_fish_types():
-    # 1-coin junk items
     junk_names = ["boot", "tin can", "torn newspaper", "broken bottle", "driftwood"]
-    # Normal fish
     fish_names = ["salmon", "trout", "bass", "catfish", "carp", "goldfish"]
     fish_types = []
-    # Add junk items (always 1 coin)
     for name in junk_names:
         if name in SHOP_ITEMS:
             fish_types.append((name, (1, 1)))
-    # Add normal fish
     for name in fish_names:
         if name in SHOP_ITEMS:
             price = SHOP_ITEMS[name]["price"]
@@ -773,11 +724,6 @@ def log_econ_action(command: str, user: discord.User, amount: int = None, item: 
         parts.append(f"Extra: {extra}")
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(" | ".join(parts) + "\n")
-
-# Example usage: Call log_econ_action in each command after the action is performed.
-# For example, in your buy command after a successful purchase:
-# log_econ_action("buy", user, amount=price, item=item)
-# Do the same for sell, work, daily, deposit, withdraw, fish, crime, rob, etc.
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
