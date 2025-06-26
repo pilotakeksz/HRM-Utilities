@@ -80,7 +80,7 @@ class SuggestionYesButton(discord.ui.Button):
         super().__init__(
             label=str(yes),
             style=discord.ButtonStyle.green,
-            emoji=YES_EMOJI,
+            emoji=YES_EMOJI, #test
             custom_id=f"suggest_yes_{suggestion_id}",
             disabled=disabled
         )
