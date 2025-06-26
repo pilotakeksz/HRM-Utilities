@@ -123,7 +123,12 @@ class Suggestion(commands.Cog):
         # Load persisted votes and message_map
         self.votes = load_pickle(VOTES_FILE, {})
         self.message_map = load_pickle(MESSAGE_MAP_FILE, {})
-        bot.add_view(SuggestionView(0))  # Dummy for persistence registration
+        # Re-add persistent views for all suggestions with active voting
+        for suggestion_id, msg_id in self.message_map.items():
+            votes = self.votes.get(suggestion_id, {"yes": set(), "no": set()})
+            # Only add view if not approved/denied (i.e., message still has voting)
+            # You may want to persist status in the future for more robustness
+            self.bot.add_view(SuggestionView.from_votes(suggestion_id, votes))
 
     def save_votes(self):
         save_pickle(VOTES_FILE, self.votes)
@@ -154,6 +159,9 @@ class Suggestion(commands.Cog):
         self.message_map[suggestion_id] = msg.id
         self.save_votes()
 
+        # Register persistent view for this suggestion
+        self.bot.add_view(SuggestionView.from_votes(suggestion_id, self.votes[suggestion_id]))
+
         await interaction.response.send_message(f"Suggestion submitted to {channel.mention}!", ephemeral=True)
 
     @app_commands.command(name="suggestion-approve", description="Approve a suggestion (managers only)")
@@ -173,6 +181,7 @@ class Suggestion(commands.Cog):
         # Remove the percentage indicator and percentage from the Votes field
         embed.remove_field(2)
         embed.insert_field_at(0, name="✅ **APPROVED**", value="This suggestion has been approved.", inline=False)
+        embed.set_footer(text=f"Suggestion ID: {suggestion_id} | Approved by {interaction.user.display_name}")
         # Remove the buttons by setting view to None
         await msg.edit(embed=embed, view=None)
         await interaction.response.send_message("Suggestion approved.", ephemeral=True)
@@ -196,10 +205,10 @@ class Suggestion(commands.Cog):
         embed.insert_field_at(0, name="❌ **DENIED**", value="This suggestion has been denied.", inline=False)
         if reason:
             embed.add_field(name="Denial Reason", value=reason, inline=False)
+        embed.set_footer(text=f"Suggestion ID: {suggestion_id} | Denied by {interaction.user.display_name}")
         # Remove the buttons by setting view to None
         await msg.edit(embed=embed, view=None)
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
-    bot.add_view(SuggestionView(0))
     await bot.add_cog(Suggestion(bot))
