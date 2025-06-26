@@ -748,42 +748,7 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- LEADERBOARD ---
-    @commands.command(name="leaderboard", aliases=["lb", "top"])
-    async def leaderboard_command(self, ctx):
-        await self.leaderboard(ctx)
-
-    @app_commands.command(name="leaderboard", description="Show the top 10 richest users.")
-    async def leaderboard_slash(self, interaction: discord.Interaction):
-        await self.leaderboard(interaction)
-
-    async def leaderboard(self, destination):
-        async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute(
-                "SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 10"
-            )
-            top_users = await cursor.fetchall()
-        embed = discord.Embed(
-            title="🏆 Economy Leaderboard",
-            description="Top 10 richest users 💰",
-            color=0xf1c40f
-        )
-        if not top_users:
-            embed.description = "No users found."
-        else:
-            medals = ["🥇", "🥈", "🥉"] + ["💸"] * 7
-            lines = []
-            for idx, (user_id, balance) in enumerate(top_users, start=1):
-                user = self.bot.get_user(user_id)
-                name = user.mention if user else f"User ID {user_id}"
-                medal = medals[idx - 1] if idx <= len(medals) else ""
-                lines.append(f"{medal} **#{idx}** {name} — **{balance}** coins")
-            embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
-        if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
+   
     # --- ECONOMY LEADERBOARD ---
     @commands.command(name="eclb", aliases=["ecotop", "ecolb", "ecoinlb", "ecoinleaderboard", "eco-lb"])
     async def eclb_command(self, ctx):
