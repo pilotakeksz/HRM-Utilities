@@ -110,15 +110,15 @@ class AboutUs(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="aboutus", description="Send the About Us embed (owner only)")
-    async def aboutus(self, interaction: discord.Interaction):
-        if interaction.user.id != OWNER_ID:
-            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+    @commands.command(name="aboutus")
+    async def aboutus(self, ctx):
+        if ctx.author.id != OWNER_ID:
+            await ctx.send("You do not have permission to use this command.")
             return
 
-        channel = interaction.guild.get_channel(ABOUT_US_CHANNEL_ID)
+        channel = ctx.guild.get_channel(ABOUT_US_CHANNEL_ID)
         if not channel:
-            await interaction.response.send_message("About Us channel not found.", ephemeral=True)
+            await ctx.send("About Us channel not found.")
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
@@ -155,7 +155,7 @@ class AboutUs(commands.Cog):
         view = RankInfoView()
         await channel.send(embed=embed1)
         await channel.send(embed=embed2, view=view)
-        await interaction.response.send_message("About Us sent.", ephemeral=True)
+        await ctx.send("About Us sent.", delete_after=10)
 
 async def setup(bot: commands.Bot):
     bot.add_view(RankInfoView())  # Register persistent view for rank info select
