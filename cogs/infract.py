@@ -356,3 +356,5 @@ class Infraction(commands.Cog):
             extra_info=f"DM sent: {dm_success}"
         )
         await interaction.response.send_message(f"Infraction {case_id} voided and roles updated.", ephemeral=True)
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Infraction(bot))
