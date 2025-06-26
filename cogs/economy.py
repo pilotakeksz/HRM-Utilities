@@ -309,9 +309,9 @@ class Economy(commands.Cog):
         await self.fish(interaction.user, interaction)
 
     async def fish(self, user, destination):
-        # 60% chance junk, 40% chance less chance
-        # test
-        if random.random() < 0.4:
+        # 49% chance for junk, 51% chance for fish
+        #testing
+        if random.random() < 0.49:
             fish = random.choice(JUNK_TYPES)
             value = 1
         else:
