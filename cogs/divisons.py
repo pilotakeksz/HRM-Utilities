@@ -42,8 +42,21 @@ class DivisionSelect(discord.ui.Select):
 
 class DivisionView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # Persistent view, no timeout
         self.add_item(DivisionSelect())
+
+    @classmethod
+    async def send_or_edit(cls, channel, message_id=None):
+        embeds = get_main_embeds()
+        view = cls()
+        if message_id:
+            try:
+                msg = await channel.fetch_message(message_id)
+                await msg.edit(embeds=embeds, view=view)
+                return msg
+            except Exception:
+                pass
+        return await channel.send(embeds=embeds, view=view)
 
 class MIAButtonView(discord.ui.View):
     def __init__(self):
@@ -156,10 +169,11 @@ class Divisions(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        self.bot.add_view(DivisionView())  # Register persistent view
         channel = self.bot.get_channel(DIVISIONS_CHANNEL)
         if channel:
             try:
-                await channel.send(embeds=get_main_embeds(), view=DivisionView())
+                await DivisionView.send_or_edit(channel)
             except Exception:
                 pass
 
