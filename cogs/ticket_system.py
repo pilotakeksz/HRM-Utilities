@@ -79,7 +79,13 @@ class TicketTypeSelect(Select):
             discord.SelectOption(label="Management", value="management", emoji="<:HC:1343192841676914712>"),
             discord.SelectOption(label="MIA", value="mia", emoji="<:MIA:1364309116859715654>"),
         ]
-        super().__init__(placeholder="Select ticket type...", min_values=1, max_values=1, options=options)
+        super().__init__(
+            placeholder="Select ticket type...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="ticket_type_select"  # <-- Add this
+        )
 
     async def callback(self, interaction: discord.Interaction):
         if self.values[0] == "mia":
@@ -91,7 +97,7 @@ class TicketTypeSelect(Select):
             await interaction.response.send_modal(GeneralTicketModal())
 
 class TicketTypeView(View):
-    def __init__(self): # test
+    def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketTypeSelect())
 
@@ -160,7 +166,12 @@ class TicketActionView(View):
 
 class ClaimButton(Button):
     def __init__(self, parent_view):
-        super().__init__(label="Claim", style=discord.ButtonStyle.success, emoji="✅")
+        super().__init__(
+            label="Claim",
+            style=discord.ButtonStyle.success,
+            emoji="✅",
+            custom_id="claim_button"  # <-- Add this
+        )
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
@@ -186,7 +197,12 @@ class ClaimButton(Button):
 
 class UnclaimButton(Button):
     def __init__(self, parent_view):
-        super().__init__(label="Unclaim", style=discord.ButtonStyle.secondary, emoji="🟦")
+        super().__init__(
+            label="Unclaim",
+            style=discord.ButtonStyle.secondary,
+            emoji="🟦",
+            custom_id="unclaim_button"  # <-- Add this
+        )
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
@@ -209,7 +225,12 @@ class UnclaimButton(Button):
 
 class CloseButton(Button):
     def __init__(self, parent_view):
-        super().__init__(label="Close", style=discord.ButtonStyle.danger, emoji="🔒")
+        super().__init__(
+            label="Close",
+            style=discord.ButtonStyle.danger,
+            emoji="🔒",
+            custom_id="close_button"  # <-- Add this
+        )
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
@@ -225,12 +246,12 @@ class CloseButton(Button):
 
 class ConfirmCloseView(View):
     def __init__(self, channel, opener, ticket_type):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)  # <-- Make persistent
         self.channel = channel
         self.opener = opener
         self.ticket_type = ticket_type
 
-    @discord.ui.button(label="Confirm Close", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Confirm Close", style=discord.ButtonStyle.danger, custom_id="confirm_close_button")
     async def confirm(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer()
         # Archive
@@ -258,7 +279,7 @@ class ConfirmCloseView(View):
         asyncio.create_task(schedule_ticket_deletion(interaction.client, self.channel.id, delete_at))
         self.stop()
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, custom_id="cancel_close_button")
     async def cancel(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("Ticket close cancelled.", ephemeral=True)
         self.stop()
@@ -367,8 +388,9 @@ class TicketSystem(commands.Cog):
         self.bot.loop.create_task(resume_pending_deletions(self.bot))
         # Register persistent views so dropdowns/buttons work after restart
         self.bot.add_view(TicketTypeView())
-        self.bot.add_view(TicketActionView(None, None, None))  # Dummy, but required for persistence
-        self.bot.add_view(ConfirmCloseView(None, None, None))  # Dummy, but required for persistence
+        # Only add persistent views with all custom_ids set
+        # If you want to add TicketActionView and ConfirmCloseView persistently, 
+        # make sure all their buttons have custom_id and timeout=None as above.
 
     async def _startup_embed(self):
         await self.bot.wait_until_ready()
