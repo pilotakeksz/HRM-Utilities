@@ -44,7 +44,7 @@ def get_next_case_id():
         f.truncate()
     return cid
 
-def log_to_file(case_id, action, moderator, user, inf_type, reason, proof):
+def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof):
     ensure_log_dir()
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     filename = os.path.join(LOG_DIR, f"case_{case_id}.txt")
@@ -52,7 +52,7 @@ def log_to_file(case_id, action, moderator, user, inf_type, reason, proof):
         f.write(f"Case ID: {case_id}\n")
         f.write(f"Date: {now}\n")
         f.write(f"Action: {action}\n")
-        f.write(f"Moderator: {moderator} ({moderator.id})\n")
+        f.write(f"Issued-by: {issued_by} ({issued_by.id})\n")
         f.write(f"User: {user} ({user.id})\n")
         f.write(f"Type: {inf_type}\n")
         f.write(f"Reason: {reason}\n")
@@ -92,21 +92,21 @@ class Infraction(commands.Cog):
 
     async def get_user_infractions(self, user_id):
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT * FROM infractions WHERE user_id = ? ORDER BY date DESC", (user_id,))
+            cursor = await db.execute("SELECT * FROM infractions WHERE user_id = ? AND voided = 0 ORDER BY date DESC", (user_id,))
             return await cursor.fetchall()
 
     async def get_case(self, case_id):
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT * FROM infractions WHERE case_id = ?", (case_id,))
+            cursor = await db.execute("SELECT * FROM infractions WHERE case_id = ? AND voided = 0", (case_id,))
             return await cursor.fetchone()
 
-    async def add_infraction(self, case_id, user, moderator, action, reason, proof, message_id=None):
+    async def add_infraction(self, case_id, user, issued_by, action, reason, proof, message_id=None):
         now = datetime.datetime.utcnow().isoformat()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 INSERT INTO infractions (case_id, user_id, user_name, moderator_id, moderator_name, action, reason, proof, date, message_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (case_id, user.id, str(user), moderator.id, str(moderator), action, reason, proof, now, message_id))
+            """, (case_id, user.id, str(user), issued_by.id, str(issued_by), action, reason, proof, now, message_id))
             await db.commit()
 
     async def set_infraction_message_id(self, case_id, message_id):
@@ -119,7 +119,7 @@ class Infraction(commands.Cog):
             await db.execute("UPDATE infractions SET voided = 1 WHERE case_id = ?", (case_id,))
             await db.commit()
 
-    def get_infraction_embed(self, case_id, user, moderator, action, reason, proof, date, voided=False, voided_by=None):
+    def get_infraction_embed(self, case_id, user, issued_by, action, reason, proof, date, voided=False, voided_by=None):
         if voided:
             color = discord.Color.green()
         else:
@@ -130,7 +130,7 @@ class Infraction(commands.Cog):
             timestamp=datetime.datetime.fromisoformat(date)
         )
         embed.add_field(name="User", value=f"{user}", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator}", inline=True)
+        embed.add_field(name="Issued by", value=f"{issued_by}", inline=True)
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Proof", value=proof or "None", inline=False)
         embed.add_field(name="Case ID", value=str(case_id), inline=True)
@@ -215,11 +215,11 @@ class Infraction(commands.Cog):
         embed = self.get_infraction_embed(case_id, personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
-            msg = await inf_channel.send(embed=embed)
+            msg = await inf_channel.send(content=personnel.mention, embed=embed)
         elif proof:
-            msg = await inf_channel.send(embed=embed, file=await proof.to_file())
+            msg = await inf_channel.send(content=personnel.mention, embed=embed, file=await proof.to_file())
         else:
-            msg = await inf_channel.send(embed=embed)
+            msg = await inf_channel.send(content=personnel.mention, embed=embed)
         await self.add_infraction(case_id, personnel, interaction.user, action, reason, proof_url, msg.id)
         await self.update_roles(personnel, action, interaction.guild, add=True)
         # DM user
@@ -240,7 +240,7 @@ class Infraction(commands.Cog):
             await log_channel.send(embed=embed, file=await proof.to_file())
         else:
             await log_channel.send(embed=embed)
-        # Log to file
+        # Log to file (all actions)
         log_to_file(case_id, "ISSUE", interaction.user, personnel, action, reason, proof_url)
         await interaction.followup.send(f"Infraction issued and logged. Case ID: {case_id}", ephemeral=True)
 
