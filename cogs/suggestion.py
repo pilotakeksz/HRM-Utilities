@@ -12,8 +12,8 @@ EMBED_COLOR = 0xd0b47b
 APPROVED_COLOR = 0x43b581  # green
 DENIED_COLOR = 0xed4245    # red
 THUMBNAIL_URL = "https://cdn.discordapp.com/attachments/1376647403712675991/1376652854391083269/image-141.png?ex=685cffa1&is=685bae21&hm=db6b95d431e55f76eca4e55ca48b7709d7f8bdf1ec1ef77e949b1d0beaa50f42&"
-YES_EMOJI = "<:yes:1358812809558753401>"
-NO_EMOJI = "<:no:1358812780890947625>"
+YES_EMOJI = "<:tick1:1330953719344402584>"
+NO_EMOJI = "<:xmark1:1330953708766363821>"
 
 VOTES_FILE = "suggestion_votes.pkl"
 MESSAGE_MAP_FILE = "suggestion_message_map.pkl"
@@ -170,11 +170,11 @@ class Suggestion(commands.Cog):
         msg = await channel.fetch_message(msg_id)
         embed = msg.embeds[0]
         embed.color = APPROVED_COLOR
-        yes = len(self.votes.get(suggestion_id, {}).get("yes", []))
-        embed.set_field_at(2, name="Votes", value=progress_bar(yes, 0).replace("🟩", "🟩").replace("🟥", "🟩").replace("%", "100%"), inline=False)
+        # Remove the percentage indicator and percentage from the Votes field
+        embed.remove_field(2)
         embed.insert_field_at(0, name="✅ **APPROVED**", value="This suggestion has been approved.", inline=False)
-        view = SuggestionView(suggestion_id, yes=yes, no=0, disabled=True)
-        await msg.edit(embed=embed, view=view)
+        # Remove the buttons by setting view to None
+        await msg.edit(embed=embed, view=None)
         await interaction.response.send_message("Suggestion approved.", ephemeral=True)
 
     @app_commands.command(name="suggestion-deny", description="Deny a suggestion (managers only)")
@@ -191,13 +191,13 @@ class Suggestion(commands.Cog):
         msg = await channel.fetch_message(msg_id)
         embed = msg.embeds[0]
         embed.color = DENIED_COLOR
-        no = len(self.votes.get(suggestion_id, {}).get("no", []))
-        embed.set_field_at(2, name="Votes", value=progress_bar(0, no).replace("🟩", "🟥").replace("%", "100%"), inline=False)
+        # Remove the percentage indicator and percentage from the Votes field
+        embed.remove_field(2)
         embed.insert_field_at(0, name="❌ **DENIED**", value="This suggestion has been denied.", inline=False)
         if reason:
             embed.add_field(name="Denial Reason", value=reason, inline=False)
-        view = SuggestionView(suggestion_id, yes=0, no=no, disabled=True)
-        await msg.edit(embed=embed, view=view)
+        # Remove the buttons by setting view to None
+        await msg.edit(embed=embed, view=None)
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
