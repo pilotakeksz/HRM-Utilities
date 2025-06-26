@@ -114,6 +114,12 @@ class SuggestionView(discord.ui.View):
         self.add_item(SuggestionYesButton(suggestion_id, yes, disabled))
         self.add_item(SuggestionNoButton(suggestion_id, no, disabled))
 
+    @classmethod
+    def from_votes(cls, suggestion_id, votes, disabled=False):
+        yes = len(votes.get("yes", set()))
+        no = len(votes.get("no", set()))
+        return cls(suggestion_id, yes=yes, no=no, disabled=disabled)
+
     async def handle_vote(self, interaction: discord.Interaction, vote_type: str):
         cog: Suggestion = interaction.client.get_cog("Suggestion")
         suggestion_id = self.suggestion_id
