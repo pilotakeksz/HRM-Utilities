@@ -187,25 +187,31 @@ class Economy(commands.Cog):
     async def get_user(self, user_id):
         async with self.db_lock:
             async with aiosqlite.connect(DB_PATH) as db:
-                cursor = await db.execute("SELECT balance, last_daily, last_work FROM users WHERE user_id = ?", (user_id,))
+                cursor = await db.execute("SELECT balance, last_daily, last_work, bank FROM users WHERE user_id = ?", (user_id,))
                 row = await cursor.fetchone()
                 if row:
-                    return {"balance": row[0], "last_daily": row[1], "last_work": row[2]}
+                    return {
+                        "balance": row[0],
+                        "last_daily": row[1],
+                        "last_work": row[2],
+                        "bank": row[3] if row[3] is not None else 0
+                    }
                 else:
-                    await db.execute("INSERT INTO users (user_id, balance, last_daily, last_work) VALUES (?, ?, ?, ?)", (user_id, 0, None, None))
+                    await db.execute("INSERT INTO users (user_id, balance, last_daily, last_work, bank) VALUES (?, ?, ?, ?, ?)", (user_id, 0, None, None, 0))
                     await db.commit()
-                    return {"balance": 0, "last_daily": None, "last_work": None}
+                    return {"balance": 0, "last_daily": None, "last_work": None, "bank": 0}
 
-    async def update_user(self, user_id, balance=None, last_daily=None, last_work=None):
+    async def update_user(self, user_id, balance=None, last_daily=None, last_work=None, bank=None):
         user = await self.get_user(user_id)
         balance = balance if balance is not None else user["balance"]
         last_daily = last_daily if last_daily is not None else user["last_daily"]
         last_work = last_work if last_work is not None else user["last_work"]
+        bank = bank if bank is not None else user["bank"]
         async with self.db_lock:
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute(
-                    "UPDATE users SET balance = ?, last_daily = ?, last_work = ? WHERE user_id = ?",
-                    (balance, last_daily, last_work, user_id)
+                    "UPDATE users SET balance = ?, last_daily = ?, last_work = ?, bank = ? WHERE user_id = ?",
+                    (balance, last_daily, last_work, bank, user_id)
                 )
                 await db.commit()
 
@@ -628,14 +634,11 @@ class Economy(commands.Cog):
         await self.bank(interaction.user, interaction)
 
     async def bank(self, user, destination):
-        async with self.db_lock:
-            async with aiosqlite.connect(DB_PATH) as db:
-                row = await db.execute_fetchone("SELECT bank FROM users WHERE user_id = ?", (user.id,))
-                bank_balance = row[0] if row else 0
+        data = await self.get_user(user.id)
         interest = self.get_bank_interest(user) * 100
         embed = discord.Embed(
             title=f"{user.name}'s Bank",
-            description=f"🏦 Bank Balance: **{bank_balance}** coins\nInterest Rate: **{interest:.2f}%** per day",
+            description=f"🏦 Bank Balance: **{data['bank']}** coins\nInterest Rate: **{interest:.2f}%** per day",
             color=0xd0b47b
         )
         if isinstance(destination, discord.Interaction):
@@ -667,10 +670,7 @@ class Economy(commands.Cog):
                 color=0xd0b47b
             )
         else:
-            async with self.db_lock:
-                async with aiosqlite.connect(DB_PATH) as db:
-                    await db.execute("UPDATE users SET balance = balance - ?, bank = bank + ? WHERE user_id = ?", (amount, amount, user.id))
-                    await db.commit()
+            await self.update_user(user.id, balance=data["balance"] - amount, bank=data["bank"] + amount)
             embed = discord.Embed(
                 title="Deposit",
                 description=f"You deposited **{amount}** coins into your bank.",
@@ -691,21 +691,15 @@ class Economy(commands.Cog):
         await self.withdraw(interaction.user, amount, interaction)
 
     async def withdraw(self, user, amount, destination):
-        async with self.db_lock:
-            async with aiosqlite.connect(DB_PATH) as db:
-                row = await db.execute_fetchone("SELECT bank FROM users WHERE user_id = ?", (user.id,))
-                bank_balance = row[0] if row else 0
-        if amount <= 0 or bank_balance < amount:
+        data = await self.get_user(user.id)
+        if amount <= 0 or data["bank"] < amount:
             embed = discord.Embed(
                 title="Withdraw",
                 description="Invalid amount or insufficient bank funds.",
                 color=0xd0b47b
             )
         else:
-            async with self.db_lock:
-                async with aiosqlite.connect(DB_PATH) as db:
-                    await db.execute("UPDATE users SET bank = bank - ?, balance = balance + ? WHERE user_id = ?", (amount, amount, user.id))
-                    await db.commit()
+            await self.update_user(user.id, balance=data["balance"] + amount, bank=data["bank"] - amount)
             embed = discord.Embed(
                 title="Withdraw",
                 description=f"You withdrew **{amount}** coins from your bank.",
