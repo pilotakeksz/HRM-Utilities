@@ -1,0 +1,6 @@
+# name|price|desc
+can of tuna|50|A delicious can of tuna. Maybe a cat will follow you.
+fish|100|A fresh fish. Smells... fishy.
+plane|5000|A private plane. Flex on your friends.
+skittles|25|Taste the rainbow!
+enderman|5|A Blocky reference.

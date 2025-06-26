@@ -17,12 +17,25 @@ ROLES_INCOME = [
     (1329910329701830686, 50),   # Lowest role, lowest income
 ]
 
-SHOP_ITEMS = {
-    "can of tuna": {"price": 50, "desc": "A delicious can of tuna. Maybe a cat will follow you."},
-    "fish": {"price": 100, "desc": "A fresh fish. Smells... fishy."},
-    "plane": {"price": 5000, "desc": "A private plane. Flex on your friends."},
-    "skittles": {"price": 25, "desc": "Taste the rainbow!"},
-}
+ITEMS_FILE = os.path.join(os.path.dirname(__file__), "econ", "items.txt")
+
+def load_shop_items():
+    items = {}
+    if not os.path.exists(ITEMS_FILE):
+        return items
+    with open(ITEMS_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                name, price, desc = line.split("|", 2)
+                items[name.lower()] = {"price": int(price), "desc": desc}
+            except Exception:
+                continue
+    return items
+
+SHOP_ITEMS = load_shop_items()
 
 CRIME_REWARDS = [
     {"desc": "You hacked a vending machine!", "amount": 200},
@@ -439,7 +452,6 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-# ...existing code...
 
     @commands.command(name="fish")
     async def fish_command(self, ctx):
@@ -510,8 +522,6 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
-
-# ...existing code...
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
