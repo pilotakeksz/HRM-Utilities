@@ -748,7 +748,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-   
     # --- ECONOMY LEADERBOARD ---
     @commands.command(name="eclb", aliases=["ecotop", "ecolb", "ecoinlb", "ecoinleaderboard", "eco-lb"])
     async def eclb_command(self, ctx):
