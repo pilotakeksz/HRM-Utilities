@@ -417,6 +417,8 @@ class TicketSystem(commands.Cog):
         self.bot.loop.create_task(resume_pending_deletions(self.bot))
         # Register persistent views so dropdowns/buttons work after restart
         self.bot.add_view(TicketTypeView())
+        self.bot.add_view(TicketActionView.__new__(TicketActionView))  # Register TicketActionView as persistent
+        self.bot.add_view(ConfirmCloseView.__new__(ConfirmCloseView))  # Register ConfirmCloseView as persistent
 
     async def _startup_embed(self):
         await self.bot.wait_until_ready()
