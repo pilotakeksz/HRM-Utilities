@@ -32,17 +32,26 @@ def ensure_log_dir():
     if not os.path.exists(LOG_DIR):
         os.makedirs(LOG_DIR)
 
-def get_next_case_id():
-    if not os.path.exists(CASE_ID_FILE):
-        with open(CASE_ID_FILE, "w") as f:
-            f.write("1")
-        return 1
-    with open(CASE_ID_FILE, "r+") as f:
-        cid = int(f.read().strip())
-        new_cid = cid + 1
-        f.seek(0)
+async def get_next_case_id(db_path):
+    # Try file first
+    if os.path.exists(CASE_ID_FILE):
+        with open(CASE_ID_FILE, "r+") as f:
+            content = f.read().strip()
+            if content.isdigit():
+                cid = int(content)
+                new_cid = cid + 1
+                f.seek(0)
+                f.write(str(new_cid))
+                f.truncate()
+                return new_cid
+    # Fallback: get max from DB
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute("SELECT MAX(case_id) FROM infractions")
+        row = await cursor.fetchone()
+        max_id = row[0] or 0
+        new_cid = max_id + 1
+    with open(CASE_ID_FILE, "w") as f:
         f.write(str(new_cid))
-        f.truncate()
     return new_cid
 
 def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof, extra_info=None):
@@ -243,7 +252,7 @@ class Infraction(commands.Cog):
             return
 
         # Issue infraction
-        case_id = get_next_case_id()
+        case_id = await get_next_case_id(self.db_path)
         inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
         embed = self.get_infraction_embed(case_id, personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
         if proof and proof.content_type and proof.content_type.startswith("image/"):
@@ -321,6 +330,7 @@ class Infraction(commands.Cog):
             )
             return
         user_id = case[1]
+        user_name = case[2]
         action = case[5]
         guild = interaction.guild
         member = guild.get_member(user_id)
@@ -342,19 +352,120 @@ class Infraction(commands.Cog):
         if inf_channel and msg_id:
             try:
                 msg = await inf_channel.fetch_message(msg_id)
-                embed = self.get_infraction_embed(case_id, case[2], case[4], action, case[6], case[7], case[8], voided=True, voided_by=interaction.user)
+                embed = self.get_infraction_embed(case_id, user_name, case[4], action, case[6], case[7], case[8], voided=True, voided_by=interaction.user)
                 await msg.edit(embed=embed)
             except Exception:
                 pass
         # Log to logging channel
-        embed = self.get_infraction_embed(case_id, case[2], case[4], action, case[6], case[7], case[8], voided=True, voided_by=interaction.user)
+        embed = self.get_infraction_embed(case_id, user_name, case[4], action, case[6], case[7], case[8], voided=True, voided_by=interaction.user)
         log_channel = guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
         await log_channel.send(embed=embed)
         # Log to file
         log_to_file(
-            case_id, "VOID", interaction.user, member or user_id, action, case[6], case[7],
+            case_id, "VOID", interaction.user, member or user_name, action, case[6], case[7],
             extra_info=f"DM sent: {dm_success}"
         )
         await interaction.response.send_message(f"Infraction {case_id} voided and roles updated.", ephemeral=True)
+
+    @app_commands.command(name="infraction-list", description="List a user's infractions.")
+    @app_commands.describe(user="User to list infractions for")
+    async def infraction_list(self, interaction: discord.Interaction, user: discord.Member):
+        is_infraction_staff = any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles)
+        is_personnel = any(r.id == PERSONNEL_ROLE_ID for r in interaction.user.roles)
+        if not (is_infraction_staff or (is_personnel and user.id == interaction.user.id)):
+            await interaction.response.send_message("You do not have permission to view this user's infractions.", ephemeral=True)
+            log_to_file(
+                f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
+                "LIST-FAILED",
+                interaction.user,
+                user,
+                "N/A",
+                "Listed infractions",
+                "N/A",
+                extra_info="No permission"
+            )
+            return
+        infractions = await self.get_user_infractions(user.id)
+        if not infractions:
+            await interaction.response.send_message("No infractions found for this user.", ephemeral=True)
+            log_to_file(
+                f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
+                "LIST-EMPTY",
+                interaction.user,
+                user,
+                "N/A",
+                "Listed infractions",
+                "N/A",
+                extra_info="No infractions found"
+            )
+            return
+        pages = [infractions[i:i+5] for i in range(0, len(infractions), 5)]
+        page = 0
+        embed = discord.Embed(title=f"Infractions for {user}", color=discord.Color.orange())
+        for inf in pages[page]:
+            embed.add_field(
+                name=f"Case {inf[0]} - {inf[5]}",
+                value=f"Date: {inf[8][:10]}\nReason: {inf[6]}",
+                inline=False
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_to_file(
+            f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
+            "LIST",
+            interaction.user,
+            user,
+            "N/A",
+            "Listed infractions",
+            "N/A",
+            extra_info=f"Infractions listed: {len(infractions)}"
+        )
+
+    @app_commands.command(name="infraction-view", description="View a specific infraction by case ID.")
+    @app_commands.describe(case_id="Case ID to view")
+    async def infraction_view(self, interaction: discord.Interaction, case_id: int):
+        is_infraction_staff = any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles)
+        is_personnel = any(r.id == PERSONNEL_ROLE_ID for r in interaction.user.roles)
+        if not (is_infraction_staff or is_personnel):
+            await interaction.response.send_message("You do not have permission to view infractions.", ephemeral=True)
+            log_to_file(
+                case_id,
+                "VIEW-FAILED",
+                interaction.user,
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                extra_info="No permission"
+            )
+            return
+        case = await self.get_case(case_id, include_voided=True)
+        if not case:
+            await interaction.response.send_message("Case not found.", ephemeral=True)
+            log_to_file(
+                case_id,
+                "VIEW-FAILED",
+                interaction.user,
+                "N/A",
+                "N/A",
+                "N/A",
+                "N/A",
+                extra_info="Case not found"
+            )
+            return
+        # Use user_name and moderator_name for display
+        embed = self.get_infraction_embed(
+            case[0], case[2], case[4], case[5], case[6], case[7], case[8], voided=bool(case[9])
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_to_file(
+            case_id,
+            "VIEW",
+            interaction.user,
+            case[2],
+            case[5],
+            case[6],
+            case[7]
+        )
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Infraction(bot))
