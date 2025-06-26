@@ -785,5 +785,62 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
+    # --- BALANCE ---
+    @commands.command(name="bal", aliases=["balance", "money", "wallet"])
+    async def bal_command(self, ctx):
+        await self.show_balance(ctx.author, ctx)
+
+    @app_commands.command(name="balance", description="Show your wallet and bank balance.")
+    async def balance_slash(self, interaction: discord.Interaction):
+        await self.show_balance(interaction.user, interaction)
+
+    async def show_balance(self, user, destination):
+        data = await self.get_user(user.id)
+        embed = discord.Embed(
+            title=f"{user.name}'s Balance",
+            description=f"**Wallet:** 💸 {data['balance']} coins\n**Bank:** 🏦 {data['bank']} coins",
+            color=0x00bfae
+        )
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- WITHDRAW ---
+    @commands.command(name="withdraw", aliases=["with"])
+    async def withdraw_command(self, ctx, amount: int):
+        await self.withdraw(ctx.author, amount, ctx)
+
+    @app_commands.command(name="withdraw", description="Withdraw coins from your bank to your wallet.")
+    @app_commands.describe(amount="Amount to withdraw")
+    async def withdraw_slash(self, interaction: discord.Interaction, amount: int):
+        await self.withdraw(interaction.user, amount, interaction)
+
+    async def withdraw(self, user, amount, destination):
+        data = await self.get_user(user.id)
+        if amount <= 0 or data["bank"] < amount:
+            embed = discord.Embed(
+                title="Withdraw",
+                description="Invalid amount or insufficient bank funds.",
+                color=0xd0b47b
+            )
+            log_econ_action("withdraw_fail", user, amount=amount)
+        else:
+            await self.update_user(user.id, balance=data["balance"] + amount, bank=data["bank"] - amount)
+            embed = discord.Embed(
+                title="Withdraw",
+                description=f"You withdrew **{amount}** coins from your bank to your wallet.",
+                color=0x00bfae
+            )
+            log_econ_action("withdraw", user, amount=amount)
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- ENSURE ONLY WALLET IS USED FOR SPENDING ---
+    # In all commands that spend coins (buy, bet, crime, rob, etc.), always use data["balance"] (wallet) only.
+    # No changes needed if you already use data["balance"] for all spending checks and updates.
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
