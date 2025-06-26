@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 from discord.ui import View, Select
+import os
 
 EMBED_COLOR = 0xd0b37b
 REGS_CHANNEL_ID = 1364242592887209984
@@ -81,18 +81,17 @@ class RegulationsView(View):
 class Rules(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Register persistent view on cog load
-        bot.add_view(RegulationsView())
+        bot.add_view(RegulationsView())  # Register persistent view
 
-    @app_commands.command(name="send-regulations", description="Send the regulations embed (owner only)")
-    async def send_regulations(self, interaction: discord.Interaction):
-        if interaction.user.id != OWNER_ID:
-            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+    @commands.command(name="regulations")
+    async def regulations_command(self, ctx):
+        if ctx.author.id != OWNER_ID:
+            await ctx.send("You do not have permission to use this command.")
             return
 
-        channel = interaction.guild.get_channel(REGS_CHANNEL_ID)
+        channel = ctx.guild.get_channel(REGS_CHANNEL_ID)
         if not channel:
-            await interaction.response.send_message("Regulations channel not found.", ephemeral=True)
+            await ctx.send("Regulations channel not found.")
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
@@ -119,8 +118,7 @@ class Rules(commands.Cog):
         view = RegulationsView()
         await channel.send(embed=embed1)
         await channel.send(embed=embed2, view=view)
-        await interaction.response.send_message("Regulations sent.", ephemeral=True)
+        await ctx.send("Regulations sent.", delete_after=10)
 
 async def setup(bot: commands.Bot):
-    bot.add_view(RegulationsView())  # Register persistent view for regulations select
-    await bot.add_cog(Rules(bot))
+    bot.add_view(RegulationsView())  # Register persistent view for regulations
