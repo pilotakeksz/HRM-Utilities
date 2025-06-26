@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ui import View, Select, Button, Modal, TextInput
 import asyncio
 import datetime
+import json
 
 # Load from environment
 CIVILIAN_ROLE = int(os.getenv("CIVILIAN_ROLE"))
@@ -28,6 +29,7 @@ LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 PERSIST_FILE = os.path.join(LOGS_DIR, "ticket_embed_id.txt")
+DELETION_SCHEDULE_FILE = os.path.join(LOGS_DIR, "pending_ticket_deletions.json")
 
 def log_transcript(channel, messages):
     filename = os.path.join(LOGS_DIR, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
@@ -251,16 +253,21 @@ class ConfirmCloseView(View):
         log_ticket_action(self.channel.id, "CLOSE", interaction.user)
         # Transcript and logs
         await send_transcript_and_logs(self.channel, self.opener, interaction.guild)
-        # Wait 15 minutes
-        await asyncio.sleep(15 * 60)
-        await self.channel.send("This ticket will be deleted in 20 seconds.")
-        await asyncio.sleep(20)
-        await self.channel.delete()
+        # Schedule deletion
+        delete_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=15)).timestamp()
+        save_pending_deletion(self.channel.id, delete_at)
+        asyncio.create_task(schedule_ticket_deletion(interaction.client, self.channel.id, delete_at))
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("Ticket close cancelled.", ephemeral=True)
         self.stop()
+
+# On bot startup, resume pending deletions
+async def resume_pending_deletions(bot):
+    if not os.path.exists(DELETION_SCHEDULE_FILE):
+        return
+    with open(DELETION_SCHEDULE_FILE, "r") as f:
+        data = json.load(f)
+    for channel_id, delete_at in data.items():
+        asyncio.create_task(schedule_ticket_deletion(bot, channel_id, delete_at))
 
 async def ensure_persistent_ticket_embed(bot):
     channel = bot.get_channel(CHANNEL_ASSISTANCE)
@@ -314,6 +321,7 @@ class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.bot.loop.create_task(self._startup_embed())
+        self.bot.loop.create_task(resume_pending_deletions(self.bot))
 
     async def _startup_embed(self):
         await self.bot.wait_until_ready()
@@ -379,5 +387,41 @@ class TicketSystem(commands.Cog):
         await interaction.channel.set_permissions(user, overwrite=None)
         await interaction.response.send_message(f"{user.mention} has been removed from the ticket.", ephemeral=True)
 
-async def setup(bot):
-    await bot.add_cog(TicketSystem(bot))
+def save_pending_deletion(channel_id, delete_at):
+    try:
+        if os.path.exists(DELETION_SCHEDULE_FILE):
+            with open(DELETION_SCHEDULE_FILE, "r") as f:
+                data = json.load(f)
+        else:
+            data = {}
+        data[str(channel_id)] = delete_at
+        with open(DELETION_SCHEDULE_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+def remove_pending_deletion(channel_id):
+    try:
+        if os.path.exists(DELETION_SCHEDULE_FILE):
+            with open(DELETION_SCHEDULE_FILE, "r") as f:
+                data = json.load(f)
+            data.pop(str(channel_id), None)
+            with open(DELETION_SCHEDULE_FILE, "w") as f:
+                json.dump(data, f)
+    except Exception:
+        pass
+
+async def schedule_ticket_deletion(bot, channel_id, delete_at):
+    now = datetime.datetime.utcnow().timestamp()
+    wait_time = delete_at - now
+    if wait_time > 0:
+        await asyncio.sleep(wait_time)
+    channel = bot.get_channel(int(channel_id))
+    if channel:
+        try:
+            await channel.send("This ticket will be deleted in 20 seconds.")
+            await asyncio.sleep(20)
+            await channel.delete()
+        except Exception:
+            pass
+    remove_pending_deletion(channel_id)
