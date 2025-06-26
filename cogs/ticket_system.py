@@ -350,7 +350,7 @@ async def ensure_persistent_ticket_embed(bot):
         color=EMBED_COLOUR
     )
     embed2.add_field(
-        name="<:HighRockMilitary:1376605942766914712> General Support",
+        name=" General Support",
         value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
         inline=True
     )
@@ -416,7 +416,7 @@ class TicketSystem(commands.Cog):
             color=EMBED_COLOUR
         )
         embed2.add_field(
-            name="<:HighRockMilitary:1376605942766914712> General Support",
+            name="<:HighRockMilitary:1376605942765977800> General Support",
             value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
             inline=True
         )
