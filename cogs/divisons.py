@@ -12,6 +12,7 @@ EMBED1_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/13769
 EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
 DIVISIONS_CHANNEL = int(os.getenv("DIVISIONS_CHANNEL", "1332065491266834493"))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "840949634071658507"))
+DIVISIONS_MSG_ID_FILE = "divisions_message_id.txt"
 
 class DivisionSelect(discord.ui.Select):
     def __init__(self):
@@ -159,36 +160,37 @@ def get_ng_embeds():
 class Divisions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Register persistent view on cog load
-        bot.add_view(DivisionView())
+        bot.add_view(DivisionView())  # Register persistent view
 
     @commands.command(name="divisions")
     async def divisions_command(self, ctx):
         if ctx.author.id != ADMIN_ID:
             await ctx.send("❌ Only the bot admin can use this command.")
             return
-        # Always send in the specified channel
         channel = ctx.guild.get_channel(DIVISIONS_CHANNEL)
         if not channel:
             await ctx.send("❌ Could not find the divisions channel.")
             return
         embeds = get_main_embeds()
         msg = await channel.send(embeds=embeds, view=DivisionView())
+        # Save the message ID for persistence
+        with open(DIVISIONS_MSG_ID_FILE, "w") as f:
+            f.write(str(msg.id))
         await ctx.send("✅ Divisions embed sent in the divisions channel!", delete_after=10)
-        # Optionally, store msg.id somewhere persistent if you want to edit the same message on restart
 
     @commands.Cog.listener()
     async def on_ready(self):
         self.bot.add_view(DivisionView())  # Register persistent view
-        # Optionally, you can resend the embed here if you want to guarantee it's always present after restart
-        # If you want to edit an existing message, you need to store its message_id persistently (e.g. in a file/db)
-        # Example (if you store message_id):
-        # channel = self.bot.get_channel(DIVISIONS_CHANNEL)
-        # if channel and message_id:
-        #     try:
-        #         await DivisionView.send_or_edit(channel, message_id=message_id)
-        #     except Exception:
-        #         pass
+        # Try to re-attach the view to the existing message after restart
+        try:
+            with open(DIVISIONS_MSG_ID_FILE, "r") as f:
+                msg_id = int(f.read().strip())
+            channel = self.bot.get_channel(DIVISIONS_CHANNEL)
+            if channel:
+                msg = await channel.fetch_message(msg_id)
+                await msg.edit(view=DivisionView())
+        except Exception:
+            pass
 
 async def setup(bot):
     await bot.add_cog(Divisions(bot))
