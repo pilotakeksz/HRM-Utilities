@@ -858,6 +858,48 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
+# ...existing code...
+
+    # --- SELL ALL ITEMS ---
+    @commands.command(name="sellall")
+    async def sellall_command(self, ctx):
+        await self.sell_all_items(ctx.author, ctx)
+
+    @app_commands.command(name="sellall", description="Sell all sellable items in your inventory.")
+    async def sellall_slash(self, interaction: discord.Interaction):
+        await self.sell_all_items(interaction.user, interaction)
+
+    async def sell_all_items(self, user, destination):
+        inventory = dict(await self.get_inventory(user.id))
+        total_earned = 0
+        sold_items = []
+        for item, amount in inventory.items():
+            if amount > 0 and item in SHOP_ITEMS:
+                price = SHOP_ITEMS[item]["price"]
+                earned = price * amount
+                await self.add_item(user.id, item, -amount)
+                data = await self.get_user(user.id)
+                await self.update_user(user.id, balance=data["balance"] + earned)
+                total_earned += earned
+                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
+                log_econ_action("sellall", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+        if sold_items:
+            desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
+        else:
+            desc = "You have no sellable items in your inventory."
+        embed = discord.Embed(
+            title="Sell All",
+            description=desc,
+            color=0xd0b47b
+        )
+        log_econ_action("sellall-summary", user, amount=total_earned, extra="All items sold")
+        if isinstance(destination, discord.Interaction):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+# ...existing code...
+
 
     # --- WITHDRAW ---
     @commands.command(name="withdraw", aliases=["with"])
