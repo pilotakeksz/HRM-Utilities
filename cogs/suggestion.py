@@ -140,7 +140,7 @@ class SuggestionView(discord.ui.View):
         new_view = SuggestionView(self.suggestion_id, yes=yes, no=no)
         await message.edit(embed=embed, view=new_view)
         cog.save_votes()
-        await interaction.response.defer()
+        await interaction.response.defer() #test
 
     @property
     def persistent_custom_id(self):
