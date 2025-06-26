@@ -95,7 +95,8 @@ async def create_ticket(interaction, ticket_type, request_content):
         overwrites=overwrites,
         reason=f"Ticket opened by {user}"
     )
-
+ # testing
+ 
     # Embed 1 (image)
     embed1 = discord.Embed(color=EMBED_COLOUR)
     embed1.set_image(url=EMBED1_IMAGE)
