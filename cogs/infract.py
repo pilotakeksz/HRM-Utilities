@@ -1,8 +1,8 @@
+import os
 import discord
 from discord.ext import commands
 from discord import app_commands
 import aiosqlite
-import os
 import datetime
 
 INFRACTION_DB = "data/infractions.db"
@@ -62,14 +62,6 @@ def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof, extra
             f.write(f"Extra: {extra_info}\n")
         f.write("-" * 40 + "\n")
 
-class InfractionActionAutocomplete(app_commands.Transformer):
-    async def autocomplete(self, interaction: discord.Interaction, current: str):
-        actions = ["Warning", "Strike", "Demotion", "Termination", "Suspension"]
-        return [
-            app_commands.Choice(name=action, value=action)
-            for action in actions if current.lower() in action.lower()
-        ][:25]
-
 class Infraction(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -117,11 +109,6 @@ class Infraction(commands.Cog):
                 INSERT INTO infractions (case_id, user_id, user_name, moderator_id, moderator_name, action, reason, proof, date, message_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (case_id, user.id, str(user), issued_by.id, str(issued_by), action, reason, proof, now, message_id))
-            await db.commit()
-
-    async def set_infraction_message_id(self, case_id, message_id):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("UPDATE infractions SET message_id = ? WHERE case_id = ?", (message_id, case_id))
             await db.commit()
 
     async def void_infraction(self, case_id):
@@ -173,7 +160,6 @@ class Infraction(commands.Cog):
                 roles_to_add.append(STRIKE_1_ROLE_ID)
         elif action == "Suspension":
             roles_to_add.append(SUSPENDED_ROLE_ID)
-            # Remove all other discipline roles
             roles_to_remove += [
                 WARNING_1_ROLE_ID, WARNING_2_ROLE_ID,
                 STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID, STRIKE_3_ROLE_ID
@@ -246,28 +232,31 @@ class Infraction(commands.Cog):
             msg = await inf_channel.send(content=personnel.mention, embed=embed, file=await proof.to_file())
         else:
             msg = await inf_channel.send(content=personnel.mention, embed=embed)
-        await self.add_infraction(case_id, personnel, interaction.user, action, reason, proof_url, msg.id)
-        await self.update_roles(personnel, action, interaction.guild, add=True)
 
-        # --- ENSURE DM IS SENT TO INFRACTEE ---
+        # --- ENSURE DM IS SENT TO INFRACTEE (before role changes, just like ticket system) ---
         dm_success = False
         try:
-            dm_text = (
-                f"You have received an infraction in **{interaction.guild.name}**.\n"
-                f"**Type:** {action}\n"
-                f"**Reason:** {reason}\n"
-                f"**Case ID:** {case_id}"
+            dm_embed = discord.Embed(
+                title="You have received an infraction",
+                description=(
+                    f"You have received an infraction in **{interaction.guild.name}**.\n\n"
+                    f"**Type:** {action}\n"
+                    f"**Reason:** {reason}\n"
+                    f"**Case ID:** {case_id}"
+                ),
+                color=INFRACTION_TYPES.get(action, {}).get("color", discord.Color.default())
             )
+            dm_embed.set_footer(text=f"Issued by: {interaction.user}")
             if proof and proof.content_type and proof.content_type.startswith("image/"):
-                await personnel.send(content=dm_text, embed=embed)
-            elif proof:
-                await personnel.send(content=dm_text, embed=embed, file=await proof.to_file())
-            else:
-                await personnel.send(content=dm_text, embed=embed)
+                dm_embed.set_image(url=proof.url)
+            await personnel.send(embed=dm_embed)
             dm_success = True
         except Exception as e:
             print(f"Failed to DM user: {e}")
         # --- END DM SECTION ---
+
+        await self.add_infraction(case_id, personnel, interaction.user, action, reason, proof_url, msg.id)
+        await self.update_roles(personnel, action, interaction.guild, add=True)
 
         # Log to logging channel
         log_channel = interaction.guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
@@ -283,6 +272,7 @@ class Infraction(commands.Cog):
             extra_info=f"DM sent: {dm_success}"
         )
         await interaction.followup.send(f"Infraction issued and logged. Case ID: {case_id}", ephemeral=True)
+
     @infraction_issue.autocomplete('action')
     async def infraction_action_autocomplete(self, interaction: discord.Interaction, current: str):
         actions = ["Warning", "Strike", "Demotion", "Termination", "Suspension"]
@@ -290,6 +280,7 @@ class Infraction(commands.Cog):
             app_commands.Choice(name=action, value=action)
             for action in actions if current.lower() in action.lower()
         ][:25]
+
     @app_commands.command(name="infraction-void", description="Void an infraction by case ID.")
     @app_commands.describe(case_id="Case ID to void")
     async def infraction_void(self, interaction: discord.Interaction, case_id: int):
@@ -341,131 +332,4 @@ class Infraction(commands.Cog):
         # Log to file
         log_to_file(
             case_id, "VOID", interaction.user, member or user_id, action, case[6], case[7],
-            extra_info=f"DM sent: {dm_success}"
-        )
-        await interaction.response.send_message(f"Infraction {case_id} voided and roles updated.", ephemeral=True)
-
-    @app_commands.command(name="infraction-list", description="List a user's infractions.")
-    @app_commands.describe(user="User to list infractions for")
-    async def infraction_list(self, interaction: discord.Interaction, user: discord.Member):
-        is_infraction_staff = any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles)
-        is_personnel = any(r.id == PERSONNEL_ROLE_ID for r in interaction.user.roles)
-        if not (is_infraction_staff or (is_personnel and user.id == interaction.user.id)):
-            await interaction.response.send_message("You do not have permission to view this user's infractions.", ephemeral=True)
-            log_to_file(
-                f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
-                "LIST-FAILED",
-                interaction.user,
-                user,
-                "N/A",
-                "Listed infractions",
-                "N/A",
-                extra_info="No permission"
-            )
-            return
-        infractions = await self.get_user_infractions(user.id)
-        if not infractions:
-            await interaction.response.send_message("No infractions found for this user.", ephemeral=True)
-            log_to_file(
-                f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
-                "LIST-EMPTY",
-                interaction.user,
-                user,
-                "N/A",
-                "Listed infractions",
-                "N/A",
-                extra_info="No infractions found"
-            )
-            return
-        pages = [infractions[i:i+5] for i in range(0, len(infractions), 5)]
-        page = 0
-        embed = discord.Embed(title=f"Infractions for {user}", color=discord.Color.orange())
-        for inf in pages[page]:
-            embed.add_field(
-                name=f"Case {inf[0]} - {inf[5]}",
-                value=f"Date: {inf[8][:10]}\nReason: {inf[6]}",
-                inline=False
-            )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        log_to_file(
-            f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
-            "LIST",
-            interaction.user,
-            user,
-            "N/A",
-            "Listed infractions",
-            "N/A",
-            extra_info=f"Infractions listed: {len(infractions)}"
-        )
-
-    @app_commands.command(name="infraction-view", description="View a specific infraction by case ID.")
-    @app_commands.describe(case_id="Case ID to view")
-    async def infraction_view(self, interaction: discord.Interaction, case_id: int):
-        is_infraction_staff = any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles)
-        is_personnel = any(r.id == PERSONNEL_ROLE_ID for r in interaction.user.roles)
-        if not (is_infraction_staff or is_personnel):
-            await interaction.response.send_message("You do not have permission to view infractions.", ephemeral=True)
-            log_to_file(
-                case_id,
-                "VIEW-FAILED",
-                interaction.user,
-                "N/A",
-                "N/A",
-                "N/A",
-                "N/A",
-                extra_info="No permission"
-            )
-            return
-        case = await self.get_case(case_id, include_voided=True)
-        if not case:
-            await interaction.response.send_message("Case not found.", ephemeral=True)
-            log_to_file(
-                case_id,
-                "VIEW-FAILED",
-                interaction.user,
-                "N/A",
-                "N/A",
-                "N/A",
-                "N/A",
-                extra_info="Case not found"
-            )
-            return
-        embed = self.get_infraction_embed(case[0], case[2], case[4], case[5], case[6], case[7], case[8], voided=bool(case[9]))
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        log_to_file(
-            case_id,
-            "VIEW",
-            interaction.user,
-            case[2],
-            case[5],
-            case[6],
-            case[7]
-        )
-
-class ConfirmView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=30)
-        self.value = None
-
-    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.value = True
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(view=self)
-        self.stop()
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.value = False
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(view=self)
-        self.stop()
-
-    async def wait_for_confirm(self, interaction):
-        await self.wait()
-        return self.value
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Infraction(bot))
+            extra_info=f"DM sent:
