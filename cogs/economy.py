@@ -797,7 +797,43 @@ def log_econ_action(command: str, user: discord.User, amount: int = None, item: 
 # Example usage: Call log_econ_action in each command after the action is performed.
 # For example, in your buy command after a successful purchase:
 # log_econ_action("buy", user, amount=price, item=item)
-# Do the same for sell, work, daily, deposit, withdraw, fish, crime, rob, etc.
+# Do the same for @commands.command(name="sell-all-fish", aliases=["saf"])
+async def sell_all_fish_command(self, ctx):
+    await self.sell_all_fish(ctx.author, ctx)
+
+@app_commands.command(name="sellallfish", description="Sell all fish and junk items you can catch while fishing.")
+async def sell_all_fish_slash(self, interaction: discord.Interaction):
+    await self.sell_all_fish(interaction.user, interaction)
+
+async def sell_all_fish(self, user, destination):
+    inventory = dict(await self.get_inventory(user.id))
+    fish_types = [name for name, _ in get_fish_types()]
+    total_earned = 0
+    sold_items = []
+    for item in fish_types:
+        amount = inventory.get(item, 0)
+        if amount > 0 and item in SHOP_ITEMS:
+            price = SHOP_ITEMS[item]["price"]
+            earned = price * amount
+            await self.add_item(user.id, item, -amount)
+            data = await self.get_user(user.id)
+            await self.update_user(user.id, balance=data["balance"] + earned)
+            total_earned += earned
+            sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
+            log_econ_action("sell-all-fish", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+    if sold_items:
+        desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
+    else:
+        desc = "You have no fish or junk items to sell."
+    embed = discord.Embed(
+        title="Sell All Fish",
+        description=desc,
+        color=0xd0b47b
+    )
+    if isinstance(destination, discord.Interaction):
+        await destination.response.send_message(embed=embed)
+    else:
+        await destination.send(embed=embed), work, daily, deposit, withdraw, fish, crime, rob, etc.
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
