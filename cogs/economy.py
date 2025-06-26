@@ -9,6 +9,7 @@ import math
 from datetime import datetime, timedelta
 from discord.ui import View, Button
 from typing import Optional
+import datetime
 
 DB_PATH = os.getenv("ECONOMY_DB_FILE", "data/economy.db")
 DAILY_AMOUNT = int(os.getenv("DAILY_AMOUNT", 250))
@@ -448,6 +449,7 @@ class Economy(commands.Cog):
                     description=f"You bought a **{item}**!",
                     color=0xd0b47b
                 )
+                log_econ_action("buy", user, amount=price, item=item)
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -637,6 +639,7 @@ class Economy(commands.Cog):
                 description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
                 color=0xd0b47b
             )
+            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -770,5 +773,86 @@ def get_fish_types():
             fish_types.append((name, value_range))
     return fish_types
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Economy(bot))
+def log_econ_action(command: str, user: discord.User, amount: int = None, item: str = None, extra: str = ""):
+    log_dir = os.path.join(os.path.dirname(__file__), "../logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "economy_actions.txt")
+    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    user_str = f"{user} ({user.id})"
+    parts = [f"[{timestamp}]", f"User: {user_str}", f"Command: {command}"]
+    if amount is not None:
+        parts.append(f"Amount: {amount}")
+    if item:
+        parts.append(f"Item: {item}")
+    if extra:
+        parts.append(f"Extra: {extra}")
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(" | ".join(parts) + "\n")
+
+# Example usage in commands:
+# Add log_econ_action(...) to each command after the action is performed
+
+# Example for buy:
+async def buy(self, user, item, destination):
+    if item not in SHOP_ITEMS:
+        embed = discord.Embed(
+            title="Shop",
+            description="That item doesn't exist.",
+            color=0xd0b47b
+        )
+    else:
+        data = await self.get_user(user.id)
+        price = SHOP_ITEMS[item]["price"]
+        if data["balance"] < price:
+            embed = discord.Embed(
+                title="Shop",
+                description="You don't have enough coins.",
+                color=0xd0b47b
+            )
+        else:
+            await self.update_user(user.id, balance=data["balance"] - price)
+            await self.add_item(user.id, item, 1)
+            embed = discord.Embed(
+                title="Shop",
+                description=f"You bought a **{item}**!",
+                color=0xd0b47b
+            )
+            log_econ_action("buy", user, amount=price, item=item)
+    if isinstance(destination, discord.Interaction):
+        await destination.response.send_message(embed=embed)
+    else:
+        await destination.send(embed=embed)
+
+# Do the same for sell, deposit, withdraw, work, daily, fish, crime, rob, etc.
+# Example for sell:
+async def sell(self, user, item, amount, destination):
+    items = dict(await self.get_inventory(user.id))
+    if item not in SHOP_ITEMS:
+        embed = discord.Embed(
+            title="Sell",
+            description="That item doesn't exist.",
+            color=0xd0b47b
+        )
+    elif items.get(item, 0) < 1:
+        embed = discord.Embed(
+            title="Sell",
+            description=f"You don't have any **{item.title()}** to sell.",
+            color=0xd0b47b
+        )
+    else:
+        sell_amount = min(amount, items[item])
+        price = SHOP_ITEMS[item]["price"]
+        total = price * sell_amount
+        data = await self.get_user(user.id)
+        await self.add_item(user.id, item, -sell_amount)
+        await self.update_user(user.id, balance=data["balance"] + total)
+        embed = discord.Embed(
+            title="Sell",
+            description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
+            color=0xd0b47b
+        )
+        log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
+    if isinstance(destination, discord.Interaction):
+        await destination.response.send_message(embed=embed)
+    else:
+        await destination.send(embed=embed)
