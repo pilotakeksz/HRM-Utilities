@@ -62,6 +62,27 @@ def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof, extra
             f.write(f"Extra: {extra_info}\n")
         f.write("-" * 40 + "\n")
 
+class ConfirmView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=30)
+        self.value = None
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = True
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = False
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+        self.stop()
+
 class Infraction(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -332,4 +353,6 @@ class Infraction(commands.Cog):
         # Log to file
         log_to_file(
             case_id, "VOID", interaction.user, member or user_id, action, case[6], case[7],
-            extra_info=f"DM sent:
+            extra_info=f"DM sent: {dm_success}"
+        )
+        await interaction.response.send_message(f"Infraction {case_id} voided and roles updated.", ephemeral=True)
