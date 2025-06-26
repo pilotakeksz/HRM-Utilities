@@ -64,14 +64,23 @@ async def send_transcript_and_logs(channel, opener, guild):
         )
     except Exception:
         pass
-    # Send transcript and action log to logging channel
+    # Send summary embed + transcript and action log to logging channel
     log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
     if log_channel:
+        summary_embed = discord.Embed(
+            title="Ticket Closed",
+            description=f"**Ticket:** {channel.mention} (`{channel.id}`)\n"
+                        f"**Opened by:** {opener.mention} (`{opener.id}`)\n"
+                        f"**Closed at:** <t:{int(datetime.datetime.utcnow().timestamp())}:f>\n"
+                        f"**Messages:** {len(messages)}",
+            color=discord.Color.blue()
+        )
+        summary_embed.set_footer(text="Transcript and action log attached.")
         files = [discord.File(transcript_path)]
         if os.path.exists(action_log_path):
             files.append(discord.File(action_log_path))
-        await log_channel.send(
-            content=f"Transcript and logs for closed ticket {channel.mention} ({channel.id}):",
+        await log_channel.send(embed=summary_embed, files=files)
+        await log_channel.send(f"Transcript and logs for closed ticket {channel.mention} ({channel.id}):",
             files=files
         )
 

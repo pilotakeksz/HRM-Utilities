@@ -200,9 +200,12 @@ class Infraction(commands.Cog):
 
         proof_url = proof.url if proof else None
         embed = self.get_infraction_embed("Pending", personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
-        await interaction.response.send_message("Please confirm issuing this infraction:", embed=embed, ephemeral=True, view=ConfirmView())
-        confirm_inter = await ConfirmView().wait_for_confirm(interaction)
-        if not confirm_inter:
+        if proof and proof.content_type and proof.content_type.startswith("image/"):
+            embed.set_image(url=proof.url)
+        view = ConfirmView()
+        await interaction.response.send_message("Please confirm issuing this infraction:", embed=embed, ephemeral=True, view=view)
+        await view.wait()
+        if not view.value:
             await interaction.followup.send("Infraction cancelled.", ephemeral=True)
             return
 
@@ -210,17 +213,33 @@ class Infraction(commands.Cog):
         case_id = get_next_case_id()
         inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
         embed = self.get_infraction_embed(case_id, personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
-        msg = await inf_channel.send(embed=embed, file=await proof.to_file() if proof else None)
+        if proof and proof.content_type and proof.content_type.startswith("image/"):
+            embed.set_image(url=proof.url)
+            msg = await inf_channel.send(embed=embed)
+        elif proof:
+            msg = await inf_channel.send(embed=embed, file=await proof.to_file())
+        else:
+            msg = await inf_channel.send(embed=embed)
         await self.add_infraction(case_id, personnel, interaction.user, action, reason, proof_url, msg.id)
         await self.update_roles(personnel, action, interaction.guild, add=True)
         # DM user
         try:
-            await personnel.send(embed=embed, file=await proof.to_file() if proof else None)
+            if proof and proof.content_type and proof.content_type.startswith("image/"):
+                await personnel.send(embed=embed)
+            elif proof:
+                await personnel.send(embed=embed, file=await proof.to_file())
+            else:
+                await personnel.send(embed=embed)
         except Exception:
             pass
         # Log to logging channel
         log_channel = interaction.guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
-        await log_channel.send(embed=embed, file=await proof.to_file() if proof else None)
+        if proof and proof.content_type and proof.content_type.startswith("image/"):
+            await log_channel.send(embed=embed)
+        elif proof:
+            await log_channel.send(embed=embed, file=await proof.to_file())
+        else:
+            await log_channel.send(embed=embed)
         # Log to file
         log_to_file(case_id, "ISSUE", interaction.user, personnel, action, reason, proof_url)
         await interaction.followup.send(f"Infraction issued and logged. Case ID: {case_id}", ephemeral=True)
