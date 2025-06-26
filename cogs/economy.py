@@ -569,14 +569,25 @@ class Economy(commands.Cog):
 
     async def fish(self, user, destination):
         fish_types = get_fish_types()
-        # Split into junk and normal fish
+        # Assign weights: 1/4 of total weight to junk, 3/4 to normal fish, then random within each group
         junk = [ft for ft in fish_types if ft[1] == (1, 1)]
         normal = [ft for ft in fish_types if ft[1] != (1, 1)]
-        # 1 in 4 chance for junk, 3 in 4 for normal fish
-        if random.random() < 0.25 and junk:
-            fish, value_range = random.choice(junk)
-        else:
-            fish, value_range = random.choice(normal)
+        all_fish = []
+        weights = []
+        if junk:
+            # Distribute 25% of weight equally among junk items
+            junk_weight = 0.25 / len(junk)
+            for ft in junk:
+                all_fish.append(ft)
+                weights.append(junk_weight)
+        if normal:
+            # Distribute 75% of weight equally among normal fish
+            normal_weight = 0.75 / len(normal)
+            for ft in normal:
+                all_fish.append(ft)
+                weights.append(normal_weight)
+        # Pick a fish truly randomly according to weights
+        fish, value_range = random.choices(all_fish, weights=weights, k=1)[0]
         value = value_range[0] if value_range[0] == value_range[1] else random.randint(value_range[0] // 5, value_range[1] // 5) * 5
         await self.add_item(user.id, fish, 1)
         embed = discord.Embed(
