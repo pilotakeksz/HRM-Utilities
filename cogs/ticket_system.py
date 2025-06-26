@@ -37,6 +37,40 @@ def log_transcript(channel, messages):
             f.write(f"[{time}] {msg.author} ({msg.author.id}): {msg.content}\n")
     return filename
 
+# Add a log for ticket actions
+def log_ticket_action(channel_id, action, user):
+    log_file = os.path.join(LOGS_DIR, f"ticket_{channel_id}_actions.txt")
+    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {action} by {user} ({user.id})\n")
+
+async def send_transcript_and_logs(channel, opener, guild):
+    # Transcript
+    messages = [msg async for msg in channel.history(limit=None, oldest_first=True)]
+    transcript_path = log_transcript(channel, messages)
+    # Action log
+    action_log_path = os.path.join(LOGS_DIR, f"ticket_{channel.id}_actions.txt")
+    # DM transcript to opener
+    try:
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            transcript_content = f.read()
+        await opener.send(
+            f"Here is the transcript for your ticket '{channel.name}':",
+            file=discord.File(transcript_path)
+        )
+    except Exception:
+        pass
+    # Send transcript and action log to logging channel
+    log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
+    if log_channel:
+        files = [discord.File(transcript_path)]
+        if os.path.exists(action_log_path):
+            files.append(discord.File(action_log_path))
+        await log_channel.send(
+            content=f"Transcript and logs for closed ticket {channel.mention} ({channel.id}):",
+            files=files
+        )
+
 class TicketTypeSelect(Select):
     def __init__(self):
         options = [
@@ -95,8 +129,10 @@ async def create_ticket(interaction, ticket_type, request_content):
         overwrites=overwrites,
         reason=f"Ticket opened by {user}"
     )
- # testing
- 
+
+    # Log open
+    log_ticket_action(channel.id, "OPEN", user)
+
     # Embed 1 (image)
     embed1 = discord.Embed(color=EMBED_COLOUR)
     embed1.set_image(url=EMBED1_IMAGE)
@@ -138,6 +174,7 @@ class ClaimButton(Button):
         await self.parent_view.channel.set_permissions(hc_role, send_messages=False)
         await self.parent_view.channel.set_permissions(interaction.user, send_messages=True)
         await self.parent_view.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
+        log_ticket_action(self.parent_view.channel.id, "CLAIM", interaction.user)
         # Change button to unclaim
         self.disabled = True
         self.parent_view.clear_items()
@@ -158,6 +195,7 @@ class UnclaimButton(Button):
         self.parent_view.claimed_by = None
         await self.parent_view.channel.set_permissions(hc_role, send_messages=True)
         await self.parent_view.channel.send("This ticket is now unclaimed.")
+        log_ticket_action(self.parent_view.channel.id, "UNCLAIM", interaction.user)
         # Change button back to claim
         self.disabled = True
         self.parent_view.clear_items()
@@ -198,9 +236,9 @@ class ConfirmCloseView(View):
             description="This ticket is being archived. It will permanently be deleted in 15 minutes.",
             color=discord.Color.red()
         ))
-        # Transcript
-        messages = [msg async for msg in self.channel.history(limit=None, oldest_first=True)]
-        transcript_path = log_transcript(self.channel, messages)
+        log_ticket_action(self.channel.id, "CLOSE", interaction.user)
+        # Transcript and logs
+        await send_transcript_and_logs(self.channel, self.opener, interaction.guild)
         # Wait 15 minutes
         await asyncio.sleep(15 * 60)
         await self.channel.send("This ticket will be deleted in 20 seconds.")
@@ -227,36 +265,38 @@ async def ensure_persistent_ticket_embed(bot):
     if embed_id:
         try:
             message = await channel.fetch_message(embed_id)
+            # If message exists, do nothing (don't resend)
+            return
         except Exception:
             message = None
-    if not message:
-        embed1 = discord.Embed(color=EMBED_COLOUR)
-        embed1.set_image(url=EMBED1_IMAGE)
-        embed2 = discord.Embed(
-            title="📡 HRMC Assistance Hub",
-            description="Welcome to the High Rock Military Corps Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
-            color=EMBED_COLOUR
-        )
-        embed2.add_field(
-            name="<:HighRockMilitary:1376605942765977800> General Support",
-            value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
-            inline=True
-        )
-        embed2.add_field(
-            name="<:HC:1343192841676914712> Management",
-            value="Interested in speaking to a HC+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
-            inline=True
-        )
-        embed2.add_field(
-            name="<:MIA:1364309116859715654> MIA",
-            value="Appeals, and reports are now handled by MIA. Please head over there for such concerns.",
-            inline=True
-        )
-        embed2.set_image(url=EMBED2_IMAGE)
-        embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-        sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
-        with open(PERSIST_FILE, "w") as f:
-            f.write(str(sent.id))
+    # If message doesn't exist, send it and store the ID
+    embed1 = discord.Embed(color=EMBED_COLOUR)
+    embed1.set_image(url=EMBED1_IMAGE)
+    embed2 = discord.Embed(
+        title="📡 HRMC Assistance Hub",
+        description="Welcome to the High Rock Military Corps Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
+        color=EMBED_COLOUR
+    )
+    embed2.add_field(
+        name="<:HighRockMilitary:1376605942765977800> General Support",
+        value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
+        inline=True
+    )
+    embed2.add_field(
+        name="<:HC:1343192841676914712> Management",
+        value="Interested in speaking to a HC+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
+        inline=True
+    )
+    embed2.add_field(
+        name="<:MIA:1364309116859715654> MIA",
+        value="Appeals, and reports are now handled by MIA. Please head over there for such concerns.",
+        inline=True
+    )
+    embed2.set_image(url=EMBED2_IMAGE)
+    embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
+    sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
+    with open(PERSIST_FILE, "w") as f:
+        f.write(str(sent.id))
 
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
@@ -287,7 +327,7 @@ class TicketSystem(commands.Cog):
             color=EMBED_COLOUR
         )
         embed2.add_field(
-            name="<:HighRockMilitary:1376605942765977800> General Support",
+            name="<:HighRockMilitary:1376605942766914712> General Support",
             value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
             inline=True
         )
@@ -304,7 +344,9 @@ class TicketSystem(commands.Cog):
         embed2.set_image(url=EMBED2_IMAGE)
         embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-        await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
+        sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
+        with open(PERSIST_FILE, "w") as f:
+            f.write(str(sent.id))
         await interaction.response.send_message("Ticket system setup complete.", ephemeral=True)
 
     @app_commands.command(name="ticket-add", description="Add a user to your ticket (civilians only)")
