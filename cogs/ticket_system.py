@@ -56,7 +56,7 @@ class TicketTypeSelect(Select):
             await interaction.response.send_modal(GeneralTicketModal())
 
 class TicketTypeView(View):
-    def __init__(self):
+    def __init__(self): # test
         super().__init__(timeout=None)
         self.add_item(TicketTypeSelect())
 
