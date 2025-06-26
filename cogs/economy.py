@@ -129,26 +129,6 @@ class SellItemAutocomplete(discord.app_commands.Transformer):
             if amount > 0 and current.lower() in item.lower()
         ][:25]
 
-WORK_RESPONSES = [
-    "You worked as a **Barista** and earned",
-    "You delivered **Pizza** and earned",
-    "You walked a **Dog** and earned",
-    "You mowed a **Lawn** and earned",
-    "You washed a **Car** and earned",
-    "You coded a **Website** and earned",
-    "You painted a **Fence** and earned",
-    "You helped at a **Bakery** and earned",
-    "You tutored a **Student** and earned",
-    "You cleaned a **Pool** and earned",
-    "You worked as a **Cashier** and earned",
-    "You fixed a **Bike** and earned",
-    "You organized a **Garage** and earned",
-    "You delivered **Groceries** and earned",
-    "You worked as a **Receptionist** and earned"
-]
-
-from discord.ext.commands import cooldown, BucketType
-
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
