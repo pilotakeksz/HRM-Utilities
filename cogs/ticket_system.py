@@ -24,14 +24,15 @@ EMBED1_IMAGE = os.getenv("EMBED1_IMAGE")
 EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
 MIA_REDIRECT = os.getenv("MIA_REDIRECT")
 
-LOGS_DIR = "logs"
+LOGS_DIR = os.path.join(os.path.dirname(__file__), "../logs")
+LOGS_DIR = os.path.abspath(LOGS_DIR)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 PERSIST_FILE = os.path.join(LOGS_DIR, "ticket_embed_id.txt")
 DELETION_SCHEDULE_FILE = os.path.join(LOGS_DIR, "pending_ticket_deletions.txt")
 
 def log_transcript(channel, messages):
-    transcripts_dir = os.path.join(LOGS_DIR, "transcripts")
+    transcripts_dir = "transcripts"
     os.makedirs(transcripts_dir, exist_ok=True)
     filename = os.path.join(transcripts_dir, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
     with open(filename, "w", encoding="utf-8") as f:
