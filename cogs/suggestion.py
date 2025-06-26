@@ -4,6 +4,7 @@ from discord import app_commands
 import asyncio
 import os
 import random
+import pickle
 
 SUGGESTION_CHANNEL_ID = 1329910476171378769
 SUGGESTION_MANAGER_ROLE = 1329910241835352064
@@ -13,6 +14,19 @@ DENIED_COLOR = 0xed4245    # red
 THUMBNAIL_URL = "https://cdn.discordapp.com/attachments/1376647403712675991/1376652854391083269/image-141.png?ex=685cffa1&is=685bae21&hm=db6b95d431e55f76eca4e55ca48b7709d7f8bdf1ec1ef77e949b1d0beaa50f42&"
 YES_EMOJI = "<:yes:1358812809558753401>"
 NO_EMOJI = "<:no:1358812780890947625>"
+
+VOTES_FILE = "suggestion_votes.pkl"
+MESSAGE_MAP_FILE = "suggestion_message_map.pkl"
+
+def load_pickle(filename, default):
+    if os.path.exists(filename):
+        with open(filename, "rb") as f:
+            return pickle.load(f)
+    return default
+
+def save_pickle(filename, data):
+    with open(filename, "wb") as f:
+        pickle.dump(data, f)
 
 def progress_bar(yes, no):
     total = yes + no
@@ -106,11 +120,14 @@ class SuggestionView(discord.ui.View):
 class Suggestion(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.votes = {}  # suggestion_id: {"yes": set(user_ids), "no": set(user_ids)}
-        self.message_map = {}  # suggestion_id: message_id
-
-        # Register persistent views for all suggestions on cog load
+        # Load persisted votes and message_map
+        self.votes = load_pickle(VOTES_FILE, {})
+        self.message_map = load_pickle(MESSAGE_MAP_FILE, {})
         bot.add_view(SuggestionView(0))  # Dummy for persistence registration
+
+    def save_votes(self):
+        save_pickle(VOTES_FILE, self.votes)
+        save_pickle(MESSAGE_MAP_FILE, self.message_map)
 
     @app_commands.command(name="suggestion-submit", description="Submit a suggestion")
     @app_commands.describe(title="Title of your suggestion", suggestion="Your suggestion text")
@@ -135,6 +152,7 @@ class Suggestion(commands.Cog):
         msg = await channel.send(embed=embed, view=view)
         self.votes[suggestion_id] = {"yes": set(), "no": set()}
         self.message_map[suggestion_id] = msg.id
+        self.save_votes()
 
         await interaction.response.send_message(f"Suggestion submitted to {channel.mention}!", ephemeral=True)
 
