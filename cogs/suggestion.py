@@ -53,6 +53,28 @@ class SuggestionView(discord.ui.View):
         no = len(votes.get("no", set()))
         return cls(suggestion_id, yes=yes, no=no, disabled=disabled)
 
+    async def handle_vote(self, interaction: discord.Interaction, vote_type: str):
+        cog: Suggestion = interaction.client.get_cog("Suggestion")
+        suggestion_id = self.suggestion_id
+        user_id = interaction.user.id
+        if suggestion_id not in cog.votes:
+            cog.votes[suggestion_id] = {"yes": set(), "no": set()}
+        # Remove from both sets to allow changing vote
+        cog.votes[suggestion_id]["yes"].discard(user_id)
+        cog.votes[suggestion_id]["no"].discard(user_id)
+        cog.votes[suggestion_id][vote_type].add(user_id)
+        yes = len(cog.votes[suggestion_id]["yes"])
+        no = len(cog.votes[suggestion_id]["no"])
+        # Update embed
+        channel = interaction.channel
+        message = await channel.fetch_message(interaction.message.id)
+        embed = message.embeds[0]
+        embed.set_field_at(2, name="Votes", value=progress_bar(yes, no), inline=False)
+        new_view = SuggestionView(self.suggestion_id, yes=yes, no=no)
+        await message.edit(embed=embed, view=new_view)
+        cog.save_votes()
+        await interaction.response.defer()
+
 class SuggestionYesButton(discord.ui.Button):
     def __init__(self, suggestion_id, yes, disabled):
         super().__init__(
@@ -111,6 +133,7 @@ class SuggestionView(discord.ui.View):
         embed.set_field_at(2, name="Votes", value=progress_bar(yes, no), inline=False)
         new_view = SuggestionView(self.suggestion_id, yes=yes, no=no)
         await message.edit(embed=embed, view=new_view)
+        cog.save_votes()
         await interaction.response.defer()
 
     @property
