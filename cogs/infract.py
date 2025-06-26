@@ -45,19 +45,22 @@ def get_next_case_id():
         f.truncate()
     return new_cid
 
-def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof):
+def log_to_file(case_id, action, issued_by, user, inf_type, reason, proof, extra_info=None):
     ensure_log_dir()
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     filename = os.path.join(LOG_DIR, f"case_{case_id}.txt")
-    with open(filename, "w", encoding="utf-8") as f:
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(f"Timestamp: {now}\n")
         f.write(f"Case ID: {case_id}\n")
-        f.write(f"Date: {now}\n")
         f.write(f"Action: {action}\n")
         f.write(f"Issued-by: {issued_by} ({getattr(issued_by, 'id', issued_by)})\n")
         f.write(f"User: {user} ({getattr(user, 'id', user)})\n")
         f.write(f"Type: {inf_type}\n")
         f.write(f"Reason: {reason}\n")
         f.write(f"Proof: {proof}\n")
+        if extra_info:
+            f.write(f"Extra: {extra_info}\n")
+        f.write("-" * 40 + "\n")
 
 class InfractionActionAutocomplete(app_commands.Transformer):
     async def autocomplete(self, interaction: discord.Interaction, current: str):
@@ -323,6 +326,16 @@ class Infraction(commands.Cog):
                 inline=False
             )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_to_file(
+            f"LIST-{user.id}-{datetime.datetime.utcnow().timestamp()}",
+            "LIST",
+            interaction.user,
+            user,
+            "N/A",
+            "Listed infractions",
+            "N/A",
+            extra_info=f"Infractions listed: {len(infractions)}"
+        )
 
     @app_commands.command(name="infraction-view", description="View a specific infraction by case ID.")
     @app_commands.describe(case_id="Case ID to view")
@@ -338,9 +351,15 @@ class Infraction(commands.Cog):
             return
         embed = self.get_infraction_embed(case[0], case[2], case[4], case[5], case[6], case[7], case[8], voided=bool(case[9]))
         await interaction.response.send_message(embed=embed, ephemeral=True)
-        log_channel = interaction.guild.get_channel(INFRACTION_LOG_CHANNEL_ID)
-        await log_channel.send(embed=embed)
-        log_to_file(case_id, "VIEW", interaction.user, case[2], case[5], case[6], case[7])
+        log_to_file(
+            case_id,
+            "VIEW",
+            interaction.user,
+            case[2],
+            case[5],
+            case[6],
+            case[7]
+        )
 
 class ConfirmView(discord.ui.View):
     def __init__(self):
