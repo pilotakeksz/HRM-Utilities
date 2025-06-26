@@ -113,16 +113,14 @@ async def create_ticket(interaction, ticket_type, request_content):
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True),
     }
-    ticket_name = f"📨-{'m-ticket' if ticket_type == 'management' else 'g-ticket'}-{user.name}".replace(" ", "-").lower()
-    category_id = CATEGORY_MANAGEMENT if ticket_type == "management" else CATEGORY_GENERAL
-
-    # Add roles
+    ticket_name = f"📨-m-ticket-{user.name}".replace(" ", "-").lower()
     if ticket_type == "management":
+        category_id = CATEGORY_MANAGEMENT
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
     else:
+        category_id = CATEGORY_GENERAL
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
         overwrites[guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
-
     channel = await guild.create_text_channel(
         ticket_name,
         category=guild.get_channel(category_id),
@@ -166,12 +164,15 @@ class ClaimButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         hc_role = interaction.guild.get_role(HC_ROLE)
-        if hc_role not in interaction.user.roles:
-            await interaction.response.send_message("Only HC can claim this ticket.", ephemeral=True)
+        ticket_handler_role = interaction.guild.get_role(TICKET_HANDLER_ROLE)
+        # Allow both HC and ticket handler to claim
+        if hc_role not in interaction.user.roles and ticket_handler_role not in interaction.user.roles:
+            await interaction.response.send_message("Only HC or Ticket Handlers can claim this ticket.", ephemeral=True)
             return
         self.parent_view.claimed_by = interaction.user
         # Change permissions: only claimer can type, others can view
         await self.parent_view.channel.set_permissions(hc_role, send_messages=False)
+        await self.parent_view.channel.set_permissions(ticket_handler_role, send_messages=False)
         await self.parent_view.channel.set_permissions(interaction.user, send_messages=True)
         await self.parent_view.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
         log_ticket_action(self.parent_view.channel.id, "CLAIM", interaction.user)
@@ -189,11 +190,13 @@ class UnclaimButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         hc_role = interaction.guild.get_role(HC_ROLE)
-        if hc_role not in interaction.user.roles:
-            await interaction.response.send_message("Only HC can unclaim this ticket.", ephemeral=True)
+        ticket_handler_role = interaction.guild.get_role(TICKET_HANDLER_ROLE)
+        if hc_role not in interaction.user.roles and ticket_handler_role not in interaction.user.roles:
+            await interaction.response.send_message("Only HC or Ticket Handlers can unclaim this ticket.", ephemeral=True)
             return
         self.parent_view.claimed_by = None
         await self.parent_view.channel.set_permissions(hc_role, send_messages=True)
+        await self.parent_view.channel.set_permissions(ticket_handler_role, send_messages=True)
         await self.parent_view.channel.send("This ticket is now unclaimed.")
         log_ticket_action(self.parent_view.channel.id, "UNCLAIM", interaction.user)
         # Change button back to claim
@@ -231,7 +234,16 @@ class ConfirmCloseView(View):
         await interaction.response.defer()
         # Archive
         await self.channel.edit(category=interaction.guild.get_channel(CATEGORY_ARCHIVED))
-        await self.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+        # Only allow opener, HC, MC (if general), and ticket handler to view archived ticket
+        overwrites = {
+            self.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            self.opener: discord.PermissionOverwrite(view_channel=True, send_messages=False),
+            self.channel.guild.get_role(HC_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
+            self.channel.guild.get_role(TICKET_HANDLER_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
+        }
+        if self.ticket_type != "management":
+            overwrites[self.channel.guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=False)
+        await self.channel.edit(overwrites=overwrites)
         await self.channel.send(embed=discord.Embed(
             description="This ticket is being archived. It will permanently be deleted in 15 minutes.",
             color=discord.Color.red()
@@ -278,7 +290,7 @@ async def ensure_persistent_ticket_embed(bot):
         color=EMBED_COLOUR
     )
     embed2.add_field(
-        name="<:HighRockMilitary:1376605942765977800> General Support",
+        name="<:HighRockMilitary:1376605942766914712> General Support",
         value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
         inline=True
     )
