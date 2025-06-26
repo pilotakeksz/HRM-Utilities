@@ -26,7 +26,7 @@ def load_pickle(filename, default):
 
 def save_pickle(filename, data):
     with open(filename, "wb") as f:
-        pickle.dump(data, f)
+        pickle.dump(data, f) #test
 
 def progress_bar(yes, no):
     total = yes + no
