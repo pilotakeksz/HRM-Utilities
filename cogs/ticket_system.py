@@ -52,18 +52,32 @@ async def send_transcript_and_logs(channel, opener, guild):
     # Transcript
     messages = [msg async for msg in channel.history(limit=None, oldest_first=True)]
     transcript_path = log_transcript(channel, messages)
+    html_transcript = generate_html_transcript(channel, messages)
+    html_path = os.path.join("transcripts", f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_transcript)
+
     # Action log
     action_log_path = os.path.join(LOGS_DIR, f"ticket_{channel.id}_actions.txt")
+
     # DM transcript to opener
     try:
-        with open(transcript_path, "r", encoding="utf-8") as f:
-            transcript_content = f.read()
-        await opener.send(
-            f"Here is the transcript for your ticket '{channel.name}':",
-            file=discord.File(transcript_path)
+        summary_embed = discord.Embed(
+            title="Your Ticket Transcript",
+            description=f"Here is the transcript for your ticket **{channel.name}**.\n"
+                        f"Opened: <t:{int(channel.created_at.timestamp())}:f>\n"
+                        f"Closed: <t:{int(datetime.datetime.utcnow().timestamp())}:f>\n"
+                        f"Messages: {len(messages)}",
+            color=discord.Color.blue()
         )
+        summary_embed.set_footer(text="Thank you for contacting support!")
+        await opener.send(embed=summary_embed, files=[
+            discord.File(html_path, filename="transcript.html"),
+            discord.File(transcript_path)
+        ])
     except Exception:
         pass
+
     # Send summary embed + transcript and action log to logging channel
     log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
     if log_channel:
@@ -76,7 +90,7 @@ async def send_transcript_and_logs(channel, opener, guild):
             color=discord.Color.blue()
         )
         summary_embed.set_footer(text="Transcript and action log attached.")
-        files = [discord.File(transcript_path)]
+        files = [discord.File(transcript_path), discord.File(html_path, filename="transcript.html")]
         if os.path.exists(action_log_path):
             files.append(discord.File(action_log_path))
         await log_channel.send(embed=summary_embed, files=files)
@@ -465,6 +479,25 @@ class TicketSystem(commands.Cog):
             return
         await interaction.channel.set_permissions(user, overwrite=None)
         await interaction.response.send_message(f"{user.mention} has been removed from the ticket.", ephemeral=True)
+
+def generate_html_transcript(channel, messages):
+    html = [
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Ticket Transcript</title>",
+        "<style>body{font-family:sans-serif;background:#222;color:#eee;} .msg{margin:10px 0;padding:10px;border-radius:8px;background:#333;} .author{font-weight:bold;} .avatar{width:32px;height:32px;vertical-align:middle;border-radius:50%;margin-right:8px;} .time{color:#aaa;font-size:0.9em;margin-left:8px;}</style>",
+        "</head><body>",
+        f"<h2>Transcript for #{channel.name}</h2>"
+    ]
+    for msg in messages:
+        avatar_url = msg.author.display_avatar.url if hasattr(msg.author, "display_avatar") else msg.author.avatar_url
+        time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        content = discord.utils.escape_markdown(msg.content)
+        html.append(
+            f"<div class='msg'><img class='avatar' src='{avatar_url}'/>"
+            f"<span class='author'>{msg.author}</span>"
+            f"<span class='time'>{time}</span><br>{content}</div>"
+        )
+    html.append("</body></html>")
+    return "\n".join(html)
 
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))
