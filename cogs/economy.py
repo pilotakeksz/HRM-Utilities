@@ -294,13 +294,13 @@ class Economy(commands.Cog):
 
     @commands.command(name="work")
     async def work_command(self, ctx):
-        await self.work(ctx.author, ctx)
+        await self._work(ctx.author, ctx)
 
     @app_commands.command(name="work", description="Work a job for coins.")
     async def work_slash(self, interaction: discord.Interaction):
-        await self.work(interaction.user, interaction)
+        await self._work(interaction.user, interaction)
 
-    async def work(self, user, destination):
+    async def _work(self, user, destination):
         data = await self.get_user(user.id)
         now = datetime.utcnow()
         last_work = datetime.fromisoformat(data["last_work"]) if data["last_work"] else None
@@ -312,25 +312,23 @@ class Economy(commands.Cog):
                 description=f"You are tired! Try again in {delta.seconds // 60}m.",
                 color=0xd0b47b
             )
-            if isinstance(destination, discord.Interaction):
-                await destination.response.send_message(embed=embed)
-            else:
-                await destination.send(embed=embed)
-            return  # Prevents giving coins when on cooldown
-
-        # Random earning between 50 and 400, rounded to nearest 5
-        amount = random.randint(10, 80) * 5
-        job_response = random.choice(WORK_RESPONSES)
-        new_balance = data["balance"] + amount
-        await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
-        embed = discord.Embed(
-            title="Work",
-            description=f"{job_response} **{amount}** coins!",
-            color=0xd0b47b
-        )
-        log_econ_action("work", user, amount=amount)
+        else:
+            amount = random.randint(10, 80) * 5
+            job_response = random.choice(WORK_RESPONSES)
+            new_balance = data["balance"] + amount
+            await self.update_user(user.id, balance=new_balance, last_work=now.isoformat())
+            embed = discord.Embed(
+                title="Work",
+                description=f"{job_response} **{amount}** coins!",
+                color=0xd0b47b
+            )
+            log_econ_action("work", user, amount=amount)
+        # Always respond, even if on cooldown
         if isinstance(destination, discord.Interaction):
-            await destination.response.send_message(embed=embed)
+            if destination.response.is_done():
+                await destination.followup.send(embed=embed)
+            else:
+                await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
 
