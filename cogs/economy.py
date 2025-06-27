@@ -578,7 +578,117 @@ class Economy(commands.Cog):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
+    # --- BANK ---
+    @commands.command(name="bank")
+    async def bank_command(self, ctx):
+        await self.show_bank(ctx.author, ctx)
 
+    @app_commands.command(name="bank", description="Show your bank balance and interest rate.")
+    async def bank_slash(self, interaction: discord.Interaction):
+        await self.show_bank(interaction.user, interaction)
+
+    async def show_bank(self, user, destination):
+        data = await self.get_user(user.id)
+        interest = self.get_bank_interest(user)
+        embed = discord.Embed(
+            title=f"{user.name}'s Bank",
+            description=(
+                f"🏦 **Bank Balance:** {data['bank']} coins\n"
+                f"💸 **Interest Rate:** {interest*100:.2f}% per day"
+            ),
+            color=0x00bfae
+        )
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- DEPOSIT ---
+    @commands.command(name="deposit", aliases=["dep"])
+    async def deposit_command(self, ctx, amount: int):
+        await self.deposit(ctx.author, amount, ctx)
+
+    @app_commands.command(name="deposit", description="Deposit coins from your wallet to your bank.")
+    @app_commands.describe(amount="Amount to deposit")
+    async def deposit_slash(self, interaction: discord.Interaction, amount: int):
+        await self.deposit(interaction.user, amount, interaction)
+
+    async def deposit(self, user, amount, destination):
+        data = await self.get_user(user.id)
+        if amount <= 0 or data["balance"] < amount:
+            embed = discord.Embed(
+                title="Deposit",
+                description="Invalid amount or insufficient wallet funds.",
+                color=0x00bfae
+            )
+            log_econ_action("deposit_fail", user, amount=amount)
+        else:
+            await self.update_user(user.id, balance=data["balance"] - amount, bank=data["bank"] + amount)
+            embed = discord.Embed(
+                title="Deposit",
+                description=f"You deposited **{amount}** coins from your wallet to your bank.",
+                color=0x00bfae
+            )
+            log_econ_action("deposit", user, amount=amount)
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- ROB (wallet only, not bank) ---
+    @commands.command(name="rob")
+    @cooldown(1, 180, BucketType.user)
+    async def rob_command(self, ctx, target: discord.Member):
+        await self.rob(ctx.author, target, ctx)
+
+    @app_commands.command(name="rob", description="Try to rob another user (wallet only).")
+    @app_commands.describe(target="The user to rob")
+    async def rob_slash(self, interaction: discord.Interaction, target: discord.Member):
+        await self.rob(interaction.user, target, interaction)
+
+    async def rob(self, user, target, destination):
+        if user.id == target.id:
+            embed = discord.Embed(
+                title="Rob",
+                description="You can't rob yourself!",
+                color=0xd0b47b
+            )
+            log_econ_action("rob_fail", user, extra="Tried to rob self")
+        else:
+            user_data = await self.get_user(user.id)
+            target_data = await self.get_user(target.id)
+            if target_data["balance"] < 100:
+                embed = discord.Embed(
+                    title="Rob",
+                    description="Target doesn't have enough coins in their wallet to rob!",
+                    color=0xd0b47b
+                )
+                log_econ_action("rob_fail", user, extra=f"Target {target} ({target.id}) too poor")
+            else:
+                success = random.random() < 0.5
+                if success:
+                    stolen = random.randint(50, min(500, target_data["balance"]))
+                    await self.update_user(user.id, balance=user_data["balance"] + stolen)
+                    await self.update_user(target.id, balance=target_data["balance"] - stolen)
+                    embed = discord.Embed(
+                        title="Rob",
+                        description=f"You robbed {target.mention} and stole **{stolen}** coins from their wallet!",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("rob", user, amount=stolen, extra=f"target={target} ({target.id})")
+                else:
+                    loss = random.randint(20, 100)
+                    await self.update_user(user.id, balance=max(0, user_data["balance"] - loss))
+                    embed = discord.Embed(
+                        title="Rob",
+                        description=f"You got caught and lost **{loss}** coins!",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("rob_fail", user, amount=loss, extra=f"target={target} ({target.id})")
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
     # --- SHOP ---
     @commands.command(name="shop")
     async def shop_command(self, ctx, page: int = 1):
