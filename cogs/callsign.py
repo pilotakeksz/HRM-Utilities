@@ -88,15 +88,14 @@ class CallsignCog(commands.Cog):
     @commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
     @app_commands.describe(user="User to check (optional)")
     async def callsign(self, ctx, user: discord.Member = None):
-        # Restrict !callsign to role and channels
+        # Restrict !callsign to channels and roles
         if ctx.prefix and ctx.prefix.startswith("!"):
-            if not any(r.id == COMMAND_ROLE for r in getattr(ctx.author, "roles", [])):
-                await ctx.send("You do not have permission to use this command with `!`.", ephemeral=True)
-                return
-            if ctx.channel.id not in ALLOWED_CHANNELS:
-                allowed_mentions = " or ".join(f"<#{cid}>" for cid in ALLOWED_CHANNELS)
-                await ctx.send(f"Please use me in {allowed_mentions}.", ephemeral=True)
-                return
+            # If user does NOT have the 1329910241835352064 role, restrict to allowed channels
+            if not any(r.id == 1329910241835352064 for r in getattr(ctx.author, "roles", [])):
+                if ctx.channel.id not in ALLOWED_CHANNELS:
+                    allowed_mentions = " or ".join(f"<#{cid}>" for cid in ALLOWED_CHANNELS)
+                    await ctx.send(f"Please use me in {allowed_mentions}.", ephemeral=True)
+                    return
         await self.handle_callsign(ctx, user)
 
     async def handle_callsign(self, ctx_or_interaction, user: discord.Member = None):
