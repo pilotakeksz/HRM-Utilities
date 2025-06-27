@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import aiosqlite
 import os
@@ -126,49 +126,10 @@ def log_econ_action(command: str, user: discord.User, amount: int = None, item: 
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(" | ".join(parts) + "\n")
 
-class ShopView(discord.ui.View):
-    def __init__(self, page=1):
-        super().__init__(timeout=60)
-        self.page = page
-
-    async def update(self, interaction, page):
-        self.page = page
-        embed = get_shop_embed(page)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, row=0)
-    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page > 1:
-            await self.update(interaction, self.page - 1)
-        else:
-            await interaction.response.defer()
-
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, row=0)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = math.ceil(len(SHOP_ITEMS) / SHOP_ITEMS_PER_PAGE)
-        if self.page < max_page:
-            await self.update(interaction, self.page + 1)
-        else:
-            await interaction.response.defer()
-
-def get_shop_embed(page=1):
-    embed = discord.Embed(
-        title="🛒 Item Shop",
-        color=0xd0b47b
-    )
-    items = list(SHOP_ITEMS.items())
-    max_page = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
-    page = max(1, min(page, max_page))
-    start = (page - 1) * SHOP_ITEMS_PER_PAGE
-    end = start + SHOP_ITEMS_PER_PAGE
-    for item, info in items[start:end]:
-        embed.add_field(name=f"{item.title()} - {info['price']} coins", value=info["desc"], inline=False)
-    embed.set_footer(text=f"Page {page}/{max_page}")
-    return embed
-
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.apply_bank_interest.start()
 
     async def cog_load(self):
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -235,6 +196,177 @@ class Economy(commands.Cog):
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT item, amount FROM inventory WHERE user_id = ?", (user_id,))
             return await cursor.fetchall()
+
+    # --- DAILY ---
+    def get_daily_amount(self, member):
+        for role_id, amount in [
+            (1329910391840702515, 1000),
+            (1329910389437104220, 500),
+            (1329910329701830686, 250),
+        ]:
+            if hasattr(member, "roles") and any(r.id == role_id for r in getattr(member, "roles", [])):
+                return amount
+        return DAILY_AMOUNT
+
+    @commands.command(name="daily")
+    @cooldown(1, 86400, BucketType.user)
+    async def daily_command(self, ctx):
+        await self._daily(ctx.author, ctx)
+
+    @app_commands.command(name="daily", description="Claim your daily reward.")
+    async def daily_slash(self, interaction: discord.Interaction):
+        await self._daily(interaction.user, interaction)
+
+    async def _daily(self, user, destination):
+        data = await self.get_user(user.id)
+        now = datetime.utcnow()
+        last_daily = data["last_daily"]
+        if last_daily:
+            last_daily_dt = datetime.fromisoformat(last_daily)
+            if now - last_daily_dt < timedelta(days=1):
+                next_time = last_daily_dt + timedelta(days=1)
+                seconds = int((next_time - now).total_seconds())
+                hours, remainder = divmod(seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                msg = f"⏳ You have already claimed your daily. Try again in {hours}h {minutes}m {seconds}s."
+                if hasattr(destination, "response"):
+                    await destination.response.send_message(msg, ephemeral=True)
+                else:
+                    await destination.send(msg)
+                return
+        amount = self.get_daily_amount(user)
+        new_balance = data["balance"] + amount
+        await self.update_user(user.id, balance=new_balance, last_daily=now.isoformat())
+        embed = discord.Embed(
+            title="Daily Reward",
+            description=f"You claimed your daily reward of **{amount}** coins!",
+            color=0xd0b47b
+        )
+        log_econ_action("daily", user, amount=amount)
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- BANK SYSTEM ---
+    def get_bank_interest(self, member):
+        for role_id, interest in BANK_ROLE_TIERS:
+            if hasattr(member, "roles") and any(r.id == role_id for r in getattr(member, "roles", [])):
+                return interest
+        return 0.0
+
+    @tasks.loop(hours=24)
+    async def apply_bank_interest(self):
+        await self.bot.wait_until_ready()
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT user_id, bank FROM users") as cursor:
+                async for row in cursor:
+                    user_id, bank = row
+                    member = self.bot.get_user(user_id)
+                    if not member:
+                        try:
+                            member = await self.bot.fetch_user(user_id)
+                        except Exception:
+                            continue
+                    interest = self.get_bank_interest(member)
+                    if interest > 0 and bank > 0:
+                        interest_amount = int(bank * interest)
+                        await db.execute("UPDATE users SET bank = bank + ? WHERE user_id = ?", (interest_amount, user_id))
+            await db.commit()
+
+    # --- BALANCE ---
+    @commands.command(name="bal", aliases=["balance"])
+    async def balance_command(self, ctx):
+        await self.show_balance(ctx.author, ctx)
+
+    @app_commands.command(name="balance", description="Show your wallet and bank balance.")
+    async def balance_slash(self, interaction: discord.Interaction):
+        await self.show_balance(interaction.user, interaction)
+
+    async def show_balance(self, user, destination):
+        data = await self.get_user(user.id)
+        embed = discord.Embed(
+            title=f"{user.name}'s Balance",
+            description=(
+                f"**Wallet:** {data['balance']} coins\n"
+                f"**Bank:** {data['bank']} coins\n"
+                f"**Total:** {data['balance'] + data['bank']} coins"
+            ),
+            color=0xd0b47b
+        )
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- SELL ALL ---
+    @commands.command(name="sellall")
+    async def sellall_command(self, ctx):
+        await self.sell_all(ctx.author, ctx)
+
+    @app_commands.command(name="sellall", description="Sell all items in your inventory.")
+    async def sellall_slash(self, interaction: discord.Interaction):
+        await self.sell_all(interaction.user, interaction)
+
+    async def sell_all(self, user, destination):
+        inventory = dict(await self.get_inventory(user.id))
+        total_earned = 0
+        sold_items = []
+        for item, amount in inventory.items():
+            if amount > 0 and item in SHOP_ITEMS:
+                price = SHOP_ITEMS[item]["price"]
+                earned = price * amount
+                await self.add_item(user.id, item, -amount)
+                data = await self.get_user(user.id)
+                await self.update_user(user.id, balance=data["balance"] + earned)
+                total_earned += earned
+                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
+                log_econ_action("sellall", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+        if sold_items:
+            desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
+        else:
+            desc = "You have no items to sell."
+        embed = discord.Embed(
+            title="Sell All",
+            description=desc,
+            color=0xd0b47b
+        )
+        log_econ_action("sellall-summary", user, amount=total_earned, extra="All items sold")
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+    # --- ECON LEADERBOARD ---
+    @commands.command(name="eclb", aliases=["econlb", "econleaderboard"])
+    async def eclb_command(self, ctx):
+        await self.econ_leaderboard(ctx)
+
+    @app_commands.command(name="econleaderboard", description="Show the top 10 richest users (wallet + bank).")
+    async def eclb_slash(self, interaction: discord.Interaction):
+        await self.econ_leaderboard(interaction)
+
+    async def econ_leaderboard(self, destination):
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT user_id, balance, bank FROM users")
+            rows = await cursor.fetchall()
+        leaderboard = sorted(rows, key=lambda r: (r[1] or 0) + (r[2] or 0), reverse=True)[:10]
+        embed = discord.Embed(
+            title="Economy Leaderboard",
+            color=0xd0b47b
+        )
+        for idx, (user_id, balance, bank) in enumerate(leaderboard, 1):
+            user = self.bot.get_user(user_id)
+            name = user.name if user else f"User {user_id}"
+            embed.add_field(
+                name=f"{idx}. {name}",
+                value=f"Wallet: {balance} | Bank: {bank} | Total: {balance + bank}",
+                inline=False
+            )
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
 
     # --- WORK ---
     @commands.command(name="work")
@@ -744,5 +876,46 @@ class Economy(commands.Cog):
     # In all commands that spend coins (buy, bet, crime, rob, etc.), always use data["balance"] (wallet) only.
     # No changes needed if you already use data["balance"] for all spending checks and updates.
 
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Economy(bot))
+def get_shop_embed(page=1):
+    items = list(SHOP_ITEMS.items())
+    total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * SHOP_ITEMS_PER_PAGE
+    end = start + SHOP_ITEMS_PER_PAGE
+    embed = discord.Embed(
+        title=f"Shop (Page {page}/{total_pages})",
+        color=0xd0b47b
+    )
+    for name, data in items[start:end]:
+        embed.add_field(
+            name=f"{name.title()} — {data['price']} coins",
+            value=data['desc'],
+            inline=False
+        )
+    embed.set_footer(text="Use !buy <item> <amount> or /buy to purchase. Use !shop <page> to view more.")
+    return embed
+
+class ShopView(discord.ui.View):
+    def __init__(self, page=1):
+        super().__init__(timeout=60)
+        self.page = page
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page > 1:
+            self.page -= 1
+            embed = get_shop_embed(self.page)
+            await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
+        else:
+            await interaction.response.defer()
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        items = list(SHOP_ITEMS.items())
+        total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
+        if self.page < total_pages:
+            self.page += 1
+            embed = get_shop_embed(self.page)
+            await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
+        else:
+            await interaction.response.defer()
