@@ -132,14 +132,25 @@ class CallsignCog(commands.Cog):
             return False, "This callsign is already taken."
         callsigns[user.id] = callsign
         save_callsigns(callsigns)
+        # DM the user
+        try:
+            await user.send(f"You have been assigned the callsign: **{callsign}**.")
+        except Exception:
+            pass
         return True, f"Callsign {callsign} assigned to {user.mention}."
 
     async def remove_callsign(self, user: discord.Member):
         callsigns = load_callsigns()
         if user.id not in callsigns:
             return False, "User does not have a callsign."
+        removed = callsigns[user.id]
         del callsigns[user.id]
         save_callsigns(callsigns)
+        # DM the user
+        try:
+            await user.send(f"Your callsign **{removed}** has been removed.")
+        except Exception:
+            pass
         return True, f"Callsign removed from {user.mention}."
 
     async def view_callsign(self, user: discord.Member):
