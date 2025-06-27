@@ -28,34 +28,20 @@ def save_blacklist_entry(entry):
         json.dump(data, f, indent=2)
 
 def generate_blacklist_id():
-    # 8-char random string + timestamp
     rand = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"BL-{rand}-{int(datetime.datetime.utcnow().timestamp())}"
-
-class BlacklistIssueModal(discord.ui.Modal, title="Issue Blacklist"):
-    reason = discord.ui.TextInput(label="Reason", style=discord.TextStyle.paragraph, required=True, max_length=512)
-    hrmc_wide = discord.ui.TextInput(label="HRMC-wide? (true/false)", required=True, max_length=5)
-    ban = discord.ui.TextInput(label="Ban user? (true/false)", required=True, max_length=5)
-
-    def __init__(self, user: discord.Member, proof: discord.Attachment = None):
-        super().__init__()
-        self.user = user
-        self.proof = proof
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await BlacklistCog.issue_blacklist(
-            cog=interaction.client.get_cog("BlacklistCog"),
-            interaction=interaction,
-            user=self.user,
-            reason=self.reason.value,
-            proof=self.proof,
-            hrmc_wide=self.hrmc_wide.value.lower() == "true",
-            ban=self.ban.value.lower() == "true"
-        )
 
 class BlacklistCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    async def cog_load(self):
+        # Sync commands on cog load
+        await self.bot.wait_until_ready()
+        try:
+            await self.bot.tree.sync()
+        except Exception:
+            pass
 
     @app_commands.command(name="blacklist-issue", description="Issue a blacklist for a user.")
     @app_commands.describe(
@@ -75,17 +61,6 @@ class BlacklistCog(commands.Cog):
         hrmc_wide: bool = False,
         ban: bool = False
     ):
-        await self.issue_blacklist(
-            interaction=interaction,
-            user=user,
-            reason=reason,
-            proof=proof,
-            hrmc_wide=hrmc_wide,
-            ban=ban
-        )
-
-    @staticmethod
-    async def issue_blacklist(cog, interaction, user, reason, proof, hrmc_wide, ban):
         blacklist_id = generate_blacklist_id()
         now = datetime.datetime.utcnow()
         proof_url = proof.url if proof else None
