@@ -919,3 +919,6 @@ class ShopView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
         else:
             await interaction.response.defer()
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Economy(bot))
