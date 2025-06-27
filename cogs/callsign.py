@@ -9,6 +9,16 @@ ADMIN_ID = 840949634071658507
 ADMIN_ROLES = [911072161349918720, 1329910241835352064]
 REQUEST_ROLE = 1329910329701830686
 
+# Role to callsign mapping for auto-assign
+ROLE_CALLSIGN_MAP = {
+    1329910241835352064: ("1", "S"),
+    1329910265264869387: ("2", "H"),
+    1329910285594525886: ("3", "W"),
+    1329910295703064577: ("4", "L"),
+    1329910298525696041: ("5", "I"),
+    1331644226781577316: ("6", "C"),
+}
+
 EMBED_COLOUR = 0xd0b47b
 EMBED1_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376995508890898513/callsigns.png?ex=68603900&is=685ee780&hm=43c6d4a34716adda18ac09a8f8673bc8ca7b83cd8da734ab0351062da31353c0&"
 EMBED2_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=685fffd1&is=685eae51&hm=f82cda74f321de0626c24fd63509c23ae372137c08637329c1d5fd1be9d902a8&"
@@ -42,6 +52,18 @@ def save_callsigns(callsigns):
 def is_valid_callsign(callsign):
     return bool(re.fullmatch(r"[1-6]M-[SHWLIC][0-9]{2}", callsign))
 
+def get_next_callsign(x, y, callsigns):
+    # Find the next available ZZ for the given X and Y
+    used = set()
+    for cs in callsigns.values():
+        m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", cs)
+        if m:
+            used.add(int(m.group(1)))
+    zz = 1
+    while zz in used:
+        zz += 1
+    return f"{x}M-{y}{zz:02d}"
+
 class CallsignCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -52,7 +74,6 @@ class CallsignCog(commands.Cog):
         await self.handle_callsign(ctx, user)
 
     async def handle_callsign(self, ctx_or_interaction, user: discord.Member = None):
-        # Determine context
         author = ctx_or_interaction.user if isinstance(ctx_or_interaction, discord.Interaction) else ctx_or_interaction.author
         callsigns = load_callsigns()
         is_admin = author.id == ADMIN_ID
@@ -71,26 +92,8 @@ class CallsignCog(commands.Cog):
             await self._respond(ctx_or_interaction, embed)
             return
 
-        # Admin full menu
-        if is_admin:
-            view = CallsignAdminView(self)
-            await self._send_menu(ctx_or_interaction, "Admin Callsign Menu", view)
-            return
-
-        # Admin roles: remove only
-        if has_admin_role:
-            view = CallsignRemoveView(self)
-            await self._send_menu(ctx_or_interaction, "Callsign Admin Menu (Remove Only)", view)
-            return
-
-        # Request role: view, view all, request
-        if has_request_role:
-            view = CallsignRequestView(self)
-            await self._send_menu(ctx_or_interaction, "Callsign Menu", view)
-            return
-
-        # Everyone else: view, view all
-        view = CallsignBasicView(self)
+        # Always show the basic menu
+        view = CallsignBasicView(self, is_admin=is_admin or has_admin_role, can_request=has_request_role or is_admin or has_admin_role)
         await self._send_menu(ctx_or_interaction, "Callsign Menu", view)
 
     async def _send_menu(self, ctx_or_interaction, title, view):
@@ -137,11 +140,68 @@ class CallsignCog(commands.Cog):
         callsigns = load_callsigns()
         return callsigns
 
-    async def request_callsign(self, user: discord.Member, callsign: str):
-        # For demo, just assign if available
-        return await self.add_callsign(user, callsign)
+    async def request_callsign(self, user: discord.Member):
+        callsigns = load_callsigns()
+        # Auto-assign based on roles
+        for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
+            if any(r.id == role_id for r in getattr(user, "roles", [])):
+                callsign = get_next_callsign(x, y, callsigns)
+                if callsign in callsigns.values():
+                    continue
+                callsigns[user.id] = callsign
+                save_callsigns(callsigns)
+                return True, f"Auto-assigned callsign {callsign} to {user.mention}."
+        return False, "You do not have a role eligible for a callsign or all are taken."
 
 # --- Views for Menus ---
+
+class CallsignBasicView(discord.ui.View):
+    def __init__(self, cog, is_admin=False, can_request=False):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.is_admin = is_admin
+        self.can_request = can_request
+        if is_admin:
+            self.add_item(CallsignAdminMenuButton(cog))
+
+    @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
+    async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        callsign = await self.cog.view_callsign(interaction.user)
+        embed = discord.Embed(
+            title="Your Callsign",
+            description=f"Your callsign: **{callsign}**",
+            color=EMBED_COLOUR
+        )
+        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
+    async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        callsigns = await self.cog.view_all_callsigns()
+        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns.items()) or "No callsigns assigned."
+        embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
+        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Request Callsign", style=discord.ButtonStyle.green, row=1)
+    async def request_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.can_request:
+            await interaction.response.send_message("You do not have permission to request a callsign.", ephemeral=True)
+            return
+        ok, msg = await self.cog.request_callsign(interaction.user)
+        await interaction.response.send_message(msg, ephemeral=True)
+
+class CallsignAdminMenuButton(discord.ui.Button):
+    def __init__(self, cog):
+        super().__init__(label="Admin Menu", style=discord.ButtonStyle.red, row=1)
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction):
+        view = CallsignAdminView(self.cog)
+        embed = discord.Embed(title="Admin Callsign Menu", color=EMBED_COLOUR)
+        embed.set_image(url=EMBED2_IMAGE)
+        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class CallsignAdminView(discord.ui.View):
     def __init__(self, cog):
@@ -163,77 +223,6 @@ class CallsignAdminView(discord.ui.View):
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-class CallsignRemoveView(discord.ui.View):
-    def __init__(self, cog):
-        super().__init__(timeout=120)
-        self.cog = cog
-
-    @discord.ui.button(label="Remove Callsign", style=discord.ButtonStyle.red)
-    async def remove_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CallsignRemoveModal(self.cog))
-
-    @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
-    async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns.items()) or "No callsigns assigned."
-        embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
-        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-class CallsignRequestView(discord.ui.View):
-    def __init__(self, cog):
-        super().__init__(timeout=120)
-        self.cog = cog
-
-    @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
-    async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        callsign = await self.cog.view_callsign(interaction.user)
-        embed = discord.Embed(
-            title="Your Callsign",
-            description=f"Your callsign: **{callsign}**",
-            color=EMBED_COLOUR
-        )
-        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
-    async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns.items()) or "No callsigns assigned."
-        embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
-        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="Request Callsign", style=discord.ButtonStyle.green)
-    async def request_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CallsignRequestModal(self.cog))
-
-class CallsignBasicView(discord.ui.View):
-    def __init__(self, cog):
-        super().__init__(timeout=120)
-        self.cog = cog
-
-    @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
-    async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        callsign = await self.cog.view_callsign(interaction.user)
-        embed = discord.Embed(
-            title="Your Callsign",
-            description=f"Your callsign: **{callsign}**",
-            color=EMBED_COLOUR
-        )
-        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
-    async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns.items()) or "No callsigns assigned."
-        embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
-        embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-# --- Modals for Admin/Request Actions ---
 
 class CallsignAddModal(discord.ui.Modal, title="Add Callsign"):
     user_id = discord.ui.TextInput(label="User ID", required=True)
@@ -266,17 +255,6 @@ class CallsignRemoveModal(discord.ui.Modal, title="Remove Callsign"):
             await interaction.response.send_message("Invalid user ID.", ephemeral=True)
             return
         ok, msg = await self.cog.remove_callsign(user)
-        await interaction.response.send_message(msg, ephemeral=True)
-
-class CallsignRequestModal(discord.ui.Modal, title="Request Callsign"):
-    callsign = discord.ui.TextInput(label="Desired Callsign (XM-YZZ)", required=True)
-
-    def __init__(self, cog):
-        super().__init__()
-        self.cog = cog
-
-    async def on_submit(self, interaction: discord.Interaction):
-        ok, msg = await self.cog.request_callsign(interaction.user, self.callsign.value)
         await interaction.response.send_message(msg, ephemeral=True)
 
 async def setup(bot):
