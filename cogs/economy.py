@@ -288,9 +288,9 @@ class Economy(commands.Cog):
         embed = discord.Embed(
             title=f"{user.name}'s Balance",
             description=(
-                f"**Wallet:** {data['balance']} coins\n"
-                f"**Bank:** {data['bank']} coins\n"
-                f"**Total:** {data['balance'] + data['bank']} coins"
+                f"💰 **Wallet:** {data['balance']} coins\n"
+                f"🏦 **Bank:** {data['bank']} coins\n"
+                f"📊 **Total:** {data['balance'] + data['bank']} coins"
             ),
             color=0xd0b47b
         )
@@ -351,15 +351,17 @@ class Economy(commands.Cog):
             cursor = await db.execute("SELECT user_id, balance, bank FROM users")
             rows = await cursor.fetchall()
         leaderboard = sorted(rows, key=lambda r: (r[1] or 0) + (r[2] or 0), reverse=True)[:10]
+        place_emojis = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
         embed = discord.Embed(
             title="Economy Leaderboard",
             color=0xd0b47b
         )
         for idx, (user_id, balance, bank) in enumerate(leaderboard, 1):
             user = self.bot.get_user(user_id)
-            name = user.name if user else f"User {user_id}"
+            mention = f"<@{user_id}>"
+            emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
             embed.add_field(
-                name=f"{idx}. {name}",
+                name=f"{emoji} {idx}. {mention}",
                 value=f"Wallet: {balance} | Bank: {bank} | Total: {balance + bank}",
                 inline=False
             )
