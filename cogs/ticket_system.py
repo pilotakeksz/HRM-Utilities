@@ -179,88 +179,46 @@ async def create_ticket(interaction, ticket_type, request_content):
     embed2.set_image(url=EMBED2_IMAGE)
     embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-    await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], view=TicketActionView(channel, user, ticket_type))
+    await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], view=TicketActionView())
 
     await interaction.response.send_message(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
 class TicketActionView(View):
-    def __init__(self, channel, opener, ticket_type):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.channel = channel
-        self.opener = opener
-        self.ticket_type = ticket_type
-        self.claimed_by = None
-        self.add_item(ClaimButton(self))
-        self.add_item(CloseButton(self))
+        self.add_item(ClaimButton())
+        self.add_item(CloseButton())
 
 class ClaimButton(Button):
-    def __init__(self, parent_view):
+    def __init__(self):
         super().__init__(
             label="Claim",
             style=discord.ButtonStyle.success,
             emoji="✅",
-            custom_id="claim_button"  # <-- Add this
+            custom_id="claim_button"
         )
-        self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
         hc_role = interaction.guild.get_role(HC_ROLE)
         ticket_handler_role = interaction.guild.get_role(TICKET_HANDLER_ROLE)
-        # Allow both HC and ticket handler to claim
         if hc_role not in interaction.user.roles and ticket_handler_role not in interaction.user.roles:
             await interaction.response.send_message("Only HC or Ticket Handlers can claim this ticket.", ephemeral=True)
             return
-        self.parent_view.claimed_by = interaction.user
-        # Change permissions: only claimer can type, others can view
-        await self.parent_view.channel.set_permissions(hc_role, send_messages=False)
-        await self.parent_view.channel.set_permissions(ticket_handler_role, send_messages=False)
-        await self.parent_view.channel.set_permissions(interaction.user, send_messages=True)
-        await self.parent_view.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
-        log_ticket_action(self.parent_view.channel.id, "CLAIM", interaction.user)
-        # Change button to unclaim
-        self.disabled = True
-        self.parent_view.clear_items()
-        self.parent_view.add_item(UnclaimButton(self.parent_view))
-        self.parent_view.add_item(CloseButton(self.parent_view))
-        await interaction.response.edit_message(view=self.parent_view)
-
-class UnclaimButton(Button):
-    def __init__(self, parent_view):
-        super().__init__(
-            label="Unclaim",
-            style=discord.ButtonStyle.secondary,
-            emoji="🟦",
-            custom_id="unclaim_button"  # <-- Add this
-        )
-        self.parent_view = parent_view
-
-    async def callback(self, interaction: discord.Interaction):
-        hc_role = interaction.guild.get_role(HC_ROLE)
-        ticket_handler_role = interaction.guild.get_role(TICKET_HANDLER_ROLE)
-        if hc_role not in interaction.user.roles and ticket_handler_role not in interaction.user.roles:
-            await interaction.response.send_message("Only HC or Ticket Handlers can unclaim this ticket.", ephemeral=True)
-            return
-        self.parent_view.claimed_by = None
-        await self.parent_view.channel.set_permissions(hc_role, send_messages=True)
-        await self.parent_view.channel.set_permissions(ticket_handler_role, send_messages=True)
-        await self.parent_view.channel.send("This ticket is now unclaimed.")
-        log_ticket_action(self.parent_view.channel.id, "UNCLAIM", interaction.user)
-        # Change button back to claim
-        self.disabled = True
-        self.parent_view.clear_items()
-        self.parent_view.add_item(ClaimButton(self.parent_view))
-        self.parent_view.add_item(CloseButton(self.parent_view))
-        await interaction.response.edit_message(view=self.parent_view)
+        await interaction.channel.set_permissions(hc_role, send_messages=False)
+        await interaction.channel.set_permissions(ticket_handler_role, send_messages=False)
+        await interaction.channel.set_permissions(interaction.user, send_messages=True)
+        await interaction.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
+        log_ticket_action(interaction.channel.id, "CLAIM", interaction.user)
+        await interaction.response.edit_message(view=TicketActionView())  # Re-render view
 
 class CloseButton(Button):
-    def __init__(self, parent_view):
+    def __init__(self):
         super().__init__(
             label="Close",
             style=discord.ButtonStyle.danger,
             emoji="🔒",
-            custom_id="close_button"  # <-- Add this
+            custom_id="close_button"
         )
-        self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_message(
@@ -269,43 +227,40 @@ class CloseButton(Button):
                 description="Are you sure you want to close this ticket? This action cannot be undone.",
                 color=discord.Color.red()
             ),
-            view=ConfirmCloseView(self.parent_view.channel, self.parent_view.opener, self.parent_view.ticket_type),
+            view=ConfirmCloseView(),
             ephemeral=True
         )
 
 class ConfirmCloseView(View):
-    def __init__(self, channel, opener, ticket_type):
-        super().__init__(timeout=None)  # <-- Make persistent
-        self.channel = channel
-        self.opener = opener
-        self.ticket_type = ticket_type
+    def __init__(self):
+        super().__init__(timeout=None)
 
     @discord.ui.button(label="Confirm Close", style=discord.ButtonStyle.danger, custom_id="confirm_close_button")
     async def confirm(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer()
         # Archive
-        await self.channel.edit(category=interaction.guild.get_channel(CATEGORY_ARCHIVED))
+        await interaction.channel.edit(category=interaction.guild.get_channel(CATEGORY_ARCHIVED))
         # Only allow opener, HC, MC (if general), and ticket handler to view archived ticket
+        # You may need to fetch the opener from the channel topic or database if needed
         overwrites = {
-            self.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            self.opener: discord.PermissionOverwrite(view_channel=True, send_messages=False),
-            self.channel.guild.get_role(HC_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
-            self.channel.guild.get_role(TICKET_HANDLER_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
+            interaction.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=False),
+            interaction.channel.guild.get_role(HC_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
+            interaction.channel.guild.get_role(TICKET_HANDLER_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
         }
-        if self.ticket_type != "management":
-            overwrites[self.channel.guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=False)
-        await self.channel.edit(overwrites=overwrites)
-        await self.channel.send(embed=discord.Embed(
+        # If you want to allow MC for general tickets, add logic here
+        await interaction.channel.edit(overwrites=overwrites)
+        await interaction.channel.send(embed=discord.Embed(
             description="This ticket is being archived. It will permanently be deleted in 15 minutes.",
             color=discord.Color.red()
         ))
-        log_ticket_action(self.channel.id, "CLOSE", interaction.user)
+        log_ticket_action(interaction.channel.id, "CLOSE", interaction.user)
         # Transcript and logs
-        await send_transcript_and_logs(self.channel, self.opener, interaction.guild)
+        # You may need to fetch the opener from the channel topic or database if needed
+        await send_transcript_and_logs(interaction.channel, interaction.user, interaction.guild)
         # Schedule deletion
         delete_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=15)).timestamp()
-        save_pending_deletion(self.channel.id, delete_at)
-        asyncio.create_task(schedule_ticket_deletion(interaction.client, self.channel.id, delete_at))
+        save_pending_deletion(interaction.channel.id, delete_at)
+        asyncio.create_task(schedule_ticket_deletion(interaction.client, interaction.channel.id, delete_at))
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, custom_id="cancel_close_button")
@@ -415,8 +370,8 @@ class TicketSystem(commands.Cog):
         self.bot = bot
         self.bot.loop.create_task(self._startup_embed())
         self.bot.loop.create_task(resume_pending_deletions(self.bot))
-        # Only register views that do NOT require arguments
-        self.bot.add_view(TicketTypeView())  # This is safe and persistent
+        self.bot.add_view(TicketTypeView())
+        self.bot.add_view(TicketActionView())  # Register as persistent!
 
     async def _startup_embed(self):
         await self.bot.wait_until_ready()
