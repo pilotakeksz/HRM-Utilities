@@ -167,17 +167,17 @@ class CallsignBasicView(discord.ui.View):
             self.add_item(CallsignAdminMenuButton(cog))
 
     def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Only allow the original user to interact
         if interaction.user.id != self.allowed_user_id:
             self.stop()
+            try:
+                self.bot.loop.create_task(interaction.response.send_message("You can't use this menu.", ephemeral=True))
+            except Exception:
+                pass
             return False
         return True
 
     @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
     async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.interaction_check(interaction):
-            await interaction.response.send_message("You can't use this menu.", ephemeral=True)
-            return
         callsign = await self.cog.view_callsign(interaction.user)
         embed = discord.Embed(
             title="Your Callsign",
