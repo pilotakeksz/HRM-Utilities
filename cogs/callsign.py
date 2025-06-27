@@ -58,9 +58,10 @@ def is_valid_callsign(callsign):
     return bool(re.fullmatch(r"[1-6]M-[SHWLIC][0-9]{2}", callsign))
 
 def get_next_callsign(x, y, callsigns):
+    # Find all ZZs in use for ANY X/Y (not just for this role/letter)
     used = set()
     for cs in callsigns.values():
-        m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", cs)
+        m = re.fullmatch(r"[1-6]M-[SHWLIC](\d{2})", cs)
         if m:
             used.add(int(m.group(1)))
     zz = 1
@@ -194,24 +195,23 @@ class CallsignCog(commands.Cog):
             return False, "You do not have permission to request a callsign."
         for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
             if any(r.id == role_id for r in getattr(user, "roles", [])):
-                # Find all ZZs in use for this X/Y
+                # Find all ZZs in use for ANY X/Y
                 used = set()
                 for cs in callsigns.values():
-                    m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", cs)
+                    m = re.fullmatch(r"[1-6]M-[SHWLIC](\d{2})", cs)
                     if m:
                         used.add(int(m.group(1)))
-                # Find the lowest available ZZ
                 zz = 1
                 while zz in used:
                     zz += 1
-                lowest_callsign = f"{x}M-{y}{min(used) if used else 1:02d}"
+                # Find the lowest ZZ in use for ANY callsign
+                min_zz = min(used) if used else 1
                 current_callsign = callsigns.get(user.id)
-                # If user already has the lowest possible callsign, don't change it
                 if current_callsign:
                     m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", current_callsign)
-                    if m and int(m.group(1)) == min(used) if used else 1:
+                    if m and int(m.group(1)) == min_zz:
                         return False, f"Your callsign is already up to date: **{current_callsign}**"
-                # Otherwise, assign the lowest available
+                # Otherwise, assign the lowest available universal ZZ
                 callsigns[user.id] = f"{x}M-{y}{zz:02d}"
                 save_callsigns(callsigns)
                 return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
