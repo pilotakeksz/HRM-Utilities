@@ -158,14 +158,27 @@ class CallsignCog(commands.Cog):
             return False, "You do not have permission to request a callsign."
         for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
             if any(r.id == role_id for r in getattr(user, "roles", [])):
-                new_callsign = get_next_callsign(x, y, callsigns)
+                # Find all ZZs in use for this X/Y
+                used = set()
+                for cs in callsigns.values():
+                    m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", cs)
+                    if m:
+                        used.add(int(m.group(1)))
+                # Find the lowest available ZZ
+                zz = 1
+                while zz in used:
+                    zz += 1
+                lowest_callsign = f"{x}M-{y}{min(used) if used else 1:02d}"
                 current_callsign = callsigns.get(user.id)
-                # If user already has a callsign and it's already the lowest possible, don't change it
-                if current_callsign == new_callsign:
-                    return False, f"Your callsign is already up to date: **{current_callsign}**"
-                callsigns[user.id] = new_callsign
+                # If user already has the lowest possible callsign, don't change it
+                if current_callsign:
+                    m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", current_callsign)
+                    if m and int(m.group(1)) == min(used) if used else 1:
+                        return False, f"Your callsign is already up to date: **{current_callsign}**"
+                # Otherwise, assign the lowest available
+                callsigns[user.id] = f"{x}M-{y}{zz:02d}"
                 save_callsigns(callsigns)
-                return True, f"Auto-assigned callsign {new_callsign} to {user.mention}."
+                return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
         return False, "You do not have a role eligible for a callsign or all are taken."
 
 # --- Views for Menus ---
