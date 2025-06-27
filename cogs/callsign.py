@@ -104,7 +104,7 @@ class CallsignCog(commands.Cog):
         is_admin = author.id == ADMIN_ID
         has_admin_role = any(r.id in ADMIN_ROLES for r in getattr(author, "roles", []))
         has_request_role = any(r.id == REQUEST_ROLE for r in getattr(author, "roles", []))
-        has_command_role = any(r.id == COMMAND_ROLE for r in getattr(author, "roles", []))
+        has_command_role = any(r.id in (COMMAND_ROLE, 1329910241835352064) for r in getattr(author, "roles", []))
 
         # Log all command opens
         log_command(author, "callsign", f"user={user.id if user else 'self'}")
