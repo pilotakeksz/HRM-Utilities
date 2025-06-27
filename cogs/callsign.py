@@ -93,7 +93,7 @@ class CallsignCog(commands.Cog):
             return
 
         # Always show the basic menu
-        view = CallsignBasicView(self, is_admin=is_admin or has_admin_role, can_request=has_request_role or is_admin or has_admin_role)
+        view = CallsignBasicView(self, is_admin=is_admin or has_admin_role, can_request=has_request_role, allowed_user_id=author.id)
         await self._send_menu(ctx_or_interaction, "Callsign Menu", view)
 
     async def _send_menu(self, ctx_or_interaction, title, view):
@@ -157,18 +157,25 @@ class CallsignCog(commands.Cog):
 # --- Views for Menus ---
 
 class CallsignBasicView(discord.ui.View):
-    def __init__(self, cog, is_admin=False, can_request=False):
+    def __init__(self, cog, is_admin=False, can_request=False, allowed_user_id=None):
         super().__init__(timeout=120)
         self.cog = cog
         self.is_admin = is_admin
         self.can_request = can_request
+        self.allowed_user_id = allowed_user_id
         if is_admin:
             self.add_item(CallsignAdminMenuButton(cog))
 
+    def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # Only allow the original user to interact
+        if interaction.user.id != self.allowed_user_id:
+            self.stop()
+            return False
+        return True
+
     @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
     async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only allow the original user to interact
-        if interaction.user.id != interaction.message.interaction.user.id:
+        if not self.interaction_check(interaction):
             await interaction.response.send_message("You can't use this menu.", ephemeral=True)
             return
         callsign = await self.cog.view_callsign(interaction.user)
@@ -182,7 +189,7 @@ class CallsignBasicView(discord.ui.View):
 
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != interaction.message.interaction.user.id:
+        if not self.interaction_check(interaction):
             await interaction.response.send_message("You can't use this menu.", ephemeral=True)
             return
         callsigns = await self.cog.view_all_callsigns()
@@ -193,7 +200,7 @@ class CallsignBasicView(discord.ui.View):
 
     @discord.ui.button(label="Request Callsign", style=discord.ButtonStyle.green, row=1)
     async def request_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != interaction.message.interaction.user.id:
+        if not self.interaction_check(interaction):
             await interaction.response.send_message("You can't use this menu.", ephemeral=True)
             return
         if not self.can_request:
