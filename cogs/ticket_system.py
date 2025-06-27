@@ -236,14 +236,24 @@ class ConfirmCloseView(View):
             interaction.channel.guild.get_role(TICKET_HANDLER_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
         }
         await interaction.channel.edit(overwrites=overwrites)
+
+        # Calculate next exact half hour in UTC
+        now = datetime.datetime.utcnow()
+        if now.minute < 30:
+            next_half_hour = now.replace(minute=30, second=0, microsecond=0)
+        else:
+            # Move to next hour
+            next_half_hour = (now + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        delete_at = next_half_hour.timestamp()
+        time_str = next_half_hour.strftime('%H:%M UTC')
+
         await interaction.channel.send(embed=discord.Embed(
-            description="This ticket is being archived. It will permanently be deleted in 15 minutes.",
+            description=f"This ticket is being archived. It will be permanently deleted at **{time_str}**.",
             color=discord.Color.red()
         ))
         # Transcript and logs
         await send_transcript_and_logs(interaction.channel, interaction.user, interaction.guild)
         # Schedule deletion
-        delete_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=15)).timestamp()
         save_pending_deletion(interaction.channel.id, delete_at)
         interaction.client.loop.create_task(schedule_ticket_deletion(interaction.client, interaction.channel.id, delete_at))
         self.stop()
