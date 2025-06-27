@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ui import View, Select, Button, Modal, TextInput
 import asyncio
 import datetime
+import logging
 
 # Load from environment
 CIVILIAN_ROLE = int(os.getenv("CIVILIAN_ROLE"))
@@ -275,16 +276,32 @@ def remove_pending_deletion(channel_id):
 async def schedule_ticket_deletion(bot, channel_id, delete_at):
     now = datetime.datetime.utcnow().timestamp()
     wait_time = delete_at - now
+    logging.info(f"[TicketSystem] Scheduling deletion for channel {channel_id} in {wait_time:.2f} seconds.")
     if wait_time > 0:
         await asyncio.sleep(wait_time)
+    # Try to get the channel from cache
     channel = bot.get_channel(int(channel_id))
+    if not channel:
+        # Try to fetch the channel from API
+        try:
+            channel = await bot.fetch_channel(int(channel_id))
+            logging.info(f"[TicketSystem] Successfully fetched channel {channel_id} from API.")
+        except Exception as e:
+            logging.error(f"[TicketSystem] Could not fetch channel {channel_id}: {e}")
+            remove_pending_deletion(channel_id)
+            return
     if channel:
         try:
             await channel.send("This ticket will be deleted in 20 seconds.")
             await asyncio.sleep(20)
             await channel.delete()
+            logging.info(f"[TicketSystem] Deleted ticket channel {channel_id}.")
+        except discord.Forbidden:
+            logging.error(f"[TicketSystem] Missing permissions to delete channel {channel_id}.")
         except Exception as e:
-            print(f"Failed to delete ticket channel {channel_id}: {e}")
+            logging.error(f"[TicketSystem] Failed to delete ticket channel {channel_id}: {e}")
+    else:
+        logging.error(f"[TicketSystem] Channel {channel_id} not found for deletion.")
     remove_pending_deletion(channel_id)
 
 async def ensure_persistent_ticket_embed(bot):
