@@ -9,7 +9,6 @@ ADMIN_ID = 840949634071658507
 ADMIN_ROLES = [911072161349918720, 1329910241835352064]
 REQUEST_ROLE = 1329910329701830686
 
-# Role to callsign mapping for auto-assign
 ROLE_CALLSIGN_MAP = {
     1329910241835352064: ("1", "S"),
     1329910265264869387: ("2", "H"),
@@ -53,7 +52,6 @@ def is_valid_callsign(callsign):
     return bool(re.fullmatch(r"[1-6]M-[SHWLIC][0-9]{2}", callsign))
 
 def get_next_callsign(x, y, callsigns):
-    # Find the next available ZZ for the given X and Y
     used = set()
     for cs in callsigns.values():
         m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", cs)
@@ -63,6 +61,14 @@ def get_next_callsign(x, y, callsigns):
     while zz in used:
         zz += 1
     return f"{x}M-{y}{zz:02d}"
+
+def callsign_sort_key(item):
+    # item: (user_id, callsign)
+    cs = item[1]
+    m = re.fullmatch(r"([1-6])M-([SHWLIC])(\d{2})", cs)
+    if m:
+        return (int(m.group(1)), m.group(2), int(m.group(3)))
+    return (99, "Z", 999)
 
 class CallsignCog(commands.Cog):
     def __init__(self, bot):
@@ -92,8 +98,12 @@ class CallsignCog(commands.Cog):
             await self._respond(ctx_or_interaction, embed)
             return
 
-        # Always show the basic menu
-        view = CallsignBasicView(self, is_admin=is_admin or has_admin_role, can_request=has_request_role, allowed_user_id=author.id)
+        view = CallsignBasicView(
+            self,
+            is_admin=is_admin or has_admin_role,
+            can_request=has_request_role,
+            allowed_user_id=author.id
+        )
         await self._send_menu(ctx_or_interaction, "Callsign Menu", view)
 
     async def _send_menu(self, ctx_or_interaction, title, view):
@@ -138,14 +148,14 @@ class CallsignCog(commands.Cog):
 
     async def view_all_callsigns(self):
         callsigns = load_callsigns()
-        return callsigns
+        # Sort by X, then Y, then ZZ
+        sorted_items = sorted(callsigns.items(), key=callsign_sort_key)
+        return sorted_items
 
     async def request_callsign(self, user: discord.Member):
         callsigns = load_callsigns()
-        # Only allow if user has the request role
         if not any(r.id == REQUEST_ROLE for r in getattr(user, "roles", [])):
             return False, "You do not have permission to request a callsign."
-        # Auto-assign based on roles, always give the lowest available number
         for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
             if any(r.id == role_id for r in getattr(user, "roles", [])):
                 callsign = get_next_callsign(x, y, callsigns)
@@ -167,14 +177,7 @@ class CallsignBasicView(discord.ui.View):
             self.add_item(CallsignAdminMenuButton(cog))
 
     def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.allowed_user_id:
-            self.stop()
-            try:
-                self.bot.loop.create_task(interaction.response.send_message("You can't use this menu.", ephemeral=True))
-            except Exception:
-                pass
-            return False
-        return True
+        return interaction.user.id == self.allowed_user_id
 
     @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
     async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -189,20 +192,15 @@ class CallsignBasicView(discord.ui.View):
 
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.interaction_check(interaction):
-            await interaction.response.send_message("You can't use this menu.", ephemeral=True)
-            return
         callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns.items()) or "No callsigns assigned."
+        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns) or "No callsigns assigned."
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="Request Callsign", style=discord.ButtonStyle.green, row=1)
     async def request_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.interaction_check(interaction):
-            await interaction.response.send_message("You can't use this menu.", ephemeral=True)
-            return
+        # Only show if can_request is True
         if not self.can_request:
             await interaction.response.send_message("You do not have permission to request a callsign.", ephemeral=True)
             return
@@ -215,16 +213,20 @@ class CallsignAdminMenuButton(discord.ui.Button):
         self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
-        view = CallsignAdminView(self.cog)
+        view = CallsignAdminView(self.cog, allowed_user_id=interaction.user.id)
         embed = discord.Embed(title="Admin Callsign Menu", color=EMBED_COLOUR)
         embed.set_image(url=EMBED2_IMAGE)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class CallsignAdminView(discord.ui.View):
-    def __init__(self, cog):
+    def __init__(self, cog, allowed_user_id=None):
         super().__init__(timeout=120)
         self.cog = cog
+        self.allowed_user_id = allowed_user_id
+
+    def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.allowed_user_id
 
     @discord.ui.button(label="Add Callsign", style=discord.ButtonStyle.green)
     async def add_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -237,7 +239,7 @@ class CallsignAdminView(discord.ui.View):
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns.items()) or "No callsigns assigned."
+        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns) or "No callsigns assigned."
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
