@@ -265,6 +265,9 @@ class Infraction(commands.Cog):
                     f"**ID:** `{infraction_id}`"
                 )
                 embed.add_field(name="\u200b", value=value, inline=False)
+            # Add UTC footer
+            now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+            embed.set_footer(text=f"Generated: {now_utc}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @commands.command(name="infractionlog")
@@ -304,6 +307,9 @@ class Infraction(commands.Cog):
                     f"**ID:** `{infraction_id}`"
                 )
                 embed.add_field(name="\u200b", value=value, inline=False)
+            # Add UTC footer
+            now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+            embed.set_footer(text=f"Generated: {now_utc}")
         await channel.send(embed=embed)
         await ctx.send("Infraction log sent.")
 
