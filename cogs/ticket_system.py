@@ -439,5 +439,13 @@ class TicketSystem(commands.Cog):
         await interaction.channel.set_permissions(user, overwrite=None)
         await interaction.response.send_message(f"{user.mention} has been removed from the ticket.", ephemeral=True)
 
+    @commands.command(name="force_delete_ticket")
+    @commands.has_permissions(administrator=True)
+    async def force_delete_ticket(self, ctx):
+        try:
+            await ctx.channel.delete()
+        except Exception as e:
+            await ctx.send(f"Failed to delete: {e}", delete_after=10)
+
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))
