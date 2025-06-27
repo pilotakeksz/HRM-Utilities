@@ -36,6 +36,9 @@ class BlacklistCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def cog_load(self):
+        await self.bot.tree.sync(guild=discord.Object(GUILD_ID))
+
     @app_commands.guilds(discord.Object(GUILD_ID))  # Fast registration for your server
     @app_commands.command(name="blacklist-issue", description="Issue a blacklist for a user.")
     @app_commands.describe(
