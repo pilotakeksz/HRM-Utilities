@@ -10,9 +10,10 @@ import string
 BLACKLIST_ROLE_ID = 1329910241835352064
 BLACKLIST_CHANNEL_ID = 1329910470332649536
 BLACKLIST_ICON = "<:HighRockMilitary:1376605942765977800>"
+GUILD_ID = 1329908357812981882  # Your server ID
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "../data")
 BLACKLIST_DATA_FILE = os.path.join(DATA_DIR, "blacklists.json")
-GUILD_ID = 1329908357812981882
 
 def ensure_data_file():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -37,9 +38,10 @@ class BlacklistCog(commands.Cog):
         self.bot = bot
 
     async def cog_load(self):
+        # Force sync for instant registration in your guild
         await self.bot.tree.sync(guild=discord.Object(GUILD_ID))
 
-    @app_commands.guilds(discord.Object(GUILD_ID))  # Fast registration for your server
+    @app_commands.guilds(discord.Object(GUILD_ID))
     @app_commands.command(name="blacklist-issue", description="Issue a blacklist for a user.")
     @app_commands.describe(
         user="User to blacklist",
