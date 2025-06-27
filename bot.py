@@ -46,8 +46,8 @@ async def main():
         await bot.load_extension("cogs.ticket_system")
         await bot.load_extension("cogs.divisons")
         await bot.load_extension("cogs.infract")
+        await bot.load_extension("cogs.delete_archive")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
     asyncio.run(main())
-#testi
