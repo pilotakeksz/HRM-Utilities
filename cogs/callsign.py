@@ -245,7 +245,20 @@ class CallsignBasicView(discord.ui.View):
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns) or "No callsigns assigned."
+        if not callsigns:
+            desc = "No callsigns assigned."
+        else:
+            desc = ""
+            last_y = None
+            for uid, cs in callsigns:
+                m = re.fullmatch(r"[1-6]M-([SHWLIC])(\d{2})", cs)
+                y = m.group(1) if m else None
+                if y != last_y:
+                    if last_y is not None:
+                        desc += "\n"
+                    desc += f"**----- {y or '?'} -----**\n"
+                    last_y = y
+                desc += f"<@{uid}>: **{cs}**\n"
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -302,7 +315,20 @@ class CallsignAdminView(discord.ui.View):
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         callsigns = await self.cog.view_all_callsigns()
-        desc = "\n".join(f"<@{uid}>: **{cs}**" for uid, cs in callsigns) or "No callsigns assigned."
+        if not callsigns:
+            desc = "No callsigns assigned."
+        else:
+            desc = ""
+            last_y = None
+            for uid, cs in callsigns:
+                m = re.fullmatch(r"[1-6]M-([SHWLIC])(\d{2})", cs)
+                y = m.group(1) if m else None
+                if y != last_y:
+                    if last_y is not None:
+                        desc += "\n"
+                    desc += f"**----- {y or '?'} -----**\n"
+                    last_y = y
+                desc += f"<@{uid}>: **{cs}**\n"
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
