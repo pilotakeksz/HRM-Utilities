@@ -47,15 +47,10 @@ class CallsignCog(commands.Cog):
         self.bot = bot
 
     # --- Command Group ---
-    @commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
-    @app_commands.describe(user="User to check (optional)")
-    async def callsign(self, ctx, user: discord.Member = None):
-        await self.handle_callsign(ctx, user)
-
-    @app_commands.command(name="callsign", description="Callsign management tool")
-    @app_commands.describe(user="User to check (optional)")
-    async def callsign_slash(self, interaction: discord.Interaction, user: discord.Member = None):
-        await self.handle_callsign(interaction, user)
+@commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
+@app_commands.describe(user="User to check (optional)")
+async def callsign(self, ctx, user: discord.Member = None):
+    await self.handle_callsign(ctx, user)
 
     async def handle_callsign(self, ctx_or_interaction, user: discord.Member = None):
         # Determine context
