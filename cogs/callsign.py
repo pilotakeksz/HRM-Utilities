@@ -24,6 +24,12 @@ EMBED2_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/13769
 EMBED_FOOTER = "High Rock Military Corps"
 EMBED_ICON = "https://cdn.discordapp.com/attachments/1376647403712675991/1376652854391083269/image-141.png?ex=68604b61&is=685ef9e1&hm=bb374c9e0b2f4e1b20ac6f2566d20e4506d35c8733d3012bfb5f0a88c1a12946&"
 
+LOG_CHANNEL_ID = 1343686645815181382  # Replace with your actual logs channel if different
+COMMAND_ROLE = 774973267089293323
+ALLOWED_CHANNELS = [1329910474581479495, 1329910518659551272]
+LOGS_DIR = os.path.join(os.path.dirname(__file__), "../logs")
+LOG_FILE = os.path.join(LOGS_DIR, "callsign_commands.txt")
+
 def ensure_callsign_file():
     os.makedirs(os.path.dirname(CALLSIGN_FILE), exist_ok=True)
     if not os.path.exists(CALLSIGN_FILE):
@@ -70,6 +76,11 @@ def callsign_sort_key(item):
         return (int(m.group(1)), m.group(2), int(m.group(3)))
     return (99, "Z", 999)
 
+def log_command(user, command, detail=""):
+    os.makedirs(LOGS_DIR, exist_ok=True)
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{discord.utils.utcnow()}] {user} ({user.id}) ran {command}: {detail}\n")
+
 class CallsignCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -77,6 +88,15 @@ class CallsignCog(commands.Cog):
     @commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
     @app_commands.describe(user="User to check (optional)")
     async def callsign(self, ctx, user: discord.Member = None):
+        # Restrict !callsign to role and channels
+        if ctx.prefix and ctx.prefix.startswith("!"):
+            if not any(r.id == COMMAND_ROLE for r in getattr(ctx.author, "roles", [])):
+                await ctx.send("You do not have permission to use this command with `!`.", ephemeral=True)
+                return
+            if ctx.channel.id not in ALLOWED_CHANNELS:
+                allowed_mentions = " or ".join(f"<#{cid}>" for cid in ALLOWED_CHANNELS)
+                await ctx.send(f"Please use me in {allowed_mentions}.", ephemeral=True)
+                return
         await self.handle_callsign(ctx, user)
 
     async def handle_callsign(self, ctx_or_interaction, user: discord.Member = None):
@@ -85,6 +105,10 @@ class CallsignCog(commands.Cog):
         is_admin = author.id == ADMIN_ID
         has_admin_role = any(r.id in ADMIN_ROLES for r in getattr(author, "roles", []))
         has_request_role = any(r.id == REQUEST_ROLE for r in getattr(author, "roles", []))
+        has_command_role = any(r.id == COMMAND_ROLE for r in getattr(author, "roles", []))
+
+        # Log all command opens
+        log_command(author, "callsign", f"user={user.id if user else 'self'}")
 
         # If used as !callsign @user or !cs @user, just show that user's callsign
         if user:
@@ -96,13 +120,15 @@ class CallsignCog(commands.Cog):
             embed.set_image(url=EMBED1_IMAGE)
             embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
             await self._respond(ctx_or_interaction, embed)
+            log_command(author, "view_callsign", f"target={user.id}")
             return
 
         view = CallsignBasicView(
             self,
             is_admin=is_admin or has_admin_role,
             can_request=has_request_role,
-            allowed_user_id=author.id
+            allowed_user_id=author.id,
+            has_command_role=has_command_role
         )
         await self._send_menu(ctx_or_interaction, "Callsign Menu", view)
 
@@ -195,15 +221,15 @@ class CallsignCog(commands.Cog):
 # --- Views for Menus ---
 
 class CallsignBasicView(discord.ui.View):
-    def __init__(self, cog, is_admin=False, can_request=False, allowed_user_id=None):
+    def __init__(self, cog, is_admin=False, can_request=False, allowed_user_id=None, has_command_role=False):
         super().__init__(timeout=120)
         self.cog = cog
         self.is_admin = is_admin
         self.can_request = can_request
-        # allowed_user_id is now unused
+        self.has_command_role = has_command_role
 
         if is_admin:
-            self.add_item(CallsignAdminMenuButton(cog))
+            self.add_item(CallsignAdminMenuButton(cog, show_add=has_command_role))
 
     @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
     async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -215,6 +241,7 @@ class CallsignBasicView(discord.ui.View):
         )
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_command(interaction.user, "view_callsign")
 
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -223,6 +250,7 @@ class CallsignBasicView(discord.ui.View):
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_command(interaction.user, "view_all_callsigns")
 
     @discord.ui.button(label="Request Callsign", style=discord.ButtonStyle.green, row=1)
     async def request_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -231,31 +259,46 @@ class CallsignBasicView(discord.ui.View):
             return
         ok, msg = await self.cog.request_callsign(interaction.user)
         await interaction.response.send_message(msg, ephemeral=True)
+        log_command(interaction.user, "request_callsign", msg)
 
 class CallsignAdminMenuButton(discord.ui.Button):
-    def __init__(self, cog):
+    def __init__(self, cog, show_add=False):
         super().__init__(label="Admin Menu", style=discord.ButtonStyle.red, row=1)
         self.cog = cog
+        self.show_add = show_add
 
     async def callback(self, interaction: discord.Interaction):
-        view = CallsignAdminView(self.cog)
+        view = CallsignAdminView(self.cog, show_add=self.show_add)
         embed = discord.Embed(title="Admin Callsign Menu", color=EMBED_COLOUR)
         embed.set_image(url=EMBED2_IMAGE)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        log_command(interaction.user, "open_admin_menu")
 
 class CallsignAdminView(discord.ui.View):
-    def __init__(self, cog, allowed_user_id=None):
+    def __init__(self, cog, show_add=False):
         super().__init__(timeout=120)
         self.cog = cog
+        self.show_add = show_add
+
+        if not self.show_add:
+            # Remove the add_callsign button if not allowed
+            for item in list(self.children):
+                if isinstance(item, discord.ui.Button) and item.label == "Add Callsign":
+                    self.remove_item(item)
 
     @discord.ui.button(label="Add Callsign", style=discord.ButtonStyle.green)
     async def add_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.show_add:
+            await interaction.response.send_message("You do not have permission to add callsigns.", ephemeral=True)
+            return
         await interaction.response.send_modal(CallsignAddModal(self.cog))
+        log_command(interaction.user, "add_callsign_modal_open")
 
     @discord.ui.button(label="Remove Callsign", style=discord.ButtonStyle.red)
     async def remove_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CallsignRemoveModal(self.cog))
+        log_command(interaction.user, "remove_callsign_modal_open")
 
     @discord.ui.button(label="View All Callsigns", style=discord.ButtonStyle.blurple)
     async def view_all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -264,6 +307,7 @@ class CallsignAdminView(discord.ui.View):
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_command(interaction.user, "admin_view_all_callsigns")
 
 class CallsignAddModal(discord.ui.Modal, title="Add Callsign"):
     user_id = discord.ui.TextInput(label="User ID", required=True)
@@ -281,6 +325,7 @@ class CallsignAddModal(discord.ui.Modal, title="Add Callsign"):
             return
         ok, msg = await self.cog.add_callsign(user, self.callsign.value)
         await interaction.response.send_message(msg, ephemeral=True)
+        log_command(interaction.user, "add_callsign", f"target={self.user_id.value} result={msg}")
 
 class CallsignRemoveModal(discord.ui.Modal, title="Remove Callsign"):
     user_id = discord.ui.TextInput(label="User ID", required=True)
@@ -297,6 +342,7 @@ class CallsignRemoveModal(discord.ui.Modal, title="Remove Callsign"):
             return
         ok, msg = await self.cog.remove_callsign(user)
         await interaction.response.send_message(msg, ephemeral=True)
+        log_command(interaction.user, "remove_callsign", f"target={self.user_id.value} result={msg}")
 
 async def setup(bot):
     await bot.add_cog(CallsignCog(bot))
