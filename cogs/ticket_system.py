@@ -377,7 +377,7 @@ class TicketSystem(commands.Cog):
         await self.bot.wait_until_ready()
         await ensure_persistent_ticket_embed(self.bot)
 
-    @commands.command(name="assistance")
+    @commands.command(name="assistance") #test
     async def assistance_command(self, ctx):
         if ctx.author.id != ADMIN_ID:
             await ctx.send("You do not have permission to use this command.", delete_after=10)
