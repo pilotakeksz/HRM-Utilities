@@ -158,10 +158,14 @@ class CallsignCog(commands.Cog):
             return False, "You do not have permission to request a callsign."
         for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
             if any(r.id == role_id for r in getattr(user, "roles", [])):
-                callsign = get_next_callsign(x, y, callsigns)
-                callsigns[user.id] = callsign
+                new_callsign = get_next_callsign(x, y, callsigns)
+                current_callsign = callsigns.get(user.id)
+                # If user already has a callsign and it's already the lowest possible, don't change it
+                if current_callsign == new_callsign:
+                    return False, f"Your callsign is already up to date: **{current_callsign}**"
+                callsigns[user.id] = new_callsign
                 save_callsigns(callsigns)
-                return True, f"Auto-assigned callsign {callsign} to {user.mention}."
+                return True, f"Auto-assigned callsign {new_callsign} to {user.mention}."
         return False, "You do not have a role eligible for a callsign or all are taken."
 
 # --- Views for Menus ---
