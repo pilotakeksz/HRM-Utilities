@@ -32,7 +32,7 @@ PERSIST_FILE = os.path.join(LOGS_DIR, "ticket_embed_id.txt")
 DELETION_SCHEDULE_FILE = os.path.join(LOGS_DIR, "pending_ticket_deletions.txt")
 
 def log_transcript(channel, messages):
-    transcripts_dir = "transcripts"  # <-- changed from "logs" to "transcripts"
+    transcripts_dir = "transcripts"
     os.makedirs(transcripts_dir, exist_ok=True)
     filename = os.path.join(transcripts_dir, f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.txt")
     with open(filename, "w", encoding="utf-8") as f:
@@ -40,13 +40,6 @@ def log_transcript(channel, messages):
             time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
             f.write(f"[{time}] {msg.author} ({msg.author.id}): {msg.content}\n")
     return filename
-
-# Add a log for ticket actions
-def log_ticket_action(channel_id, action, user):
-    log_file = os.path.join(LOGS_DIR, f"ticket_{channel_id}_actions.txt")
-    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] {action} by {user} ({user.id})\n")
 
 async def send_transcript_and_logs(channel, opener, guild):
     # Transcript
@@ -56,9 +49,6 @@ async def send_transcript_and_logs(channel, opener, guild):
     html_path = os.path.join("transcripts", f"transcript_{channel.id}_{int(datetime.datetime.utcnow().timestamp())}.html")
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_transcript)
-
-    # Action log
-    action_log_path = os.path.join(LOGS_DIR, f"ticket_{channel.id}_actions.txt")
 
     # DM transcript to opener (embed + .txt transcript file)
     try:
@@ -76,7 +66,7 @@ async def send_transcript_and_logs(channel, opener, guild):
     except Exception:
         pass
 
-    # Send summary embed + transcript and action log to logging channel (embed on top, files below)
+    # Send summary embed + transcript and html to logging channel (embed on top, files below)
     log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
     if log_channel:
         summary_embed = discord.Embed(
@@ -87,19 +77,14 @@ async def send_transcript_and_logs(channel, opener, guild):
                         f"**Messages:** {len(messages)}",
             color=discord.Color.blue()
         )
-        summary_embed.set_footer(text="Transcript and action log attached.")
+        summary_embed.set_footer(text="Transcript attached.")
         files = [
             discord.File(transcript_path),
             discord.File(html_path, filename="transcript.html")
         ]
-        if os.path.exists(action_log_path):
-            files.append(discord.File(action_log_path))
-        # Send embed first, then files as a followup message
         await log_channel.send(embed=summary_embed)
         await log_channel.send(files=files)
-        await log_channel.send(f"Transcript and logs for closed ticket {channel.mention} ({channel.id}):",
-            files=files
-        )
+        await log_channel.send(f"Transcript for closed ticket {channel.mention} ({channel.id}):", files=files)
 
 class TicketTypeSelect(Select):
     def __init__(self):
@@ -113,7 +98,7 @@ class TicketTypeSelect(Select):
             min_values=1,
             max_values=1,
             options=options,
-            custom_id="ticket_type_select"  # <-- Add this
+            custom_id="ticket_type_select"
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -164,9 +149,6 @@ async def create_ticket(interaction, ticket_type, request_content):
         reason=f"Ticket opened by {user}"
     )
 
-    # Log open
-    log_ticket_action(channel.id, "OPEN", user)
-
     # Embed 1 (image)
     embed1 = discord.Embed(color=EMBED_COLOUR)
     embed1.set_image(url=EMBED1_IMAGE)
@@ -208,7 +190,6 @@ class ClaimButton(Button):
         await interaction.channel.set_permissions(ticket_handler_role, send_messages=False)
         await interaction.channel.set_permissions(interaction.user, send_messages=True)
         await interaction.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
-        log_ticket_action(interaction.channel.id, "CLAIM", interaction.user)
         await interaction.response.edit_message(view=TicketActionView())  # Re-render view
 
 class CloseButton(Button):
@@ -240,27 +221,23 @@ class ConfirmCloseView(View):
         # Archive
         await interaction.channel.edit(category=interaction.guild.get_channel(CATEGORY_ARCHIVED))
         # Only allow opener, HC, MC (if general), and ticket handler to view archived ticket
-        # You may need to fetch the opener from the channel topic or database if needed
         overwrites = {
             interaction.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=False),
             interaction.channel.guild.get_role(HC_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
             interaction.channel.guild.get_role(TICKET_HANDLER_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=False),
         }
-        # If you want to allow MC for general tickets, add logic here
         await interaction.channel.edit(overwrites=overwrites)
         await interaction.channel.send(embed=discord.Embed(
             description="This ticket is being archived. It will permanently be deleted in 15 minutes.",
             color=discord.Color.red()
         ))
-        log_ticket_action(interaction.channel.id, "CLOSE", interaction.user)
         # Transcript and logs
-        # You may need to fetch the opener from the channel topic or database if needed
         await send_transcript_and_logs(interaction.channel, interaction.user, interaction.guild)
         # Schedule deletion
         delete_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=15)).timestamp()
         save_pending_deletion(interaction.channel.id, delete_at)
-        asyncio.create_task(schedule_ticket_deletion(interaction.client, interaction.channel.id, delete_at))
+        interaction.client.loop.create_task(schedule_ticket_deletion(interaction.client, interaction.channel.id, delete_at))
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, custom_id="cancel_close_button")
@@ -299,8 +276,8 @@ async def schedule_ticket_deletion(bot, channel_id, delete_at):
             await channel.send("This ticket will be deleted in 20 seconds.")
             await asyncio.sleep(20)
             await channel.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Failed to delete ticket channel {channel_id}: {e}")
     remove_pending_deletion(channel_id)
 
 async def ensure_persistent_ticket_embed(bot):
@@ -351,7 +328,6 @@ async def ensure_persistent_ticket_embed(bot):
     with open(PERSIST_FILE, "w") as f:
         f.write(str(sent.id))
 
-# On bot startup, resume pending deletions
 async def resume_pending_deletions(bot):
     if not os.path.exists(DELETION_SCHEDULE_FILE):
         return
@@ -361,9 +337,28 @@ async def resume_pending_deletions(bot):
         if ":" in line:
             channel_id, delete_at = line.split(":", 1)
             try:
-                asyncio.create_task(schedule_ticket_deletion(bot, int(channel_id), float(delete_at)))
+                bot.loop.create_task(schedule_ticket_deletion(bot, int(channel_id), float(delete_at)))
             except Exception:
                 continue
+
+def generate_html_transcript(channel, messages):
+    html = [
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Ticket Transcript</title>",
+        "<style>body{font-family:sans-serif;background:#222;color:#eee;} .msg{margin:10px 0;padding:10px;border-radius:8px;background:#333;} .author{font-weight:bold;} .avatar{width:32px;height:32px;vertical-align:middle;border-radius:50%;margin-right:8px;} .time{color:#aaa;font-size:0.9em;margin-left:8px;}</style>",
+        "</head><body>",
+        f"<h2>Transcript for #{channel.name}</h2>"
+    ]
+    for msg in messages:
+        avatar_url = msg.author.display_avatar.url if hasattr(msg.author, "display_avatar") else msg.author.avatar_url
+        time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        content = discord.utils.escape_markdown(msg.content)
+        html.append(
+            f"<div class='msg'><img class='avatar' src='{avatar_url}'/>"
+            f"<span class='author'>{msg.author}</span>"
+            f"<span class='time'>{time}</span><br>{content}</div>"
+        )
+    html.append("</body></html>")
+    return "\n".join(html)
 
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
@@ -371,13 +366,13 @@ class TicketSystem(commands.Cog):
         self.bot.loop.create_task(self._startup_embed())
         self.bot.loop.create_task(resume_pending_deletions(self.bot))
         self.bot.add_view(TicketTypeView())
-        self.bot.add_view(TicketActionView())  # Register as persistent!
+        self.bot.add_view(TicketActionView())
 
     async def _startup_embed(self):
         await self.bot.wait_until_ready()
         await ensure_persistent_ticket_embed(self.bot)
 
-    @commands.command(name="assistance") #test
+    @commands.command(name="assistance")
     async def assistance_command(self, ctx):
         if ctx.author.id != ADMIN_ID:
             await ctx.send("You do not have permission to use this command.", delete_after=10)
@@ -419,7 +414,6 @@ class TicketSystem(commands.Cog):
             f.write(str(sent.id))
         await ctx.send("Assistance embed sent.", delete_after=10)
 
-    # Keep /ticket-add and /ticket-remove as slash commands
     @app_commands.command(name="ticket-add", description="Add a user to your ticket (civilians only)")
     @app_commands.describe(user="User to add")
     async def ticket_add(self, interaction: discord.Interaction, user: discord.Member):
@@ -437,25 +431,6 @@ class TicketSystem(commands.Cog):
             return
         await interaction.channel.set_permissions(user, overwrite=None)
         await interaction.response.send_message(f"{user.mention} has been removed from the ticket.", ephemeral=True)
-
-def generate_html_transcript(channel, messages):
-    html = [
-        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Ticket Transcript</title>",
-        "<style>body{font-family:sans-serif;background:#222;color:#eee;} .msg{margin:10px 0;padding:10px;border-radius:8px;background:#333;} .author{font-weight:bold;} .avatar{width:32px;height:32px;vertical-align:middle;border-radius:50%;margin-right:8px;} .time{color:#aaa;font-size:0.9em;margin-left:8px;}</style>",
-        "</head><body>",
-        f"<h2>Transcript for #{channel.name}</h2>"
-    ]
-    for msg in messages:
-        avatar_url = msg.author.display_avatar.url if hasattr(msg.author, "display_avatar") else msg.author.avatar_url
-        time = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        content = discord.utils.escape_markdown(msg.content)
-        html.append(
-            f"<div class='msg'><img class='avatar' src='{avatar_url}'/>"
-            f"<span class='author'>{msg.author}</span>"
-            f"<span class='time'>{time}</span><br>{content}</div>"
-        )
-    html.append("</body></html>")
-    return "\n".join(html)
 
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))
