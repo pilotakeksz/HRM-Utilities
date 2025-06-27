@@ -77,7 +77,9 @@ WORK_RESPONSES = [
     "You fixed a computer 🖥️ and earned",
     "You did voice acting 🎤 and earned",
     "You made balloon animals 🎈 and earned",
-    "You worked as a mascot 🦁 and earned"
+    "You worked as a mascot 🦁 and earned",
+    "You fed a wild capybara <:capy:1381521913238523955> and earned",
+    "You worked a job in the local cinema 🍿 and earned"
 ]
 
 CRIME_REWARDS = [
