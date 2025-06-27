@@ -172,12 +172,10 @@ class CallsignBasicView(discord.ui.View):
         self.cog = cog
         self.is_admin = is_admin
         self.can_request = can_request
-        self.allowed_user_id = allowed_user_id
+        # allowed_user_id is now unused
+
         if is_admin:
             self.add_item(CallsignAdminMenuButton(cog))
-
-    def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return interaction.user.id == self.allowed_user_id
 
     @discord.ui.button(label="View Callsign", style=discord.ButtonStyle.blurple)
     async def view_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -200,7 +198,6 @@ class CallsignBasicView(discord.ui.View):
 
     @discord.ui.button(label="Request Callsign", style=discord.ButtonStyle.green, row=1)
     async def request_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only show if can_request is True
         if not self.can_request:
             await interaction.response.send_message("You do not have permission to request a callsign.", ephemeral=True)
             return
@@ -213,7 +210,7 @@ class CallsignAdminMenuButton(discord.ui.Button):
         self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
-        view = CallsignAdminView(self.cog, allowed_user_id=interaction.user.id)
+        view = CallsignAdminView(self.cog)
         embed = discord.Embed(title="Admin Callsign Menu", color=EMBED_COLOUR)
         embed.set_image(url=EMBED2_IMAGE)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
@@ -223,10 +220,6 @@ class CallsignAdminView(discord.ui.View):
     def __init__(self, cog, allowed_user_id=None):
         super().__init__(timeout=120)
         self.cog = cog
-        self.allowed_user_id = allowed_user_id
-
-    def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return interaction.user.id == self.allowed_user_id
 
     @discord.ui.button(label="Add Callsign", style=discord.ButtonStyle.green)
     async def add_callsign_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
