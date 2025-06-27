@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
+from discord import Interaction
 import aiosqlite
 import os
 import random
