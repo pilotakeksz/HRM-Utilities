@@ -119,13 +119,19 @@ class ManagementTicketModal(Modal, title="Management Ticket"):
     request = TextInput(label="Request / Inquiry", style=discord.TextStyle.paragraph, required=True, max_length=1024)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await create_ticket(interaction, "management", self.request.value)
+        channel = await create_ticket(interaction, "management", self.request.value)
+        await interaction.response.send_message(
+            f"Your ticket has been created: {channel.mention}", ephemeral=True
+        )
 
 class GeneralTicketModal(Modal, title="General Support Ticket"):
     request = TextInput(label="Request / Inquiry", style=discord.TextStyle.paragraph, required=True, max_length=1024)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await create_ticket(interaction, "general", self.request.value)
+        channel = await create_ticket(interaction, "general", self.request.value)
+        await interaction.response.send_message(
+            f"Your ticket has been created: {channel.mention}", ephemeral=True
+        )
 
 async def create_ticket(interaction, ticket_type, request_content):
     guild = interaction.guild
@@ -163,7 +169,8 @@ async def create_ticket(interaction, ticket_type, request_content):
 
     await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], view=TicketActionView())
 
-    await interaction.response.send_message(f"Your ticket has been created: {channel.mention}", ephemeral=True)
+    # Return the channel so the modal can redirect the user
+    return channel
 
 class TicketActionView(View):
     def __init__(self):
