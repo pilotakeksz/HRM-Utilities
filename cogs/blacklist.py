@@ -279,7 +279,10 @@ class Blacklist(commands.Cog):
                     voided_embed = self.get_blacklist_embed(
                         blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
                     )
-                    await msg.edit(embed=voided_embed, content=f"# {EMOJI_HRMC} // HRMC Blacklist\n~~This blacklist has been voided.~~")
+                    await msg.edit(
+                        embed=voided_embed,
+                        content=f"# {EMOJI_HRMC} // HRMC Blacklist\n~~This blacklist has been voided.~~"
+                    )
                 except Exception:
                     pass
 
@@ -288,7 +291,6 @@ class Blacklist(commands.Cog):
                 member = interaction.guild.get_member(user_id)
                 if member:
                     dm_embed = discord.Embed(
-                        title=f"{EMOJI_HRMC} // HRMC Blacklist Voided",
                         description=(
                             f"A blacklist issued to you in **{interaction.guild.name}** has been voided.\n\n"
                             f"{EMOJI_REASON} **Original Reason:** {orig_reason}\n"
@@ -297,7 +299,6 @@ class Blacklist(commands.Cog):
                         ),
                         color=discord.Color.green()
                     )
-                    # Simple UTC date in footer
                     now_utc = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
                     dm_embed.set_footer(text=f"{now_utc}")
                     await member.send(embed=dm_embed)
@@ -324,38 +325,17 @@ class Blacklist(commands.Cog):
                 void_reason=reason
             )
 
-            # After voiding, send a log embed to the log channel
-            log_channel = interaction.guild.get_channel(BLACKLIST_VIEW_CHANNEL_ID)
-            if log_channel:
-                log_embed = discord.Embed(
-                    title=f"{EMOJI_HRMC} // HRMC Blacklist Voided",
-                    color=discord.Color.green(),
-                )
-                log_embed.add_field(name="Blacklist ID", value=blacklist_id, inline=False)
-                log_embed.add_field(name="User", value=f"{user_name} ({user_id})", inline=False)
-                log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
-                log_embed.add_field(name="Original Reason", value=orig_reason, inline=False)
-                log_embed.add_field(name="Void Reason", value=reason, inline=False)
-                log_embed.set_footer(text=f"{now_utc}")
-                await log_channel.send(embed=log_embed)
-
-            # Respond to the moderator
-            embed = discord.Embed(
-                title=f"{EMOJI_HRMC} // HRMC Blacklist Voided",
-                description=(
-                    f"{EMOJI_ID} **Blacklist ID:** `{blacklist_id}`\n"
-                    f"{EMOJI_MEMBER} **User:** {user_name} (`{user_id}`)\n"
-                    f"{EMOJI_REASON} **Original Reason:** {orig_reason}\n"
-                    f"{EMOJI_PERMISSION} **Voided By:** {interaction.user.mention}\n"
-                    f"{EMOJI_PERMISSION} **Void Reason:** {reason}"
-                ),
-                color=discord.Color.green()
+            # Respond to the moderator (only send the new embed, no extra spacing, only title in content)
+            embed = self.get_blacklist_embed(
+                blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
             )
-            embed.set_footer(text=f"{now_utc}")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(
+                content=f"# {EMOJI_HRMC} // HRMC Blacklist",
+                embed=embed,
+                ephemeral=True
+            )
 
         except Exception as e:
-            # Always respond, even on error
             try:
                 await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
             except discord.InteractionResponded:
