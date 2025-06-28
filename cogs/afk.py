@@ -8,7 +8,7 @@ from typing import Optional
 AFK_LOG_CHANNEL_ID = 1343686645815181382
 AFK_ADMIN_ROLE_IDS = {1329910265264869387, 1329910241835352064}
 AFK_LOG_FILE = os.path.join("logs", "afk.txt")
-AFK_PREFIX = "[AFK]ˇ"
+AFK_PREFIX = "[AFK] "
 
 class AFK(commands.Cog):
     def __init__(self, bot):
