@@ -75,46 +75,54 @@ class Blacklist(commands.Cog):
             """, (blacklist_id, user.id, str(user), issued_by.id, str(issued_by), reason, proof, now, message_id, int(hrmc_wide), int(ban)))
             await db.commit()
 
-    def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
-        try:
-            dt = datetime.datetime.fromisoformat(date)
-            date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
-        except Exception:
-            date_str = date
+def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
+    try:
+        dt = datetime.datetime.fromisoformat(date)
+        date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        date_str = date
 
-        embed = discord.Embed(
-            color=discord.Color.green() if voided else discord.Color.dark_red()
+    embed = discord.Embed(
+        color=discord.Color.green() if voided else discord.Color.dark_red()
+    )
+    embed.add_field(
+        name=f"{EMOJI_HRMC} // HRMC Blacklist",
+        value="\u200b",
+        inline=False
+    )
+    # User and Issued by on one line
+    embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
+    embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
+    # Separator
+    embed.add_field(name="\u200b", value="----", inline=False)
+    # Reason alone
+    embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
+    # Separator
+    embed.add_field(name="\u200b", value="----", inline=False)
+    # Blacklist ID alone
+    embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=False)
+    # Separator
+    embed.add_field(name="\u200b", value="----", inline=False)
+    # HRMC-wide, Banned, Proof inline
+    embed.add_field(name=f"{EMOJI_PERMISSION} HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+    embed.add_field(name=f"{EMOJI_PERMISSION} Banned", value="Yes" if ban else "No", inline=True)
+    embed.add_field(name="Proof", value=proof or "None", inline=True)
+    # Separator
+    embed.add_field(name="\u200b", value="----", inline=False)
+    # Voided status (if applicable) - both fields inline
+    if voided:
+        embed.add_field(
+            name=f"{EMOJI_VOIDED} Voided",
+            value="Yes",
+            inline=True
         )
         embed.add_field(
-            name=f"{EMOJI_HRMC} // HRMC Blacklist",
-            value="\u200b",
-            inline=False
+            name=f"{EMOJI_REASON} Voided Reason",
+            value=void_reason or 'No reason provided.',
+            inline=True
         )
-        # User and Issued by on one line
-        embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
-        embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
-        # Reason alone
-        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
-        # Blacklist ID alone
-        embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=False)
-        # HRMC-wide, Banned, Proof inline
-        embed.add_field(name=f"{EMOJI_PERMISSION} HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
-        embed.add_field(name=f"{EMOJI_PERMISSION} Banned", value="Yes" if ban else "No", inline=True)
-        embed.add_field(name="Proof", value=proof or "None", inline=True)
-        # Voided status (if applicable) - both fields inline
-        if voided:
-            embed.add_field(
-                name=f"{EMOJI_VOIDED} Voided",
-                value="Yes",
-                inline=True
-            )
-            embed.add_field(
-                name=f"{EMOJI_REASON} Voided Reason",
-                value=void_reason or 'No reason provided.',
-                inline=True
-            )
-        embed.set_footer(text=f"{date_str}")
-        return embed
+    embed.set_footer(text=f"{date_str}")
+    return embed
 
     @app_commands.command(name="blacklist", description="Blacklist a user from HRMC.")
     @app_commands.describe(
