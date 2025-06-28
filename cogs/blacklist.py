@@ -194,7 +194,7 @@ class Blacklist(commands.Cog):
             except Exception:
                 pass
 
-        # DM the blacklisted user
+        # DM the blacklisted user (simple embed, not the log embed)
         try:
             dm_embed = discord.Embed(
                 title=f"{EMOJI_HRMC} // HRMC Blacklist",
@@ -238,6 +238,7 @@ class Blacklist(commands.Cog):
             f"Blacklisted {user.id} | Reason: {reason} | Blacklist ID: {blacklist_id} | HRMC-wide: {hrmc_wide} | Ban: {ban}",
             embed=True
         )
+        # Only send a simple confirmation to the moderator, not the embed
         await interaction.response.send_message(f"User blacklisted and logged. Blacklist ID: {blacklist_id}", ephemeral=True)
 
     @app_commands.command(name="blacklist-void", description="Void (remove) a blacklist by its ID.")
