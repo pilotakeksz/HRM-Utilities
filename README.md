@@ -23,7 +23,7 @@ A custom Discord bot for the High Rock Military Corps community, featuring persi
 - **Callsign Management**  
   - Request, view, and manage callsigns with unique number enforcement and admin menu.
 - **Infraction System**  
-  - `/infraction-issue` command for issuing infractions, with DM notification, role updates, and logging.
+  - Issue, void, view, and list infractions with DM notification, role updates, logging, and paginated user infraction history.
 - **Miscellaneous**  
   - Ping, uptime, and say commands.
 
@@ -81,8 +81,24 @@ A custom Discord bot for the High Rock Military Corps community, featuring persi
 - `/callsign` or `!callsign`  
   View or request your callsign. Only one of each number is allowed globally. Admins can add/remove callsigns via the admin menu.
 
+---
+
+### Infraction Commands
+
 - `/infraction-issue`  
   Issue an infraction to a user, with DM, role updates, and logging.
+
+- `/infraction-void`  
+  Void (remove) an infraction by its ID. Marks the infraction as voided, logs the action, and updates the infraction message.
+
+- `/infraction-view <infraction_id>`  
+  View all details of a specific infraction by its ID, including voided status and reason.
+
+- `/infraction-list <user> [page]`  
+  List all infractions (current and voided) for a user, paginated.
+
+- `/infraction-log`  
+  View the last 10 non-voided infractions in an embed.
 
 ---
 
