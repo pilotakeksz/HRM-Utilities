@@ -101,12 +101,17 @@ class Blacklist(commands.Cog):
         embed.add_field(name=f"{EMOJI_PERMISSION} HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
         embed.add_field(name=f"{EMOJI_PERMISSION} Banned", value="Yes" if ban else "No", inline=True)
         embed.add_field(name="Proof", value=proof or "None", inline=True)
-        # Voided status (if applicable)
+        # Voided status (if applicable) - both fields inline
         if voided:
             embed.add_field(
                 name=f"{EMOJI_VOIDED} Voided",
-                value=f"Yes\nReason: {void_reason or 'No reason provided.'}",
-                inline=False
+                value="Yes",
+                inline=True
+            )
+            embed.add_field(
+                name=f"{EMOJI_REASON} Voided Reason",
+                value=void_reason or 'No reason provided.',
+                inline=True
             )
         embed.set_footer(text=f"{date_str}")
         return embed
