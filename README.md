@@ -166,14 +166,6 @@
 - Blacklist and infraction actions are logged in their respective `.txt` files.
 - Logs include user, action, details, and timestamp for auditing.
 
----
-
-## 🆘 Support
-
-If you encounter issues, check:
-- Bot permissions in all relevant channels.
-- That all IDs in .env are correct.
-- The bot console/logs for errors.
 
 ---
 
@@ -188,4 +180,5 @@ If you encounter issues, check:
 ## 📢 Credits
 
 Developed for the High Rock Military Corps Discord.
-
+x pilotakeksz - Tuna 🐟 x
+x spigoned - Lazeoftheb x
