@@ -1,13 +1,26 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import aiosqlite
 import os
 import re
+import datetime
 
 ALLOWED_ROLE_IDS = [911072161349918720, 1329910241835352064]
+ACTION_LOG_PATH = os.path.join("logs", "archive_action_log.txt")
+DOC_CHANNEL_ID = 1343686645815181382
 
 def has_allowed_role(ctx):
     return any(role.id in ALLOWED_ROLE_IDS for role in getattr(ctx.author, "roles", []))
+
+def has_allowed_role_appcmd(interaction: discord.Interaction):
+    return any(role.id in ALLOWED_ROLE_IDS for role in getattr(interaction.user, "roles", []))
+
+def log_action(user, action, details):
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    os.makedirs(os.path.dirname(ACTION_LOG_PATH), exist_ok=True)
+    with open(ACTION_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"[{now}] {user} | {action} | {details}\n")
 
 class NameSelect(discord.ui.Select):
     def __init__(self, date, names, messages):
@@ -26,6 +39,7 @@ class NameSelect(discord.ui.Select):
             description=message
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        log_action(interaction.user, "Viewed Archive Entry", f"{self.date} - {name}")
 
 class NameSelectView(discord.ui.View):
     def __init__(self, date, names, messages):
@@ -65,6 +79,7 @@ class DateModal(discord.ui.Modal, title="Enter Date"):
             view=NameSelectView(date_value, names, messages),
             ephemeral=True
         )
+        log_action(interaction.user, "Viewed Archive List", f"Date: {date_value}")
 
 class ArchiveView(discord.ui.View):
     def __init__(self):
@@ -85,6 +100,7 @@ class LogMessage(commands.Cog):
             description="Welcome to the HRM archives."
         )
         await ctx.send(embed=embed, view=ArchiveView())
+        log_action(ctx.author, "Used !archive", f"Channel: {ctx.channel}")
 
     @commands.command(name="sendtoarchive")
     async def sendtoarchive(self, ctx, date: str, name: str, *, message: str):
@@ -112,6 +128,7 @@ class LogMessage(commands.Cog):
                 )
                 await db.commit()
             await ctx.send(f"Archive saved for `{date}` and `{name}`.")
+            log_action(ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
         except Exception:
             await ctx.send("Failed to save the archive.")
 
@@ -129,6 +146,51 @@ class LogMessage(commands.Cog):
             return
         msg = "\n".join([f"**Date:** `{row[0]}` | **Name:** `{row[1]}`" for row in rows])
         await ctx.send(f"**All Archive Entries:**\n{msg}")
+        log_action(ctx.author, "Viewed All Archives", f"Total: {len(rows)}")
+
+    @app_commands.command(name="archive", description="Open the HRM archive interface (interactive).")
+    async def archive_slash(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="HRM ARCHIVE",
+            description="Welcome to the HRM archives."
+        )
+        await interaction.response.send_message(embed=embed, view=ArchiveView(), ephemeral=True)
+        log_action(interaction.user, "Used /archive", f"Channel: {interaction.channel}")
+
+    @app_commands.command(name="archive-viewall", description="View all archive entries (date and name).")
+    async def archive_viewall_slash(self, interaction: discord.Interaction):
+        db_path = os.path.join(os.getcwd(), "data", "Archive.db")
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute(
+                "SELECT Date, Name FROM Archive ORDER BY Date DESC"
+            ) as cursor:
+                rows = await cursor.fetchall()
+        if not rows:
+            await interaction.response.send_message("No archive entries found.", ephemeral=True)
+            return
+        msg = "\n".join([f"**Date:** `{row[0]}` | **Name:** `{row[1]}`" for row in rows])
+        await interaction.response.send_message(f"**All Archive Entries:**\n{msg}", ephemeral=True)
+        log_action(interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # Send documentation embed to the log channel on startup
+        channel = self.bot.get_channel(DOC_CHANNEL_ID)
+        if channel:
+            embed = discord.Embed(
+                title="🟩 Archive Management Documentation 🟩",
+                color=discord.Color.green(),
+                description=(
+                    "**Commands:**\n"
+                    "> `!archive` or `/archive` — Open the archive interface\n"
+                    "> `!sendtoarchive <YEAR>-<MONTH>-<DAY> <NAME> <TEXT TO ARCHIVE>` — Save to the archive (roles: <@&911072161349918720> <@&1329910241835352064>)\n"
+                    "> `!viewallarchives` or `/archive-viewall` — View all archive entries\n\n"
+                    "**Who can save to the archive:**\n"
+                    "> Only users with <@&911072161349918720> or <@&1329910241835352064>\n\n"
+                    "**All actions are logged in `logs/archive_action_log.txt`**"
+                )
+            )
+            await channel.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(LogMessage(bot))
