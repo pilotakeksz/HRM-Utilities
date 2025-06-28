@@ -5,6 +5,7 @@ from discord import app_commands
 import aiosqlite
 import datetime
 import uuid
+from typing import Optional
 
 INFRACTION_DB = "data/infractions.db"
 LOG_FILE = "logs/infraction_command.log"
@@ -497,6 +498,76 @@ class Infraction(commands.Cog):
                 await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
             except discord.InteractionResponded:
                 await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+
+    @app_commands.command(name="infraction-view", description="View all details of a specific infraction by its ID.")
+    @app_commands.describe(infraction_id="The infraction ID to view")
+    async def infraction_view(self, interaction: discord.Interaction, infraction_id: str):
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT infraction_id, user_id, user_name, moderator_id, moderator_name, action, reason, proof, date, voided, void_reason FROM infractions WHERE infraction_id = ?",
+                (infraction_id,)
+            )
+            row = await cursor.fetchone()
+        if not row:
+            await interaction.response.send_message("Infraction not found.", ephemeral=True)
+            return
+
+        (infraction_id, user_id, user_name, moderator_id, moderator_name, action, reason, proof, date, voided, void_reason) = row
+        embed = discord.Embed(
+            title=f"Infraction Details: {infraction_id}",
+            color=discord.Color.green() if voided else INFRACTION_TYPES.get(action, {}).get("color", discord.Color.default()),
+            timestamp=datetime.datetime.fromisoformat(date)
+        )
+        embed.add_field(name="User", value=f"{user_name} (`{user_id}`)", inline=False)
+        embed.add_field(name="Moderator", value=f"{moderator_name} (`{moderator_id}`)", inline=False)
+        embed.add_field(name="Action", value=action, inline=True)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Proof", value=proof or "None", inline=False)
+        embed.add_field(name="Date", value=date, inline=False)
+        embed.add_field(name="Voided", value="Yes" if voided else "No", inline=True)
+        if voided:
+            embed.add_field(name="Void Reason", value=void_reason or "No reason provided.", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="infraction-list", description="List all infractions for a user, paginated.")
+    @app_commands.describe(user="The user to list infractions for", page="Page number (default 1)")
+    async def infraction_list(self, interaction: discord.Interaction, user: discord.Member, page: Optional[int] = 1):
+        PAGE_SIZE = 5
+        offset = (page - 1) * PAGE_SIZE
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT infraction_id, action, reason, date, voided, void_reason FROM infractions WHERE user_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
+                (user.id, PAGE_SIZE, offset)
+            )
+            rows = await cursor.fetchall()
+            # For total count
+            count_cursor = await db.execute(
+                "SELECT COUNT(*) FROM infractions WHERE user_id = ?",
+                (user.id,)
+            )
+            total = (await count_cursor.fetchone())[0]
+
+        if not rows:
+            await interaction.response.send_message("No infractions found for this user on this page.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"Infractions for {user} (Page {page}/{(total + PAGE_SIZE - 1)//PAGE_SIZE})",
+            color=discord.Color.orange()
+        )
+        for row in rows:
+            infraction_id, action, reason, date, voided, void_reason = row
+            value = (
+                f"**Type:** {action}\n"
+                f"**Reason:** {reason}\n"
+                f"**Date:** {date}\n"
+                f"**ID:** `{infraction_id}`\n"
+            )
+            if voided:
+                value += f"**VOIDED**: {void_reason or 'No reason provided.'}\n"
+            embed.add_field(name="\u200b", value=value, inline=False)
+        embed.set_footer(text=f"Total Infractions: {total}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Infraction(bot))
