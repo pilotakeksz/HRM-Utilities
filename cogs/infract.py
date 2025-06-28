@@ -313,5 +313,51 @@ class Infraction(commands.Cog):
         await channel.send(embed=embed)
         await ctx.send("Infraction log sent.")
 
+    @app_commands.command(name="infraction-void", description="Void (remove) an infraction by its ID.")
+    @app_commands.describe(infraction_id="The infraction ID to void", reason="Reason for voiding this infraction")
+    async def infraction_void(self, interaction: discord.Interaction, infraction_id: str, reason: str):
+        # Permission check (same as issue)
+        if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("You do not have permission to void infractions.", ephemeral=True)
+            return
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT user_id, user_name, action, reason, date FROM infractions WHERE infraction_id = ?",
+                (infraction_id,)
+            )
+            row = await cursor.fetchone()
+            if not row:
+                await interaction.response.send_message("Infraction not found.", ephemeral=True)
+                return
+
+            # Optionally, you could delete or mark as voided. Here, we delete:
+            await db.execute("DELETE FROM infractions WHERE infraction_id = ?", (infraction_id,))
+            await db.commit()
+
+        # Log the void action
+        now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+        log_to_file(
+            interaction.user.id,
+            interaction.channel.id,
+            f"Voided infraction {infraction_id} for user {row[1]} ({row[0]}). Original action: {row[2]}. Void reason: {reason}",
+            embed=False
+        )
+
+        embed = discord.Embed(
+            title="Infraction Voided",
+            description=(
+                f"**Infraction ID:** `{infraction_id}`\n"
+                f"**User:** {row[1]} (`{row[0]}`)\n"
+                f"**Original Action:** {row[2]}\n"
+                f"**Original Reason:** {row[3]}\n"
+                f"**Voided By:** {interaction.user.mention}\n"
+                f"**Void Reason:** {reason}"
+            ),
+            color=discord.Color.green()
+        )
+        embed.set_footer(text=f"Voided: {now_utc}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Infraction(bot))
