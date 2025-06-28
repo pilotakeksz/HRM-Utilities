@@ -324,36 +324,94 @@ class Infraction(commands.Cog):
             await interaction.response.send_message("You do not have permission to void infractions.", ephemeral=True)
             return
 
+        # Fetch infraction details and message_id
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "SELECT user_id, user_name, action, reason, date FROM infractions WHERE infraction_id = ?",
+                "SELECT user_id, user_name, action, reason, date, message_id FROM infractions WHERE infraction_id = ?",
                 (infraction_id,)
             )
             row = await cursor.fetchone()
             if not row:
                 await interaction.response.send_message("Infraction not found.", ephemeral=True)
                 return
+            user_id, user_name, action, orig_reason, date, message_id = row
 
-            # Optionally, you could delete or mark as voided. Here, we delete:
+            # Delete from database
             await db.execute("DELETE FROM infractions WHERE infraction_id = ?", (infraction_id,))
             await db.commit()
+
+        # Remove from data/infractions.txt or similar if present
+        data_file = os.path.join("data", "callsigns.txt")  # adjust if you store infractions elsewhere
+        if os.path.exists(data_file):
+            with open(data_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            with open(data_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    if infraction_id not in line:
+                        f.write(line)
+
+        # Edit the original infraction message to show voided status
+        inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
+        msg = None
+        if inf_channel and message_id:
+            try:
+                msg = await inf_channel.fetch_message(message_id)
+                voided_embed = discord.Embed(
+                    title="Infraction Voided",
+                    description=(
+                        f"**Infraction ID:** `{infraction_id}`\n"
+                        f"**User:** {user_name} (`{user_id}`)\n"
+                        f"**Original Action:** {action}\n"
+                        f"**Original Reason:** {orig_reason}\n"
+                        f"**Voided By:** {interaction.user.mention}\n"
+                        f"**Void Reason:** {reason}"
+                    ),
+                    color=discord.Color.green()
+                )
+                now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+                voided_embed.set_footer(text=f"Voided: {now_utc}")
+                await msg.edit(embed=voided_embed, content="~~This infraction has been voided.~~")
+            except Exception as e:
+                await interaction.response.send_message(f"Could not edit infraction message: {e}", ephemeral=True)
+                return
+
+        # DM the user about the voided infraction
+        try:
+            user = await interaction.guild.fetch_member(user_id)
+            dm_embed = discord.Embed(
+                title="Your Infraction Was Voided",
+                description=(
+                    f"An infraction issued to you in **{interaction.guild.name}** has been voided.\n\n"
+                    f"**Original Action:** {action}\n"
+                    f"**Original Reason:** {orig_reason}\n"
+                    f"**Voided By:** {interaction.user.mention}\n"
+                    f"**Void Reason:** {reason}"
+                ),
+                color=discord.Color.green()
+            )
+            now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+            dm_embed.set_footer(text=f"Voided: {now_utc}")
+            await user.send(embed=dm_embed)
+        except Exception:
+            pass
 
         # Log the void action
         now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
         log_to_file(
             interaction.user.id,
             interaction.channel.id,
-            f"Voided infraction {infraction_id} for user {row[1]} ({row[0]}). Original action: {row[2]}. Void reason: {reason}",
+            f"Voided infraction {infraction_id} for user {user_name} ({user_id}). Original action: {action}. Void reason: {reason}",
             embed=False
         )
 
+        # Respond to the moderator
         embed = discord.Embed(
             title="Infraction Voided",
             description=(
                 f"**Infraction ID:** `{infraction_id}`\n"
-                f"**User:** {row[1]} (`{row[0]}`)\n"
-                f"**Original Action:** {row[2]}\n"
-                f"**Original Reason:** {row[3]}\n"
+                f"**User:** {user_name} (`{user_id}`)\n"
+                f"**Original Action:** {action}\n"
+                f"**Original Reason:** {orig_reason}\n"
                 f"**Voided By:** {interaction.user.mention}\n"
                 f"**Void Reason:** {reason}"
             ),
