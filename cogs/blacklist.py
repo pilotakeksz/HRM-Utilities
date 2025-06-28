@@ -84,18 +84,42 @@ class Blacklist(commands.Cog):
             await db.commit()
 
     def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
+        # Format date as "YYYY-MM-DD HH:MM UTC"
+        try:
+            dt = datetime.datetime.fromisoformat(date)
+            date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            date_str = date
+
+        EMOJI_VOIDED = "<:edit_message:1343948876599787602>"
+
         embed = discord.Embed(
             color=discord.Color.dark_red() if not voided else discord.Color.green(),
-            timestamp=datetime.datetime.fromisoformat(date)
+            timestamp=None  # Remove timestamp from embed
         )
-        # Content title will be set in the send, not here
+        # Place the title as the first field, not as embed.title
+        embed.add_field(
+            name=f"{EMOJI_HRMC} // HRMC Blacklist",
+            value="\u200b",
+            inline=False
+        )
+
+        # User and Issued by (side by side)
         embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
         embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
 
-        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
-        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+        # Reason and Voided (side by side)
+        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=True)
+        if voided:
+            embed.add_field(
+                name=f"{EMOJI_VOIDED} Voided",
+                value=f"Yes\nReason: {void_reason or 'No reason provided.'}",
+                inline=True
+            )
+        else:
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
 
+        # Blacklist ID, HRMC-wide, Banned (side by side)
         embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=True)
         embed.add_field(
             name=f"{EMOJI_PERMISSION} HRMC-wide",
@@ -107,14 +131,12 @@ class Blacklist(commands.Cog):
             value="Yes" if ban else "No",
             inline=True
         )
-        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
 
+        # Proof (full width)
         embed.add_field(name="Proof", value=proof or "None", inline=False)
-        if voided:
-            embed.add_field(name="Voided", value=f"Yes\nReason: {void_reason or 'No reason provided.'}", inline=False)
-        # Set footer with full UTC date and time
-        now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M:%S")
-        embed.set_footer(text=f"Generated: {now_utc}")
+
+        # Simple UTC date in footer
+        embed.set_footer(text=f"{date_str}")
         return embed
 
     @app_commands.command(name="blacklist", description="Blacklist a user from HRMC.")
@@ -156,14 +178,14 @@ class Blacklist(commands.Cog):
         embed = self.get_blacklist_embed(
             blacklist_id, user, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), hrmc_wide, ban
         )
-        content_title = f"# {EMOJI_HRMC} // HRMC Blacklist"
+        # Only ping in the message content, no title in content or embed title
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
-            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed)
+            msg = await channel.send(content=user.mention, embed=embed)
         elif proof:
-            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed, file=await proof.to_file())
+            msg = await channel.send(content=user.mention, embed=embed, file=await proof.to_file())
         else:
-            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed)
+            msg = await channel.send(content=user.mention, embed=embed)
 
         # HRMC-wide: publish announcement
         if hrmc_wide and channel.is_news():
@@ -221,86 +243,73 @@ class Blacklist(commands.Cog):
     @app_commands.command(name="blacklist-void", description="Void (remove) a blacklist by its ID.")
     @app_commands.describe(blacklist_id="The blacklist ID to void", reason="Reason for voiding this blacklist")
     async def blacklist_void(self, interaction: discord.Interaction, blacklist_id: str, reason: str):
-        # Permission check
-        if not any(r.id == BLACKLIST_ROLE_ID for r in getattr(interaction.user, "roles", [])):
-            await interaction.response.send_message("You do not have permission to void blacklists.", ephemeral=True)
-            return
-
-        async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                "SELECT user_id, user_name, moderator_id, moderator_name, reason, proof, date, message_id, hrmc_wide, ban, voided FROM blacklist WHERE blacklist_id = ?",
-                (blacklist_id,)
-            )
-            row = await cursor.fetchone()
-            if not row:
-                await interaction.response.send_message("Blacklist not found.", ephemeral=True)
-                return
-            user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, message_id, hrmc_wide, ban, voided = row
-
-            if voided:
-                await interaction.response.send_message("This blacklist is already voided.", ephemeral=True)
-                return
-
-            await db.execute(
-                "UPDATE blacklist SET voided = 1, void_reason = ? WHERE blacklist_id = ?",
-                (reason, blacklist_id)
-            )
-            await db.commit()
-
-        # Remove blacklisted role if present
         try:
-            member = interaction.guild.get_member(user_id)
-            role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
-            if member and role and role in member.roles:
-                await member.remove_roles(role, reason="Blacklist voided")
-        except Exception:
-            pass
+            # Permission check
+            if not any(r.id == BLACKLIST_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+                await interaction.response.send_message("You do not have permission to void blacklists.", ephemeral=True)
+                return
 
-        # Edit the original blacklist message to show voided status
-        channel = interaction.guild.get_channel(BLACKLIST_VIEW_CHANNEL_ID)
-        if channel and message_id:
-            try:
-                msg = await channel.fetch_message(message_id)
-                voided_embed = self.get_blacklist_embed(
-                    blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
+            # Fetch blacklist details and message_id from the database
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    "SELECT user_id, user_name, moderator_id, moderator_name, reason, proof, date, message_id, hrmc_wide, ban, voided FROM blacklist WHERE blacklist_id = ?",
+                    (blacklist_id,)
                 )
-                content_title = f"# {EMOJI_HRMC} // HRMC Blacklist"
-                await msg.edit(embed=voided_embed, content=f"{content_title}\n~~This blacklist has been voided.~~")
+                row = await cursor.fetchone()
+                if not row:
+                    await interaction.response.send_message("Blacklist not found.", ephemeral=True)
+                    return
+                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided = row
+
+                if voided:
+                    await interaction.response.send_message("This blacklist is already voided.", ephemeral=True)
+                    return
+
+                # Mark as voided
+                await db.execute(
+                    "UPDATE blacklist SET voided = 1, void_reason = ? WHERE blacklist_id = ?",
+                    (reason, blacklist_id)
+                )
+                await db.commit()
+
+            # Remove blacklisted role if present
+            try:
+                member = interaction.guild.get_member(user_id)
+                role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
+                if member and role and role in member.roles:
+                    await member.remove_roles(role, reason="Blacklist voided")
             except Exception:
                 pass
 
-        # DM the user about the voided blacklist
-        try:
-            member = interaction.guild.get_member(user_id)
-            if member:
-                dm_embed = discord.Embed(
-                    title=f"{EMOJI_HRMC} // HRMC Blacklist Voided",
-                    description=(
-                        f"A blacklist issued to you in **{interaction.guild.name}** has been voided.\n\n"
-                        f"{EMOJI_REASON} **Original Reason:** {orig_reason}\n"
-                        f"{EMOJI_PERMISSION} **Voided By:** {interaction.user.mention}\n"
-                        f"{EMOJI_PERMISSION} **Void Reason:** {reason}"
-                    ),
-                    color=discord.Color.green()
-                )
-                await member.send(embed=dm_embed)
-        except Exception:
-            pass
+            # Edit the original blacklist message to show voided status
+            channel = interaction.guild.get_channel(BLACKLIST_VIEW_CHANNEL_ID)
+            if channel and message_id:
+                try:
+                    msg = await channel.fetch_message(message_id)
+                    voided_embed = self.get_blacklist_embed(
+                        blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
+                    )
+                    await msg.edit(
+                        embed=voided_embed,
+                        content=f"{user_name}"  # Only ping or username, no title
+                    )
+                except Exception:
+                    pass
 
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                title=f"{EMOJI_HRMC} // HRMC Blacklist Voided",
-                description=(
-                    f"{EMOJI_ID} **Blacklist ID:** `{blacklist_id}`\n"
-                    f"{EMOJI_MEMBER} **User:** {user_name} (`{user_id}`)\n"
-                    f"{EMOJI_REASON} **Original Reason:** {orig_reason}\n"
-                    f"{EMOJI_PERMISSION} **Voided By:** {interaction.user.mention}\n"
-                    f"{EMOJI_PERMISSION} **Void Reason:** {reason}"
-                ),
-                color=discord.Color.green()
-            ),
-            ephemeral=True
-        )
+            # Respond to the moderator (only send the new embed, no extra spacing, no title in content)
+            embed = self.get_blacklist_embed(
+                blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
+            )
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=True
+            )
+
+        except Exception as e:
+            try:
+                await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
+            except discord.InteractionResponded:
+                await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
     @app_commands.command(name="blacklist-view", description="View all details of a specific blacklist by its ID.")
     @app_commands.describe(blacklist_id="The blacklist ID to view")
