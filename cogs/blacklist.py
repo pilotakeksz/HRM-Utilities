@@ -178,14 +178,14 @@ class Blacklist(commands.Cog):
         embed = self.get_blacklist_embed(
             blacklist_id, user, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), hrmc_wide, ban
         )
-        content_title = f"# {EMOJI_HRMC} // HRMC Blacklist"
+        # Only ping in the message content, no title in content or embed title
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
-            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed)
+            msg = await channel.send(content=user.mention, embed=embed)
         elif proof:
-            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed, file=await proof.to_file())
+            msg = await channel.send(content=user.mention, embed=embed, file=await proof.to_file())
         else:
-            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed)
+            msg = await channel.send(content=user.mention, embed=embed)
 
         # HRMC-wide: publish announcement
         if hrmc_wide and channel.is_news():
@@ -259,7 +259,7 @@ class Blacklist(commands.Cog):
                 if not row:
                     await interaction.response.send_message("Blacklist not found.", ephemeral=True)
                     return
-                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, message_id, hrmc_wide, ban, voided = row
+                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided = row
 
                 if voided:
                     await interaction.response.send_message("This blacklist is already voided.", ephemeral=True)
@@ -291,56 +291,16 @@ class Blacklist(commands.Cog):
                     )
                     await msg.edit(
                         embed=voided_embed,
-                        content=f"# {EMOJI_HRMC} // HRMC Blacklist\n~~This blacklist has been voided.~~"
+                        content=f"{user_name}"  # Only ping or username, no title
                     )
                 except Exception:
                     pass
 
-            # DM the user about the voided blacklist
-            try:
-                member = interaction.guild.get_member(user_id)
-                if member:
-                    dm_embed = discord.Embed(
-                        description=(
-                            f"A blacklist issued to you in **{interaction.guild.name}** has been voided.\n\n"
-                            f"{EMOJI_REASON} **Original Reason:** {orig_reason}\n"
-                            f"{EMOJI_PERMISSION} **Voided By:** {interaction.user.mention}\n"
-                            f"{EMOJI_PERMISSION} **Void Reason:** {reason}"
-                        ),
-                        color=discord.Color.green()
-                    )
-                    now_utc = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-                    dm_embed.set_footer(text=f"{now_utc}")
-                    await member.send(embed=dm_embed)
-            except Exception:
-                pass
-
-            # Log the void action
-            now_utc = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-            log_to_file(
-                interaction.user.id,
-                interaction.channel.id,
-                f"Voided blacklist {blacklist_id} for user {user_name} ({user_id}). Void reason: {reason}",
-                embed=False
-            )
-
-            # Log command usage to txt
-            log_command_to_txt(
-                "blacklist-void",
-                interaction.user,
-                interaction.channel,
-                blacklist_id=blacklist_id,
-                target_user=f"{user_name} ({user_id})",
-                original_reason=orig_reason,
-                void_reason=reason
-            )
-
-            # Respond to the moderator (only send the new embed, no extra spacing, only title in content)
+            # Respond to the moderator (only send the new embed, no extra spacing, no title in content)
             embed = self.get_blacklist_embed(
                 blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
             )
             await interaction.response.send_message(
-                content=f"# {EMOJI_HRMC} // HRMC Blacklist",
                 embed=embed,
                 ephemeral=True
             )
