@@ -198,6 +198,6 @@ class AFK(commands.Cog):
             self.log_afk_action("Removed (Self)", message.author)
             if message.guild:
                 await self.send_afk_log_embed(message.guild, "Removed (Self)", message.author)
-
+#test
 async def setup(bot):
     await bot.add_cog(AFK(bot))
