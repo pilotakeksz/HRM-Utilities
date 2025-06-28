@@ -508,4 +508,3 @@ class Infraction(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Infraction(bot))    # Old:
-    await db.execute("DELETE FROM infractions WHERE infraction_id = ?", (infraction_id,))
