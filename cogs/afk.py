@@ -7,7 +7,7 @@ import aiosqlite
 from typing import Optional
 
 AFK_LOG_CHANNEL_ID = 1343686645815181382
-AFK_ADMIN_ROLE_IDS = {1329910265264869387, 1329910241835352064}
+AFK_ADMIN_ROLE_IDS = {1329910241835352064}  # Only this role can use afkremove
 AFK_LOG_FILE = os.path.join("logs", "afk.txt")
 AFK_DB_FILE = os.path.join("data", "afk.db")
 AFK_PREFIX = "[AFK] "
@@ -98,8 +98,7 @@ class AFK(commands.Cog):
         await self.set_afk(ctx.author, text)
         embed = discord.Embed(
             title="💤 You are now AFK!",
-            description=f"**AFK Message:**\n> {text}\n\n"
-                        f"Others will be notified if they mention you.",
+            description=f"**AFK Message:**\n> {text}\n\nOthers will be notified if they mention you.",
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
@@ -116,8 +115,7 @@ class AFK(commands.Cog):
             await self.set_afk(member, text)
         embed = discord.Embed(
             title="💤 You are now AFK!",
-            description=f"**AFK Message:**\n> {text}\n\n"
-                        f"Others will be notified if they mention you.",
+            description=f"**AFK Message:**\n> {text}\n\nOthers will be notified if they mention you.",
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
@@ -149,6 +147,7 @@ class AFK(commands.Cog):
     @app_commands.command(name="afkremove", description="Admin: Remove someone's AFK status.")
     @app_commands.describe(member="The member to remove AFK from", reason="Reason for removal")
     async def afk_remove_slash(self, interaction: discord.Interaction, member: discord.Member, reason: Optional[str] = None):
+        # Only allow users with the specific admin role
         if not any(r.id in AFK_ADMIN_ROLE_IDS for r in getattr(interaction.user, "roles", [])):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
