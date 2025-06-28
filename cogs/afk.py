@@ -3,17 +3,53 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import datetime
+import aiosqlite
 from typing import Optional
 
 AFK_LOG_CHANNEL_ID = 1343686645815181382
 AFK_ADMIN_ROLE_IDS = {1329910265264869387, 1329910241835352064}
 AFK_LOG_FILE = os.path.join("logs", "afk.txt")
+AFK_DB_FILE = os.path.join("data", "afk.db")
 AFK_PREFIX = "[AFK] "
 
 class AFK(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.afk_messages = {}  # user_id: (message, timestamp)
+
+    async def cog_load(self):
+        os.makedirs("data", exist_ok=True)
+        os.makedirs("logs", exist_ok=True)
+        async with aiosqlite.connect(AFK_DB_FILE) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS afk (
+                    user_id INTEGER PRIMARY KEY,
+                    message TEXT,
+                    timestamp TEXT
+                )
+            """)
+            await db.commit()
+            async with db.execute("SELECT user_id, message, timestamp FROM afk") as cursor:
+                async for row in cursor:
+                    self.afk_messages[row[0]] = (row[1], row[2])
+
+    async def set_afk(self, user: discord.Member, message: str):
+        timestamp = datetime.datetime.utcnow().isoformat()
+        self.afk_messages[user.id] = (message, timestamp)
+        async with aiosqlite.connect(AFK_DB_FILE) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO afk (user_id, message, timestamp) VALUES (?, ?, ?)",
+                (user.id, message, timestamp)
+            )
+            await db.commit()
+        await self.set_afk_nick(user)
+
+    async def remove_afk(self, user: discord.Member):
+        self.afk_messages.pop(user.id, None)
+        async with aiosqlite.connect(AFK_DB_FILE) as db:
+            await db.execute("DELETE FROM afk WHERE user_id = ?", (user.id,))
+            await db.commit()
+        await self.remove_afk_nick(user)
 
     def log_afk_action(self, action: str, user: discord.User, moderator: discord.abc.User = None, reason: str = None):
         now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -59,8 +95,7 @@ class AFK(commands.Cog):
     @commands.command(name="afk")
     async def afk_command(self, ctx, *, text: str = "AFK"):
         """Set your AFK message."""
-        self.afk_messages[ctx.author.id] = (text, discord.utils.utcnow())
-        await self.set_afk_nick(ctx.author)
+        await self.set_afk(ctx.author, text)
         embed = discord.Embed(
             title="💤 AFK Set",
             description=f"Your AFK message is now:\n> {text}",
@@ -73,10 +108,9 @@ class AFK(commands.Cog):
     @app_commands.command(name="afk", description="Set your AFK message.")
     @app_commands.describe(text="Your AFK message")
     async def afk_slash(self, interaction: discord.Interaction, text: str = "AFK"):
-        self.afk_messages[interaction.user.id] = (text, discord.utils.utcnow())
         member = interaction.guild.get_member(interaction.user.id)
         if member:
-            await self.set_afk_nick(member)
+            await self.set_afk(member, text)
         embed = discord.Embed(
             title="💤 AFK Set",
             description=f"Your AFK message is now:\n> {text}",
@@ -91,8 +125,7 @@ class AFK(commands.Cog):
     async def afk_remove_command(self, ctx, member: discord.Member, *, reason: str = None):
         """Admin: Remove someone's AFK status."""
         if member.id in self.afk_messages:
-            del self.afk_messages[member.id]
-            await self.remove_afk_nick(member)
+            await self.remove_afk(member)
             embed = discord.Embed(
                 title="✅ AFK Removed",
                 description=f"{member.mention}'s AFK status has been removed.",
@@ -111,8 +144,7 @@ class AFK(commands.Cog):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
         if member.id in self.afk_messages:
-            del self.afk_messages[member.id]
-            await self.remove_afk_nick(member)
+            await self.remove_afk(member)
             embed = discord.Embed(
                 title="✅ AFK Removed",
                 description=f"{member.mention}'s AFK status has been removed.",
@@ -143,8 +175,7 @@ class AFK(commands.Cog):
 
         # If the author is AFK and sends a message, remove their AFK (but not if they're using the afk command)
         if message.author.id in self.afk_messages and not message.content.lower().startswith("!afk") and not message.content.lower().startswith("/afk"):
-            del self.afk_messages[message.author.id]
-            await self.remove_afk_nick(message.author)
+            await self.remove_afk(message.author)
             embed = discord.Embed(
                 title="✅ Welcome Back!",
                 description="Your AFK status has been removed.",
