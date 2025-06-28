@@ -172,6 +172,56 @@ class LogMessage(commands.Cog):
         await interaction.response.send_message(f"**All Archive Entries:**\n{msg}", ephemeral=True)
         log_action(interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")
 
+    @app_commands.command(name="sendtoarchive", description="Save a new archive entry. Only allowed roles can use this.")
+    @app_commands.describe(
+        date="Date for the archive entry (YYYY-MM-DD)",
+        name="Name for the archive entry",
+        message="Text to archive"
+    )
+    async def sendtoarchive_slash(self, interaction: discord.Interaction, date: str, name: str, message: str):
+        if not has_allowed_role_appcmd(interaction):
+            await interaction.response.send_message(
+                "You do not have permission to use this command. Only users with <@&911072161349918720> or <@&1329910241835352064> can save to the archive.",
+                ephemeral=True
+            )
+            return
+        # Validate date and name
+        if not re.match(r"^[\w\-]+$", date):
+            await interaction.response.send_message(
+                "Invalid date format. Use only letters, numbers, dashes, or underscores.",
+                ephemeral=True
+            )
+            return
+        if not re.match(r"^[\w\-]+$", name):
+            await interaction.response.send_message(
+                "Invalid name format. Use only letters, numbers, dashes, or underscores.",
+                ephemeral=True
+            )
+            return
+
+        db_path = os.path.join(os.getcwd(), "data", "Archive.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        try:
+            async with aiosqlite.connect(db_path) as db:
+                await db.execute(
+                    "CREATE TABLE IF NOT EXISTS Archive (Date TEXT, Name TEXT, Message TEXT)"
+                )
+                await db.execute(
+                    "INSERT INTO Archive (Date, Name, Message) VALUES (?, ?, ?)",
+                    (date, name, message)
+                )
+                await db.commit()
+            await interaction.response.send_message(
+                f"Archive saved for `{date}` and `{name}`.",
+                ephemeral=True
+            )
+            log_action(interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")
+        except Exception:
+            await interaction.response.send_message(
+                "Failed to save the archive.",
+                ephemeral=True
+            )
+
     @commands.Cog.listener()
     async def on_ready(self):
         # Send documentation embed to the log channel on startup
