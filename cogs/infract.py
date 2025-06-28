@@ -91,7 +91,9 @@ class Infraction(commands.Cog):
                     reason TEXT,
                     proof TEXT,
                     date TEXT,
-                    message_id INTEGER
+                    message_id INTEGER,
+                    voided INTEGER DEFAULT 0,
+                    void_reason TEXT
                 )
             """)
             await db.commit()
@@ -100,8 +102,10 @@ class Infraction(commands.Cog):
         now = datetime.datetime.utcnow().isoformat()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT INTO infractions (infraction_id, user_id, user_name, moderator_id, moderator_name, action, reason, proof, date, message_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO infractions (
+                    infraction_id, user_id, user_name, moderator_id, moderator_name,
+                    action, reason, proof, date, message_id, voided, void_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
             """, (infraction_id, user.id, str(user), issued_by.id, str(issued_by), action, reason, proof, now, message_id))
             await db.commit()
         # Log to infraction.txt as well (for easy viewing)
@@ -275,10 +279,10 @@ class Infraction(commands.Cog):
 
     @app_commands.command(name="infraction-log", description="View the infraction log (last 10 entries).")
     async def infraction_log(self, interaction: discord.Interaction):
-        """Show the last 10 infractions in an embed, for channel 1343686645815181382."""
+        """Show the last 10 non-voided infractions in an embed."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "SELECT infraction_id, user_name, moderator_name, action, reason, proof, date FROM infractions ORDER BY date DESC LIMIT 10"
+                "SELECT infraction_id, user_name, moderator_name, action, reason, proof, date, voided, void_reason FROM infractions WHERE voided = 0 ORDER BY date DESC LIMIT 10"
             )
             rows = await cursor.fetchall()
         if not rows:
@@ -294,7 +298,7 @@ class Infraction(commands.Cog):
                 color=discord.Color.orange()
             )
             for row in rows:
-                infraction_id, user_name, moderator_name, action, reason, proof, date = row
+                infraction_id, user_name, moderator_name, action, reason, proof, date, voided, void_reason = row
                 date_fmt = datetime.datetime.fromisoformat(date).strftime("%Y-%m-%d %H:%M")
                 value = (
                     f"**User:** {user_name}\n"
@@ -303,8 +307,10 @@ class Infraction(commands.Cog):
                     f"**Reason:** {reason}\n"
                     f"**Proof:** {proof or 'None'}\n"
                     f"**Date:** {date_fmt}\n"
-                    f"**ID:** `{infraction_id}`"
+                    f"**ID:** `{infraction_id}`\n"
                 )
+                if voided:
+                    value += f"**VOIDED**: {void_reason or 'No reason provided.'}\n"
                 embed.add_field(name="\u200b", value=value, inline=False)
             # Add UTC footer
             now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
@@ -320,7 +326,7 @@ class Infraction(commands.Cog):
             return
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "SELECT infraction_id, user_name, moderator_name, action, reason, proof, date FROM infractions ORDER BY date DESC LIMIT 10"
+                "SELECT infraction_id, user_name, moderator_name, action, reason, proof, date FROM infractions WHERE voided = 0 ORDER BY date DESC LIMIT 10"
             )
             rows = await cursor.fetchall()
         if not rows:
@@ -366,59 +372,46 @@ class Infraction(commands.Cog):
             # Fetch infraction details and message_id from the database
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT user_id, user_name, action, reason, date, message_id FROM infractions WHERE infraction_id = ?",
+                    "SELECT user_id, user_name, action, reason, date, message_id, voided FROM infractions WHERE infraction_id = ?",
                     (infraction_id,)
                 )
                 row = await cursor.fetchone()
                 if not row:
                     await interaction.response.send_message("Infraction not found.", ephemeral=True)
                     return
-                user_id, user_name, action, orig_reason, date, message_id = row
+                user_id, user_name, action, orig_reason, date, message_id, voided = row
 
-                # Delete from database
-                await db.execute("DELETE FROM infractions WHERE infraction_id = ?", (infraction_id,))
+                if voided:
+                    await interaction.response.send_message("This infraction is already voided.", ephemeral=True)
+                    return
+
+                # Mark as voided
+                await db.execute(
+                    "UPDATE infractions SET voided = 1, void_reason = ? WHERE infraction_id = ?",
+                    (reason, infraction_id)
+                )
                 await db.commit()
 
-            # Remove from logs/infraction.txt (if present)
-            log_file = os.path.join("logs", "infraction.txt")
-            if os.path.exists(log_file):
-                with open(log_file, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                with open(log_file, "w", encoding="utf-8") as f:
-                    for line in lines:
-                        if infraction_id not in line:
-                            f.write(line)
+        # Remove from logs/infraction.txt (optional, or you can keep for history)
+        log_file = os.path.join("logs", "infraction.txt")
+        if os.path.exists(log_file):
+            with open(log_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            with open(log_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    if infraction_id not in line:
+                        f.write(line)
 
-            # Edit the original infraction message to show voided status
-            inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
-            if inf_channel and message_id:
-                try:
-                    msg = await inf_channel.fetch_message(message_id)
-                    voided_embed = discord.Embed(
-                        title="Infraction Voided",
-                        description=(
-                            f"**Infraction ID:** `{infraction_id}`\n"
-                            f"**User:** {user_name} (`{user_id}`)\n"
-                            f"**Original Action:** {action}\n"
-                            f"**Original Reason:** {orig_reason}\n"
-                            f"**Voided By:** {interaction.user.mention}\n"
-                            f"**Void Reason:** {reason}"
-                        ),
-                        color=discord.Color.green()
-                    )
-                    now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
-                    voided_embed.set_footer(text=f"Voided: {now_utc}")
-                    await msg.edit(embed=voided_embed, content="~~This infraction has been voided.~~")
-                except Exception:
-                    pass
-
-            # DM the user about the voided infraction
+        # Edit the original infraction message to show voided status
+        inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
+        if inf_channel and message_id:
             try:
-                user = await interaction.guild.fetch_member(user_id)
-                dm_embed = discord.Embed(
-                    title="Your Infraction Was Voided",
+                msg = await inf_channel.fetch_message(message_id)
+                voided_embed = discord.Embed(
+                    title="Infraction Voided",
                     description=(
-                        f"An infraction issued to you in **{interaction.guild.name}** has been voided.\n\n"
+                        f"**Infraction ID:** `{infraction_id}`\n"
+                        f"**User:** {user_name} (`{user_id}`)\n"
                         f"**Original Action:** {action}\n"
                         f"**Original Reason:** {orig_reason}\n"
                         f"**Voided By:** {interaction.user.mention}\n"
@@ -427,55 +420,18 @@ class Infraction(commands.Cog):
                     color=discord.Color.green()
                 )
                 now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
-                dm_embed.set_footer(text=f"Voided: {now_utc}")
-                await user.send(embed=dm_embed)
+                voided_embed.set_footer(text=f"Voided: {now_utc}")
+                await msg.edit(embed=voided_embed, content="~~This infraction has been voided.~~")
             except Exception:
                 pass
 
-            # Log the void action
-            now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
-            log_to_file(
-                interaction.user.id,
-                interaction.channel.id,
-                f"Voided infraction {infraction_id} for user {user_name} ({user_id}). Original action: {action}. Void reason: {reason}",
-                embed=False
-            )
-
-            # Log command usage to txt
-            log_command_to_txt(
-                "infraction-void",
-                interaction.user,
-                interaction.channel,
-                infraction_id=infraction_id,
-                user=f"{user_name} ({user_id})",
-                action=action,
-                original_reason=orig_reason,
-                void_reason=reason
-            )
-
-            # After voiding, send a log embed to the log channel
-            log_channel = interaction.guild.get_channel(INFRACTION_VIEW_CHANNEL_ID)
-            if log_channel:
-                log_embed = discord.Embed(
-                    title="Infraction Voided",
-                    color=discord.Color.green(),
-                    timestamp=datetime.datetime.utcnow()
-                )
-                log_embed.add_field(name="Infraction ID", value=infraction_id, inline=False)
-                log_embed.add_field(name="User", value=f"{user_name} ({user_id})", inline=False)
-                log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
-                log_embed.add_field(name="Original Action", value=action, inline=True)
-                log_embed.add_field(name="Original Reason", value=orig_reason, inline=False)
-                log_embed.add_field(name="Void Reason", value=reason, inline=False)
-                log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
-                await log_channel.send(embed=log_embed)
-
-            # Respond to the moderator
-            embed = discord.Embed(
-                title="Infraction Voided",
+        # DM the user about the voided infraction
+        try:
+            user = await interaction.guild.fetch_member(user_id)
+            dm_embed = discord.Embed(
+                title="Your Infraction Was Voided",
                 description=(
-                    f"**Infraction ID:** `{infraction_id}`\n"
-                    f"**User:** {user_name} (`{user_id}`)\n"
+                    f"An infraction issued to you in **{interaction.guild.name}** has been voided.\n\n"
                     f"**Original Action:** {action}\n"
                     f"**Original Reason:** {orig_reason}\n"
                     f"**Voided By:** {interaction.user.mention}\n"
@@ -483,15 +439,73 @@ class Infraction(commands.Cog):
                 ),
                 color=discord.Color.green()
             )
-            embed.set_footer(text=f"Voided: {now_utc}")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+            dm_embed.set_footer(text=f"Voided: {now_utc}")
+            await user.send(embed=dm_embed)
+        except Exception:
+            pass
 
-        except Exception as e:
-            # Always respond, even on error
-            try:
-                await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
-            except discord.InteractionResponded:
-                await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+        # Log the void action
+        now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+        log_to_file(
+            interaction.user.id,
+            interaction.channel.id,
+            f"Voided infraction {infraction_id} for user {user_name} ({user_id}). Original action: {action}. Void reason: {reason}",
+            embed=False
+        )
+
+        # Log command usage to txt
+        log_command_to_txt(
+            "infraction-void",
+            interaction.user,
+            interaction.channel,
+            infraction_id=infraction_id,
+            user=f"{user_name} ({user_id})",
+            action=action,
+            original_reason=orig_reason,
+            void_reason=reason
+        )
+
+        # After voiding, send a log embed to the log channel
+        log_channel = interaction.guild.get_channel(INFRACTION_VIEW_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="Infraction Voided",
+                color=discord.Color.green(),
+                timestamp=datetime.datetime.utcnow()
+            )
+            log_embed.add_field(name="Infraction ID", value=infraction_id, inline=False)
+            log_embed.add_field(name="User", value=f"{user_name} ({user_id})", inline=False)
+            log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+            log_embed.add_field(name="Original Action", value=action, inline=True)
+            log_embed.add_field(name="Original Reason", value=orig_reason, inline=False)
+            log_embed.add_field(name="Void Reason", value=reason, inline=False)
+            log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+            await log_channel.send(embed=log_embed)
+
+        # Respond to the moderator
+        embed = discord.Embed(
+            title="Infraction Voided",
+            description=(
+                f"**Infraction ID:** `{infraction_id}`\n"
+                f"**User:** {user_name} (`{user_id}`)\n"
+                f"**Original Action:** {action}\n"
+                f"**Original Reason:** {orig_reason}\n"
+                f"**Voided By:** {interaction.user.mention}\n"
+                f"**Void Reason:** {reason}"
+            ),
+            color=discord.Color.green()
+        )
+        embed.set_footer(text=f"Voided: {now_utc}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        # Always respond, even on error
+        try:
+            await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
+        except discord.InteractionResponded:
+            await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(Infraction(bot))
+    await bot.add_cog(Infraction(bot))    # Old:
+    await db.execute("DELETE FROM infractions WHERE infraction_id = ?", (infraction_id,))
