@@ -452,7 +452,7 @@ class Infraction(commands.Cog):
                 interaction.user,
                 interaction.channel,
                 infraction_id=infraction_id,
-                user=f"{user_name} ({user_id})",
+                target_user=f"{user_name} ({user_id})",  # <-- Renamed from 'user' to 'target_user'
                 action=action,
                 original_reason=orig_reason,
                 void_reason=reason
