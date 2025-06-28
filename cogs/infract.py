@@ -288,7 +288,7 @@ class Infraction(commands.Cog):
         if not rows:
             embed = discord.Embed(
                 title="Infraction Log",
-                description="No infractions found.",
+                description="No infractions found.", #teeest
                 color=discord.Color.orange()
             )
         else:
