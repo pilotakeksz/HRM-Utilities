@@ -360,6 +360,208 @@ class Blacklist(commands.Cog):
         embed.set_footer(text=f"Generated: {now_utc}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @app_commands.command(name="blacklist-by-id", description="Blacklist a user from HRMC by user ID (useful if they're not in the server).")
+    @app_commands.describe(
+        user_id="User ID to blacklist",
+        reason="Reason for blacklist",
+        proof="Proof file",
+        hrmc_wide="Is this blacklist HRMC-wide?",
+        ban="Ban the user from the server?"
+    )
+    async def blacklist_by_id_command(
+        self,
+        interaction: discord.Interaction,
+        user_id: str,
+        reason: str,
+        proof: Optional[discord.Attachment] = None,
+        hrmc_wide: bool = False,
+        ban: bool = False
+    ):
+        if not any(r.id == BLACKLIST_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+            await interaction.response.send_message("You do not have permission to blacklist users.", ephemeral=True)
+            return
+
+        try:
+            user_obj = await self.bot.fetch_user(int(user_id))
+            user_display = f"{user_obj} ({user_obj.id})"
+        except Exception:
+            user_obj = None
+            user_display = f"Unknown User ({user_id})"
+
+        log_command_to_txt(
+            "blacklist-by-id",
+            interaction.user,
+            interaction.channel,
+            target_user=user_display,
+            reason=reason,
+            proof=proof.url if proof else "None",
+            hrmc_wide=hrmc_wide,
+            ban=ban
+        )
+
+        proof_url = proof.url if proof else None
+        blacklist_id = str(uuid.uuid4())
+        channel = interaction.guild.get_channel(BLACKLIST_VIEW_CHANNEL_ID)
+        embed = self.get_blacklist_embed(
+            blacklist_id, user_display, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), hrmc_wide, ban
+        )
+        # Only send the embed to the log channel, with only the ping in content (no ping if user not in server)
+        content = user_obj.mention if user_obj and hasattr(user_obj, "mention") else user_display
+        if proof and proof.content_type and proof.content_type.startswith("image/"):
+            embed.set_image(url=proof.url)
+            msg = await channel.send(content=content, embed=embed)
+        elif proof:
+            msg = await channel.send(content=content, embed=embed, file=await proof.to_file())
+        else:
+            msg = await channel.send(content=content, embed=embed)
+
+        # HRMC-wide: publish announcement
+        if hrmc_wide and channel.is_news():
+            try:
+                await msg.publish()
+            except Exception:
+                pass
+
+        # DM the blacklisted user (if possible)
+        if user_obj:
+            try:
+                dm_embed = discord.Embed(
+                    title=f"{EMOJI_HRMC} // HRMC Blacklist",
+                    description=(
+                        f"You have been blacklisted in **{interaction.guild.name}**.\n\n"
+                        f"{EMOJI_REASON} **Reason:** {reason}\n"
+                        f"{EMOJI_ID} **Blacklist ID:** {blacklist_id}\n"
+                        f"{EMOJI_PERMISSION} **HRMC-wide:** {'Yes' if hrmc_wide else 'No'}\n"
+                        f"{EMOJI_PERMISSION} **Banned:** {'Yes' if ban else 'No'}"
+                    ),
+                    color=discord.Color.dark_red()
+                )
+                if proof and proof.content_type and proof.content_type.startswith("image/"):
+                    dm_embed.set_image(url=proof.url)
+                await user_obj.send(embed=dm_embed)
+            except Exception:
+                pass
+
+        # Ban if requested (only if user is in the guild)
+        member = None
+        try:
+            member = await interaction.guild.fetch_member(int(user_id))
+        except Exception:
+            pass
+        if ban and member:
+            try:
+                await member.ban(reason=f"Blacklisted: {reason}")
+            except Exception:
+                await interaction.followup.send("Failed to ban the user. Please check my permissions.", ephemeral=True)
+
+        # Add blacklisted role if user is in the guild
+        try:
+            if member:
+                role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
+                if role and role not in member.roles:
+                    await member.add_roles(role, reason="HRMC Blacklisted")
+        except Exception:
+            pass
+
+        await self.add_blacklist(
+            blacklist_id, user_display, interaction.user, reason, proof_url, msg.id, hrmc_wide, ban
+        )
+
+        log_to_file(
+            interaction.user.id,
+            interaction.channel.id,
+            f"Blacklisted {user_display} | Reason: {reason} | Blacklist ID: {blacklist_id} | HRMC-wide: {hrmc_wide} | Ban: {ban}",
+            embed=True
+        )
+
+        # Log to logging channel
+        log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="Blacklist Issued (by ID)",
+                color=discord.Color.dark_red(),
+                timestamp=datetime.datetime.utcnow()
+            )
+            log_embed.add_field(name="User", value=user_display, inline=False)
+            log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Blacklist ID", value=blacklist_id, inline=False)
+            log_embed.add_field(name="HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+            log_embed.add_field(name="Banned", value="Yes" if ban else "No", inline=True)
+            log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+            await log_channel.send(embed=log_embed)
+
+        await interaction.response.send_message(f"User blacklisted by ID and logged. Blacklist ID: {blacklist_id}", ephemeral=True)
+
+    @app_commands.command(name="blacklist-test", description="Test the blacklist command with a user ID.")
+    @app_commands.describe(user_id="User ID to test with")
+    async def blacklist_test_command(self, interaction: discord.Interaction, user_id: str):
+        try:
+            user_obj = await self.bot.fetch_user(int(user_id))
+            await interaction.response.send_message(f"User found: {user_obj} (ID: {user_obj.id})", ephemeral=True)
+        except Exception:
+            await interaction.response.send_message(f"User not found for ID: {user_id}", ephemeral=True)
+
+    @app_commands.command(name="blacklist-remove-role", description="Remove the blacklisted role from a user.")
+    @app_commands.describe(user="User to remove the role from")
+    async def blacklist_remove_role_command(self, interaction: discord.Interaction, user: discord.Member):
+        try:
+            if not any(r.id == BLACKLIST_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+                await interaction.response.send_message("You do not have permission to remove blacklisted roles.", ephemeral=True)
+                return
+
+            role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
+            if not role:
+                await interaction.response.send_message("Blacklisted role not found.", ephemeral=True)
+                return
+
+            if role not in user.roles:
+                await interaction.response.send_message("User does not have the blacklisted role.", ephemeral=True)
+                return
+
+            await user.remove_roles(role, reason="Blacklist removed")
+            await interaction.response.send_message(f"Removed blacklisted role from {user}.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Error: {e}", ephemeral=True)
+
+    @app_commands.command(name="blacklist-info", description="Get information about your blacklist status.")
+    async def blacklist_info_command(self, interaction: discord.Interaction):
+        try:
+            user_id = interaction.user.id
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    "SELECT blacklist_id, reason, date, hrmc_wide, ban, voided, void_reason FROM blacklist WHERE user_id = ? ORDER BY date DESC",
+                    (user_id,)
+                )
+                rows = await cursor.fetchall()
+
+            if not rows:
+                await interaction.response.send_message("You are not blacklisted.", ephemeral=True)
+                return
+
+            # Create an embed for the blacklist information
+            embed = discord.Embed(
+                title="Your Blacklist Information",
+                color=discord.Color.orange()
+            )
+            for row in rows:
+                blacklist_id, reason, date, hrmc_wide, ban, voided, void_reason = row
+                value = (
+                    f"{EMOJI_REASON} **Reason:** {reason}\n"
+                    f"**Date:** {date}\n"
+                    f"{EMOJI_ID} **ID:** `{blacklist_id}`\n"
+                    f"{EMOJI_PERMISSION} **HRMC-wide:** {'Yes' if hrmc_wide else 'No'}\n"
+                    f"{EMOJI_PERMISSION} **Banned:** {'Yes' if ban else 'No'}\n"
+                )
+                if voided:
+                    value += f"**VOIDED**: {void_reason or 'No reason provided.'}\n"
+                embed.add_field(name="\u200b", value=value, inline=False)
+            now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M:%S")
+            embed.set_footer(text=f"Generated: {now_utc}")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Error: {e}", ephemeral=True)
+
     # ...inside the Blacklist class...
     def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
         try:
