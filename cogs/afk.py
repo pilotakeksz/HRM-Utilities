@@ -8,6 +8,7 @@ from typing import Optional
 AFK_LOG_CHANNEL_ID = 1343686645815181382
 AFK_ADMIN_ROLE_IDS = {1329910265264869387, 1329910241835352064}
 AFK_LOG_FILE = os.path.join("logs", "afk.txt")
+AFK_PREFIX = "[AFK]ˇ"
 
 class AFK(commands.Cog):
     def __init__(self, bot):
@@ -26,9 +27,10 @@ class AFK(commands.Cog):
         channel = guild.get_channel(AFK_LOG_CHANNEL_ID)
         if not channel:
             return
+        emoji = "💤" if action == "Set" else ("✅" if action.startswith("Removed") else "⚠️")
         embed = discord.Embed(
-            title=f"AFK {action}",
-            color=discord.Color.blue() if action == "Set" else (discord.Color.green() if action == "Removed" else discord.Color.orange()),
+            title=f"{emoji} AFK {action}",
+            color=discord.Color.blue() if action == "Set" else (discord.Color.green() if action.startswith("Removed") else discord.Color.orange()),
             timestamp=datetime.datetime.utcnow()
         )
         embed.add_field(name="User", value=f"{user} ({user.id})", inline=False)
@@ -40,12 +42,27 @@ class AFK(commands.Cog):
             embed.add_field(name="Reason", value=reason, inline=False)
         await channel.send(embed=embed)
 
+    async def set_afk_nick(self, member: discord.Member):
+        if not member.display_name.startswith(AFK_PREFIX):
+            try:
+                await member.edit(nick=f"{AFK_PREFIX}{member.display_name}"[:32], reason="Set AFK")
+            except discord.Forbidden:
+                pass
+
+    async def remove_afk_nick(self, member: discord.Member):
+        if member.display_name.startswith(AFK_PREFIX):
+            try:
+                await member.edit(nick=member.display_name[len(AFK_PREFIX):], reason="Remove AFK")
+            except discord.Forbidden:
+                pass
+
     @commands.command(name="afk")
     async def afk_command(self, ctx, *, text: str = "AFK"):
         """Set your AFK message."""
         self.afk_messages[ctx.author.id] = (text, discord.utils.utcnow())
+        await self.set_afk_nick(ctx.author)
         embed = discord.Embed(
-            title="AFK Set",
+            title="💤 AFK Set",
             description=f"Your AFK message is now:\n> {text}",
             color=discord.Color.blue()
         )
@@ -57,8 +74,11 @@ class AFK(commands.Cog):
     @app_commands.describe(text="Your AFK message")
     async def afk_slash(self, interaction: discord.Interaction, text: str = "AFK"):
         self.afk_messages[interaction.user.id] = (text, discord.utils.utcnow())
+        member = interaction.guild.get_member(interaction.user.id)
+        if member:
+            await self.set_afk_nick(member)
         embed = discord.Embed(
-            title="AFK Set",
+            title="💤 AFK Set",
             description=f"Your AFK message is now:\n> {text}",
             color=discord.Color.blue()
         )
@@ -72,8 +92,9 @@ class AFK(commands.Cog):
         """Admin: Remove someone's AFK status."""
         if member.id in self.afk_messages:
             del self.afk_messages[member.id]
+            await self.remove_afk_nick(member)
             embed = discord.Embed(
-                title="AFK Removed",
+                title="✅ AFK Removed",
                 description=f"{member.mention}'s AFK status has been removed.",
                 color=discord.Color.green()
             )
@@ -91,8 +112,9 @@ class AFK(commands.Cog):
             return
         if member.id in self.afk_messages:
             del self.afk_messages[member.id]
+            await self.remove_afk_nick(member)
             embed = discord.Embed(
-                title="AFK Removed",
+                title="✅ AFK Removed",
                 description=f"{member.mention}'s AFK status has been removed.",
                 color=discord.Color.green()
             )
@@ -113,7 +135,7 @@ class AFK(commands.Cog):
             if user_id in self.afk_messages:
                 afk_text, timestamp = self.afk_messages[user_id]
                 embed = discord.Embed(
-                    title="AFK Notice",
+                    title="💤 AFK Notice",
                     description=f"That user is currently AFK:\n> {afk_text}",
                     color=discord.Color.blue()
                 )
@@ -122,8 +144,9 @@ class AFK(commands.Cog):
         # If the author is AFK and sends a message, remove their AFK (but not if they're using the afk command)
         if message.author.id in self.afk_messages and not message.content.lower().startswith("!afk") and not message.content.lower().startswith("/afk"):
             del self.afk_messages[message.author.id]
+            await self.remove_afk_nick(message.author)
             embed = discord.Embed(
-                title="Welcome Back!",
+                title="✅ Welcome Back!",
                 description="Your AFK status has been removed.",
                 color=discord.Color.green()
             )
