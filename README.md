@@ -1,6 +1,6 @@
 # High Rock Military Corps Discord Bot
 
-A custom Discord bot for the High Rock Military Corps community, featuring persistent interactive embeds, ticketing, economy, verification, leveling, and more.
+A custom Discord bot for the High Rock Military Corps community, featuring persistent interactive embeds, ticketing, economy, verification, leveling, callsign management, infractions, and more.
 
 ---
 
@@ -20,6 +20,10 @@ A custom Discord bot for the High Rock Military Corps community, featuring persi
   - Application system for new members.
 - **Suggestion Box**  
   - Submit and manage suggestions.
+- **Callsign Management**  
+  - Request, view, and manage callsigns with unique number enforcement and admin menu.
+- **Infraction System**  
+  - Issue, void, view, and list infractions with DM notification, role updates, logging, and paginated user infraction history.
 - **Miscellaneous**  
   - Ping, uptime, and say commands.
 
@@ -74,19 +78,43 @@ A custom Discord bot for the High Rock Military Corps community, featuring persi
 - `!rank`, `!leaderboard`  
   Leveling and leaderboard commands.
 
+- `/callsign` or `!callsign`  
+  View or request your callsign. Only one of each number is allowed globally. Admins can add/remove callsigns via the admin menu.
+
+---
+
+### Infraction Commands
+
+- `/infraction-issue`  
+  Issue an infraction to a user, with DM, role updates, and logging.
+
+- `/infraction-void`  
+  Void (remove) an infraction by its ID. Marks the infraction as voided, logs the action, and updates the infraction message.
+
+- `/infraction-view <infraction_id>`  
+  View all details of a specific infraction by its ID, including voided status and reason.
+
+- `/infraction-list <user> [page]`  
+  List all infractions (current and voided) for a user, paginated.
+
+- `/infraction-log`  
+  View the last 10 non-voided infractions in an embed.
+
 ---
 
 ## Persistence
 
 - Interactive embeds (dropdowns/buttons) remain functional after bot restarts.
 - Message IDs for persistent embeds are stored in files (e.g. `divisions_message_id.txt`).
+- Callsign and infraction data is stored in the `data/` and `logs/` folders.
 
 ---
 
 ## File Structure
 
 - `cogs/` — All bot features are modularized as cogs.
-- `data/` — Databases for economy and leveling.
+- `data/` — Databases for economy, leveling, callsigns, and infractions.
+- `logs/` — Logs for commands and infractions.
 - `.env` — Configuration for all IDs and settings.
 
 ---
