@@ -97,10 +97,13 @@ class AFK(commands.Cog):
         """Set your AFK message."""
         await self.set_afk(ctx.author, text)
         embed = discord.Embed(
-            title="💤 AFK Set",
-            description=f"Your AFK message is now:\n> {text}",
-            color=discord.Color.blue()
+            title="💤 You are now AFK!",
+            description=f"**AFK Message:**\n> {text}\n\n"
+                        f"Others will be notified if they mention you.",
+            color=discord.Color.blurple()
         )
+        embed.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
+        embed.set_footer(text="Use !afkremove or send a message to remove AFK.")
         await ctx.send(embed=embed)
         self.log_afk_action("Set", ctx.author)
         await self.send_afk_log_embed(ctx.guild, "Set", ctx.author, afk_message=text)
@@ -112,10 +115,13 @@ class AFK(commands.Cog):
         if member:
             await self.set_afk(member, text)
         embed = discord.Embed(
-            title="💤 AFK Set",
-            description=f"Your AFK message is now:\n> {text}",
-            color=discord.Color.blue()
+            title="💤 You are now AFK!",
+            description=f"**AFK Message:**\n> {text}\n\n"
+                        f"Others will be notified if they mention you.",
+            color=discord.Color.blurple()
         )
+        embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
+        embed.set_footer(text="Use /afkremove or send a message to remove AFK.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         self.log_afk_action("Set", interaction.user)
         await self.send_afk_log_embed(interaction.guild, "Set", interaction.user, afk_message=text)
@@ -128,9 +134,12 @@ class AFK(commands.Cog):
             await self.remove_afk(member)
             embed = discord.Embed(
                 title="✅ AFK Removed",
-                description=f"{member.mention}'s AFK status has been removed.",
+                description=f"{member.mention}'s AFK status has been **removed**.\n"
+                            f"{'**Reason:** ' + reason if reason else ''}",
                 color=discord.Color.green()
             )
+            embed.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
+            embed.set_footer(text="AFK status managed by admin.")
             await ctx.send(embed=embed)
             self.log_afk_action("Removed (Admin)", member, ctx.author, reason)
             await self.send_afk_log_embed(ctx.guild, "Removed (Admin)", member, moderator=ctx.author, reason=reason)
@@ -147,9 +156,12 @@ class AFK(commands.Cog):
             await self.remove_afk(member)
             embed = discord.Embed(
                 title="✅ AFK Removed",
-                description=f"{member.mention}'s AFK status has been removed.",
+                description=f"{member.mention}'s AFK status has been **removed**.\n"
+                            f"{'**Reason:** ' + reason if reason else ''}",
                 color=discord.Color.green()
             )
+            embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
+            embed.set_footer(text="AFK status managed by admin.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
             self.log_afk_action("Removed (Admin)", member, interaction.user, reason)
             await self.send_afk_log_embed(interaction.guild, "Removed (Admin)", member, moderator=interaction.user, reason=reason)
@@ -168,9 +180,10 @@ class AFK(commands.Cog):
                 afk_text, timestamp = self.afk_messages[user_id]
                 embed = discord.Embed(
                     title="💤 AFK Notice",
-                    description=f"That user is currently AFK:\n> {afk_text}",
-                    color=discord.Color.blue()
+                    description=f"**That user is currently AFK:**\n> {afk_text}",
+                    color=discord.Color.blurple()
                 )
+                embed.set_footer(text="They will see your message when they return.")
                 await message.channel.send(embed=embed)
 
         # If the author is AFK and sends a message, remove their AFK (but not if they're using the afk command)
@@ -178,9 +191,10 @@ class AFK(commands.Cog):
             await self.remove_afk(message.author)
             embed = discord.Embed(
                 title="✅ Welcome Back!",
-                description="Your AFK status has been removed.",
+                description="Your AFK status has been **removed**. Others will no longer see your AFK message.",
                 color=discord.Color.green()
             )
+            embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
             await message.channel.send(embed=embed)
             self.log_afk_action("Removed (Self)", message.author)
             if message.guild:
