@@ -32,6 +32,11 @@ INFRACTION_TYPES = {
     "Suspension": {"color": discord.Color.blue(), "roles": [SUSPENDED_ROLE_ID]},
 }
 
+EMOJI_HRMC = "<:HighRockMilitary:1376605942765977800>"
+EMOJI_MEMBER = "<:Member:1343945679390904330>"
+EMOJI_REASON = "<:regulations:1343313357121392733>"
+EMOJI_ID = "<:id:1343961756124315668>"
+
 def log_to_file(user_id, channel_id, message, embed=False):
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -107,18 +112,29 @@ class Infraction(commands.Cog):
         with open(INFRACTION_LOG_TEXT, "a", encoding="utf-8") as f:
             f.write(f"[{now}] {user} ({user.id}) | By: {issued_by} ({issued_by.id}) | {action} | Reason: {reason} | Proof: {proof or 'None'} | Infraction ID: {infraction_id}\n")
 
-    def get_infraction_embed(self, infraction_id, user, issued_by, action, reason, proof, date):
-        color = INFRACTION_TYPES.get(action, {}).get("color", discord.Color.default())
+    def get_infraction_embed(self, infraction_id, user, issued_by, action, reason, proof, date, voided=False, void_reason=None):
+        color = discord.Color.green() if voided else INFRACTION_TYPES.get(action, {}).get("color", discord.Color.default())
         embed = discord.Embed(
-            title=f"Infraction: {action}",
             color=color,
             timestamp=datetime.datetime.fromisoformat(date)
         )
-        embed.add_field(name="User", value=f"{user}", inline=True)
-        embed.add_field(name="Issued by", value=f"{issued_by}", inline=True)
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Proof", value=proof or "None", inline=False)
-        embed.add_field(name="Infraction ID", value=str(infraction_id), inline=True)
+        # Title in content, not embed title
+        embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
+        embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+
+        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+
+        embed.add_field(name=f"{EMOJI_ID} Infraction ID", value=f"`{infraction_id}`", inline=True)
+        embed.add_field(name="Proof", value=proof or "None", inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+
+        if voided:
+            embed.add_field(name="Voided", value=f"Yes\nReason: {void_reason or 'No reason provided.'}", inline=False)
+        # Set footer with full UTC date and time
+        now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M:%S")
+        embed.set_footer(text=f"Generated: {now_utc}")
         return embed
 
     async def update_roles(self, member, action, guild, add=True):
@@ -192,11 +208,12 @@ class Infraction(commands.Cog):
         )
 
         proof_url = proof.url if proof else None
+        content_title = f"# {EMOJI_HRMC} // HRMC Infraction"
         embed = self.get_infraction_embed("Pending", personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
         view = ConfirmView()
-        await interaction.response.send_message("Please confirm issuing this infraction:", embed=embed, ephemeral=True, view=view)
+        await interaction.response.send_message(f"{content_title}", embed=embed, ephemeral=True, view=view)
         await view.wait()
         if not view.value:
             await interaction.followup.send("Infraction cancelled.", ephemeral=True)
@@ -208,11 +225,11 @@ class Infraction(commands.Cog):
         embed = self.get_infraction_embed(infraction_id, personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
-            msg = await inf_channel.send(content=personnel.mention, embed=embed)
+            msg = await inf_channel.send(content=f"{content_title}\n{personnel.mention}", embed=embed)
         elif proof:
-            msg = await inf_channel.send(content=personnel.mention, embed=embed, file=await proof.to_file())
+            msg = await inf_channel.send(content=f"{content_title}\n{personnel.mention}", embed=embed, file=await proof.to_file())
         else:
-            msg = await inf_channel.send(content=personnel.mention, embed=embed)
+            msg = await inf_channel.send(content=f"{content_title}\n{personnel.mention}", embed=embed)
 
         # DM the infracted user
         dm_success = False
@@ -399,22 +416,12 @@ class Infraction(commands.Cog):
             inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
             if inf_channel and message_id:
                 try:
-                    msg = await inf_channel.fetch_message(message_id)
-                    voided_embed = discord.Embed(
-                        title="Infraction Voided",
-                        description=(
-                            f"**Infraction ID:** `{infraction_id}`\n"
-                            f"**User:** {user_name} (`{user_id}`)\n"
-                            f"**Original Action:** {action}\n"
-                            f"**Original Reason:** {orig_reason}\n"
-                            f"**Voided By:** {interaction.user.mention}\n"
-                            f"**Void Reason:** {reason}"
-                        ),
-                        color=discord.Color.green()
+                    voided_embed = self.get_infraction_embed(
+                        infraction_id, user_name, interaction.user, action, orig_reason, None, date, voided=True, void_reason=reason
                     )
-                    now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
-                    voided_embed.set_footer(text=f"Voided: {now_utc}")
-                    await msg.edit(embed=voided_embed, content="~~This infraction has been voided.~~")
+                    content_title = f"# {EMOJI_HRMC} // HRMC Infraction"
+                    msg = await inf_channel.fetch_message(message_id)
+                    await msg.edit(embed=voided_embed, content=f"{content_title}\n~~This infraction has been voided.~~")
                 except Exception:
                     pass
 
@@ -540,7 +547,6 @@ class Infraction(commands.Cog):
                 (user.id, PAGE_SIZE, offset)
             )
             rows = await cursor.fetchall()
-            # For total count
             count_cursor = await db.execute(
                 "SELECT COUNT(*) FROM infractions WHERE user_id = ?",
                 (user.id,)
@@ -552,21 +558,22 @@ class Infraction(commands.Cog):
             return
 
         embed = discord.Embed(
-            title=f"Infractions for {user} (Page {page}/{(total + PAGE_SIZE - 1)//PAGE_SIZE})",
+            title=f"{EMOJI_HRMC} // Infractions for {user} (Page {page}/{(total + PAGE_SIZE - 1)//PAGE_SIZE})",
             color=discord.Color.orange()
         )
         for row in rows:
             infraction_id, action, reason, date, voided, void_reason = row
             value = (
-                f"**Type:** {action}\n"
-                f"**Reason:** {reason}\n"
+                f"{EMOJI_MEMBER} **Type:** {action}\n"
+                f"{EMOJI_REASON} **Reason:** {reason}\n"
                 f"**Date:** {date}\n"
-                f"**ID:** `{infraction_id}`\n"
+                f"{EMOJI_ID} **ID:** `{infraction_id}`\n"
             )
             if voided:
                 value += f"**VOIDED**: {void_reason or 'No reason provided.'}\n"
             embed.add_field(name="\u200b", value=value, inline=False)
-        embed.set_footer(text=f"Total Infractions: {total}")
+        now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M:%S")
+        embed.set_footer(text=f"Total Infractions: {total} | Generated: {now_utc}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot):

@@ -85,14 +85,18 @@ class Blacklist(commands.Cog):
 
     def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
         embed = discord.Embed(
-            title=f"{EMOJI_HRMC} // HRMC Blacklist",
-            color=discord.Color.dark_red(),
+            color=discord.Color.dark_red() if not voided else discord.Color.green(),
             timestamp=datetime.datetime.fromisoformat(date)
         )
+        # Content title will be set in the send, not here
         embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
         embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+
         embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
-        embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=str(blacklist_id), inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+
+        embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=True)
         embed.add_field(
             name=f"{EMOJI_PERMISSION} HRMC-wide",
             value="Yes" if hrmc_wide else "No",
@@ -103,10 +107,14 @@ class Blacklist(commands.Cog):
             value="Yes" if ban else "No",
             inline=True
         )
+        embed.add_field(name="\u200b", value="\u200b", inline=False)  # Spacer
+
         embed.add_field(name="Proof", value=proof or "None", inline=False)
         if voided:
             embed.add_field(name="Voided", value=f"Yes\nReason: {void_reason or 'No reason provided.'}", inline=False)
-            embed.color = discord.Color.green()
+        # Set footer with full UTC date and time
+        now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M:%S")
+        embed.set_footer(text=f"Generated: {now_utc}")
         return embed
 
     @app_commands.command(name="blacklist", description="Blacklist a user from HRMC.")
@@ -148,13 +156,14 @@ class Blacklist(commands.Cog):
         embed = self.get_blacklist_embed(
             blacklist_id, user, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), hrmc_wide, ban
         )
+        content_title = f"# {EMOJI_HRMC} // HRMC Blacklist"
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
-            msg = await channel.send(content=user.mention, embed=embed)
+            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed)
         elif proof:
-            msg = await channel.send(content=user.mention, embed=embed, file=await proof.to_file())
+            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed, file=await proof.to_file())
         else:
-            msg = await channel.send(content=user.mention, embed=embed)
+            msg = await channel.send(content=f"{content_title}\n{user.mention}", embed=embed)
 
         # HRMC-wide: publish announcement
         if hrmc_wide and channel.is_news():
@@ -255,7 +264,8 @@ class Blacklist(commands.Cog):
                 voided_embed = self.get_blacklist_embed(
                     blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
                 )
-                await msg.edit(embed=voided_embed, content="~~This blacklist has been voided.~~")
+                content_title = f"# {EMOJI_HRMC} // HRMC Blacklist"
+                await msg.edit(embed=voided_embed, content=f"{content_title}\n~~This blacklist has been voided.~~")
             except Exception:
                 pass
 
