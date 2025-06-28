@@ -48,6 +48,7 @@ async def main():
         await bot.load_extension("cogs.infract")
         await bot.load_extension("cogs.delete_archive")
         await bot.load_extension("cogs.callsign")
+        await bot.load_extension("cogs.archive_commands")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
