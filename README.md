@@ -179,6 +179,6 @@
 
 ## 📢 Credits
 
-Developed for the High Rock Military Corps Discord.
-x pilotakeksz - Tuna 🐟 x
-x spigoned - Lazeoftheb x
+- Developed for the High Rock Military Corps Discord.
+- x pilotakeksz - Tuna 🐟 x
+- x spigoned - Lazeoftheb x
