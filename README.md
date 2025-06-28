@@ -1,6 +1,4 @@
-Here is a detailed documentation of all commands and functions for your HRM Discord bot, including the archive, blacklist, infractions, and other core systems. This is suitable for your README or for posting in your documentation channel.
 
----
 
 # 🟩 High Rock Military Corps Bot — Full Command & Function Documentation 🟩
 
@@ -191,6 +189,3 @@ If you encounter issues, check:
 
 Developed for the High Rock Military Corps Discord.
 
----
-
-*For further details, see the code in the cogs folder or ask a developer for help.*
