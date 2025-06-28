@@ -69,10 +69,6 @@ class ArchiveView(discord.ui.View):
     async def view_archive(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(DateModal(interaction.client))
 
-    @discord.ui.button(label="Admin", style=discord.ButtonStyle.danger, custom_id="admin")
-    async def admin(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Admin clicked!", ephemeral=True)
-
 class LogMessage(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
