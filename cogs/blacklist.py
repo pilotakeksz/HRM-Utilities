@@ -260,7 +260,7 @@ class Blacklist(commands.Cog):
                 if not row:
                     await interaction.response.send_message("Blacklist not found.", ephemeral=True)
                     return
-                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided = row
+                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, message_id, hrmc_wide, ban, voided = row
 
                 if voided:
                     await interaction.response.send_message("This blacklist is already voided.", ephemeral=True)
