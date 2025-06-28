@@ -66,6 +66,9 @@ class Infraction(commands.Cog):
         self.db_path = INFRACTION_DB
 
     async def cog_load(self):
+        # Sync the app commands tree to ensure new slash commands are registered
+        await self.bot.tree.sync()
+        # ...existing DB setup...
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS infractions (
