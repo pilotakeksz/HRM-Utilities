@@ -91,19 +91,33 @@ class Blacklist(commands.Cog):
         except Exception:
             date_str = date
 
+        EMOJI_VOIDED = "<:edit_message:1343948876599787602>"
+
         embed = discord.Embed(
             color=discord.Color.dark_red() if not voided else discord.Color.green(),
             timestamp=None  # Remove timestamp from embed
         )
-        # Title inside the embed
-        embed.title = f"# {EMOJI_HRMC} // HRMC Blacklist"
+        # Place the title as the first field, not as embed.title
+        embed.add_field(
+            name=f"{EMOJI_HRMC} // HRMC Blacklist",
+            value="\u200b",
+            inline=False
+        )
 
         # User and Issued by (side by side)
         embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
         embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
 
-        # Reason (full width)
-        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
+        # Reason and Voided (side by side)
+        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=True)
+        if voided:
+            embed.add_field(
+                name=f"{EMOJI_VOIDED} Voided",
+                value=f"Yes\nReason: {void_reason or 'No reason provided.'}",
+                inline=True
+            )
+        else:
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
 
         # Blacklist ID, HRMC-wide, Banned (side by side)
         embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=True)
@@ -120,10 +134,6 @@ class Blacklist(commands.Cog):
 
         # Proof (full width)
         embed.add_field(name="Proof", value=proof or "None", inline=False)
-
-        # Voided status (if applicable)
-        if voided:
-            embed.add_field(name="Voided", value=f"Yes\nReason: {void_reason or 'No reason provided.'}", inline=False)
 
         # Simple UTC date in footer
         embed.set_footer(text=f"{date_str}")
