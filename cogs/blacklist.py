@@ -386,5 +386,6 @@ def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date
         )
     embed.set_footer(text=f"{date_str}")
     return embed
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Blacklist(bot))
