@@ -11,6 +11,7 @@ BLACKLIST_DB = "data/blacklist.db"
 BLACKLIST_LOG_FILE = "logs/blacklist_command.log"
 BLACKLIST_LOG_TEXT = os.path.join("logs", "blacklist.txt")
 BLACKLIST_VIEW_CHANNEL_ID = 1329910470332649536
+BLACKLIST_LOG_CHANNEL_ID = 1343686645815181382  # Use your logging channel ID here
 BLACKLIST_ROLE_ID = 1329910241835352064
 BLACKLISTED_ROLE_ID = 1329910361347854388
 
@@ -74,69 +75,41 @@ class Blacklist(commands.Cog):
             """, (blacklist_id, user.id, str(user), issued_by.id, str(issued_by), reason, proof, now, message_id, int(hrmc_wide), int(ban)))
             await db.commit()
 
-def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
-    try:
-        dt = datetime.datetime.fromisoformat(date)
-        date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
-    except Exception:
-        date_str = date
+    def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
+        try:
+            dt = datetime.datetime.fromisoformat(date)
+            date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            date_str = date
 
-    embed = discord.Embed(
-        color=discord.Color.green() if voided else discord.Color.dark_red()
-    )
-    embed.add_field(
-        name=f"{EMOJI_HRMC} // HRMC Blacklist",
-        value="\u200b",
-        inline=False
-    )
-    # User and Issued by on one line
-    embed.add_field(
-        name=f"{EMOJI_MEMBER} User",
-        value=f"{user}",
-        inline=True
-    )
-    embed.add_field(
-        name=f"{EMOJI_MEMBER} Issued by",
-        value=f"{issued_by}",
-        inline=True
-    )
-    # Reason alone
-    embed.add_field(
-        name=f"{EMOJI_REASON} Reason",
-        value=reason,
-        inline=False
-    )
-    # Blacklist ID alone
-    embed.add_field(
-        name=f"{EMOJI_ID} Blacklist ID",
-        value=f"`{blacklist_id}`",
-        inline=False
-    )
-    # HRMC-wide and Banned inline, Proof inline
-    embed.add_field(
-        name=f"{EMOJI_PERMISSION} HRMC-wide",
-        value="Yes" if hrmc_wide else "No",
-        inline=True
-    )
-    embed.add_field(
-        name=f"{EMOJI_PERMISSION} Banned",
-        value="Yes" if ban else "No",
-        inline=True
-    )
-    embed.add_field(
-        name="Proof",
-        value=proof or "None",
-        inline=True
-    )
-    # Voided status (if applicable)
-    if voided:
+        embed = discord.Embed(
+            color=discord.Color.green() if voided else discord.Color.dark_red()
+        )
         embed.add_field(
-            name=f"{EMOJI_VOIDED} Voided",
-            value=f"Yes\nReason: {void_reason or 'No reason provided.'}",
+            name=f"{EMOJI_HRMC} // HRMC Blacklist",
+            value="\u200b",
             inline=False
         )
-    embed.set_footer(text=f"{date_str}")
-    return
+        # User and Issued by on one line
+        embed.add_field(name=f"{EMOJI_MEMBER} User", value=f"{user}", inline=True)
+        embed.add_field(name=f"{EMOJI_MEMBER} Issued by", value=f"{issued_by}", inline=True)
+        # Reason alone
+        embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
+        # Blacklist ID alone
+        embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=False)
+        # HRMC-wide, Banned, Proof inline
+        embed.add_field(name=f"{EMOJI_PERMISSION} HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+        embed.add_field(name=f"{EMOJI_PERMISSION} Banned", value="Yes" if ban else "No", inline=True)
+        embed.add_field(name="Proof", value=proof or "None", inline=True)
+        # Voided status (if applicable)
+        if voided:
+            embed.add_field(
+                name=f"{EMOJI_VOIDED} Voided",
+                value=f"Yes\nReason: {void_reason or 'No reason provided.'}",
+                inline=False
+            )
+        embed.set_footer(text=f"{date_str}")
+        return embed
 
     @app_commands.command(name="blacklist", description="Blacklist a user from HRMC.")
     @app_commands.describe(
@@ -236,6 +209,24 @@ def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date
             f"Blacklisted {user.id} | Reason: {reason} | Blacklist ID: {blacklist_id} | HRMC-wide: {hrmc_wide} | Ban: {ban}",
             embed=True
         )
+
+        # Log to logging channel
+        log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="Blacklist Issued",
+                color=discord.Color.dark_red(),
+                timestamp=datetime.datetime.utcnow()
+            )
+            log_embed.add_field(name="User", value=f"{user} ({user.id})", inline=False)
+            log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Blacklist ID", value=blacklist_id, inline=False)
+            log_embed.add_field(name="HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+            log_embed.add_field(name="Banned", value="Yes" if ban else "No", inline=True)
+            log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+            await log_channel.send(embed=log_embed)
+
         # Only send a simple confirmation to the moderator, not the embed
         await interaction.response.send_message(f"User blacklisted and logged. Blacklist ID: {blacklist_id}", ephemeral=True)
 
@@ -291,6 +282,22 @@ def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date
                     )
                 except Exception:
                     pass
+
+            # Log to logging channel
+            log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="Blacklist Voided",
+                    color=discord.Color.green(),
+                    timestamp=datetime.datetime.utcnow()
+                )
+                log_embed.add_field(name="Blacklist ID", value=blacklist_id, inline=False)
+                log_embed.add_field(name="User", value=f"{user_name} ({user_id})", inline=False)
+                log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+                log_embed.add_field(name="Original Reason", value=orig_reason, inline=False)
+                log_embed.add_field(name="Void Reason", value=reason, inline=False)
+                log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+                await log_channel.send(embed=log_embed)
 
             # Only send the embed to the moderator as confirmation
             embed = self.get_blacklist_embed(
