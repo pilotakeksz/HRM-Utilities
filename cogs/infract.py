@@ -319,12 +319,12 @@ class Infraction(commands.Cog):
     @app_commands.command(name="infraction-void", description="Void (remove) an infraction by its ID.")
     @app_commands.describe(infraction_id="The infraction ID to void", reason="Reason for voiding this infraction")
     async def infraction_void(self, interaction: discord.Interaction, infraction_id: str, reason: str):
-        # Permission check (same as issue)
-        if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
+        # Permission check
+        if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in getattr(interaction.user, "roles", [])):
             await interaction.response.send_message("You do not have permission to void infractions.", ephemeral=True)
             return
 
-        # Fetch infraction details and message_id
+        # Fetch infraction details and message_id from the database
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 "SELECT user_id, user_name, action, reason, date, message_id FROM infractions WHERE infraction_id = ?",
@@ -340,19 +340,18 @@ class Infraction(commands.Cog):
             await db.execute("DELETE FROM infractions WHERE infraction_id = ?", (infraction_id,))
             await db.commit()
 
-        # Remove from data/infractions.txt or similar if present
-        data_file = os.path.join("data", "callsigns.txt")  # adjust if you store infractions elsewhere
-        if os.path.exists(data_file):
-            with open(data_file, "r", encoding="utf-8") as f:
+        # Remove from logs/infraction.txt (if present)
+        log_file = os.path.join("logs", "infraction.txt")
+        if os.path.exists(log_file):
+            with open(log_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
-            with open(data_file, "w", encoding="utf-8") as f:
+            with open(log_file, "w", encoding="utf-8") as f:
                 for line in lines:
                     if infraction_id not in line:
                         f.write(line)
 
         # Edit the original infraction message to show voided status
         inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
-        msg = None
         if inf_channel and message_id:
             try:
                 msg = await inf_channel.fetch_message(message_id)
@@ -372,8 +371,8 @@ class Infraction(commands.Cog):
                 voided_embed.set_footer(text=f"Voided: {now_utc}")
                 await msg.edit(embed=voided_embed, content="~~This infraction has been voided.~~")
             except Exception as e:
-                await interaction.response.send_message(f"Could not edit infraction message: {e}", ephemeral=True)
-                return
+                # If message can't be edited, just continue
+                pass
 
         # DM the user about the voided infraction
         try:
