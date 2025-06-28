@@ -214,6 +214,14 @@ class CallsignCog(commands.Cog):
                 # Otherwise, assign the lowest available universal ZZ
                 callsigns[user.id] = f"{x}M-{y}{zz:02d}"
                 save_callsigns(callsigns)
+                # Remove role 1371198982340083712 if user did not have a callsign before
+                if not current_callsign:
+                    role = user.guild.get_role(1371198982340083712)
+                    if role:
+                        try:
+                            await user.remove_roles(role, reason="Callsign assigned")
+                        except Exception:
+                            pass
                 return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
         return False, "You do not have a role eligible for a callsign or all are taken."
 
