@@ -249,6 +249,26 @@ class Blacklist(commands.Cog):
                 except Exception:
                     pass
 
+            # DM the user if not banned
+            try:
+                if not ban:
+                    user = await interaction.guild.fetch_member(user_id)
+                    dm_embed = discord.Embed(
+                        title="Your Blacklist Was Voided",
+                        description=(
+                            f"Your blacklist in **{interaction.guild.name}** has been voided.\n\n"
+                            f"**Original Reason:** {orig_reason}\n"
+                            f"**Voided By:** {interaction.user.mention}\n"
+                            f"**Void Reason:** {reason}"
+                        ),
+                        color=discord.Color.green()
+                    )
+                    now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
+                    dm_embed.set_footer(text=f"Voided: {now_utc}")
+                    await user.send(embed=dm_embed)
+            except Exception:
+                pass
+
             # Log to logging channel
             log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
             if log_channel:
