@@ -4,6 +4,11 @@ import aiosqlite
 import os
 import re
 
+ALLOWED_ROLE_IDS = [911072161349918720, 1329910241835352064]
+
+def has_allowed_role(ctx):
+    return any(role.id in ALLOWED_ROLE_IDS for role in getattr(ctx.author, "roles", []))
+
 class NameSelect(discord.ui.Select):
     def __init__(self, date, names, messages):
         options = [discord.SelectOption(label=name, value=str(i)) for i, name in enumerate(names)]
@@ -83,6 +88,9 @@ class LogMessage(commands.Cog):
 
     @commands.command(name="sendtoarchive")
     async def sendtoarchive(self, ctx, date: str, name: str, *, message: str):
+        if not has_allowed_role(ctx):
+            await ctx.send("You do not have permission to use this command. Only users with <@&911072161349918720> or <@&1329910241835352064> can save to the archive.")
+            return
         # Validate date and name
         if not re.match(r"^[\w\-]+$", date):
             await ctx.send("Invalid date format. Use only letters, numbers, dashes, or underscores.")
@@ -106,6 +114,21 @@ class LogMessage(commands.Cog):
             await ctx.send(f"Archive saved for `{date}` and `{name}`.")
         except Exception:
             await ctx.send("Failed to save the archive.")
+
+    @commands.command(name="viewallarchives")
+    async def viewallarchives(self, ctx):
+        """View all archive entries (date and name)."""
+        db_path = os.path.join(os.getcwd(), "data", "Archive.db")
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute(
+                "SELECT Date, Name FROM Archive ORDER BY Date DESC"
+            ) as cursor:
+                rows = await cursor.fetchall()
+        if not rows:
+            await ctx.send("No archive entries found.")
+            return
+        msg = "\n".join([f"**Date:** `{row[0]}` | **Name:** `{row[1]}`" for row in rows])
+        await ctx.send(f"**All Archive Entries:**\n{msg}")
 
 async def setup(bot):
     await bot.add_cog(LogMessage(bot))
