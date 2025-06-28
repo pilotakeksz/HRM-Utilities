@@ -240,7 +240,6 @@ class Blacklist(commands.Cog):
         )
         # Only send a simple confirmation to the moderator, not the embed
         await interaction.response.send_message(f"User blacklisted and logged. Blacklist ID: {blacklist_id}", ephemeral=True)
-
     @app_commands.command(name="blacklist-void", description="Void (remove) a blacklist by its ID.")
     @app_commands.describe(blacklist_id="The blacklist ID to void", reason="Reason for voiding this blacklist")
     async def blacklist_void(self, interaction: discord.Interaction, blacklist_id: str, reason: str):
