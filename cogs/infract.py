@@ -39,6 +39,16 @@ def log_to_file(user_id, channel_id, message, embed=False):
     with open(INFRACTION_LOG_TEXT, "a", encoding="utf-8") as f:
         f.write(f"[{now}] User: {user_id} | Channel: {channel_id} | {message}\n")
 
+# Add this helper function near the top of your file:
+def log_command_to_txt(command_name, user, channel, **fields):
+    log_path = os.path.join("logs", f"{command_name}.txt")
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"[{now}] User: {user} ({user.id}) | Channel: {channel} ({getattr(channel, 'id', channel)})\n")
+        for k, v in fields.items():
+            f.write(f"  {k}: {v}\n")
+        f.write("\n")
+
 class ConfirmView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=30)
@@ -171,6 +181,17 @@ class Infraction(commands.Cog):
             await interaction.response.send_message("Invalid infraction type.", ephemeral=True)
             return
 
+        # Log command usage to txt
+        log_command_to_txt(
+            "infraction-issue",
+            interaction.user,
+            interaction.channel,
+            personnel=f"{personnel} ({personnel.id})",
+            action=action,
+            reason=reason,
+            proof=proof.url if proof else "None"
+        )
+
         proof_url = proof.url if proof else None
         embed = self.get_infraction_embed("Pending", personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
         if proof and proof.content_type and proof.content_type.startswith("image/"):
@@ -226,6 +247,23 @@ class Infraction(commands.Cog):
             embed=True
         )
         await interaction.followup.send(f"Infraction issued and logged. Infraction ID: {infraction_id}", ephemeral=True)
+
+        # After issuing the infraction, send a log embed to the log channel
+        log_channel = interaction.guild.get_channel(INFRACTION_VIEW_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="Infraction Issued",
+                color=discord.Color.orange(),
+                timestamp=datetime.datetime.utcnow()
+            )
+            log_embed.add_field(name="User", value=f"{personnel} ({personnel.id})", inline=False)
+            log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+            log_embed.add_field(name="Action", value=action, inline=True)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.add_field(name="Proof", value=proof.url if proof else "None", inline=False)
+            log_embed.add_field(name="Infraction ID", value=infraction_id, inline=False)
+            log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+            await log_channel.send(embed=log_embed)
 
     @infraction_issue.autocomplete('action')
     async def infraction_action_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -402,6 +440,35 @@ class Infraction(commands.Cog):
                 f"Voided infraction {infraction_id} for user {user_name} ({user_id}). Original action: {action}. Void reason: {reason}",
                 embed=False
             )
+
+            # Log command usage to txt
+            log_command_to_txt(
+                "infraction-void",
+                interaction.user,
+                interaction.channel,
+                infraction_id=infraction_id,
+                user=f"{user_name} ({user_id})",
+                action=action,
+                original_reason=orig_reason,
+                void_reason=reason
+            )
+
+            # After voiding, send a log embed to the log channel
+            log_channel = interaction.guild.get_channel(INFRACTION_VIEW_CHANNEL_ID)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="Infraction Voided",
+                    color=discord.Color.green(),
+                    timestamp=datetime.datetime.utcnow()
+                )
+                log_embed.add_field(name="Infraction ID", value=infraction_id, inline=False)
+                log_embed.add_field(name="User", value=f"{user_name} ({user_id})", inline=False)
+                log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+                log_embed.add_field(name="Original Action", value=action, inline=True)
+                log_embed.add_field(name="Original Reason", value=orig_reason, inline=False)
+                log_embed.add_field(name="Void Reason", value=reason, inline=False)
+                log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+                await log_channel.send(embed=log_embed)
 
             # Respond to the moderator
             embed = discord.Embed(
