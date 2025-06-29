@@ -352,28 +352,31 @@ class Economy(commands.Cog):
             rows = await cursor.fetchall()
         leaderboard = sorted(rows, key=lambda r: (r[1] or 0) + (r[2] or 0), reverse=True)[:10]
         place_emojis = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
+
         embed = discord.Embed(
             title="Economy Leaderboard",
+            description="Top 10 users by wallet + bank",
             color=0xd0b47b
         )
-        guild = None
-        # Try to get the guild from destination (ctx or interaction)
-        if hasattr(destination, "guild") and destination.guild:
-            guild = destination.guild
-        elif hasattr(destination, "user") and hasattr(destination, "guild_id"):
-            guild = self.bot.get_guild(destination.guild_id)
-        for idx, (user_id, balance, bank) in enumerate(leaderboard, 1):
-            # Try to get the member for a proper clickable mention
-            member = None
-            if guild:
-                member = guild.get_member(user_id)
-            mention = member.mention if member else f"<@{user_id}>"
-            emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
-            embed.add_field(
-                name=f"{emoji} {idx}. {mention}",
-                value=f"Wallet: {balance} | Bank: {bank} | Total: {balance + bank}",
-                inline=False
-            )
+
+        if not leaderboard:
+            embed.description = "No users found."
+        else:
+            lines = []
+            guild = None
+            if hasattr(destination, "guild") and destination.guild:
+                guild = destination.guild
+            elif hasattr(destination, "user") and hasattr(destination, "guild_id"):
+                guild = self.bot.get_guild(destination.guild_id)
+            for idx, (user_id, balance, bank) in enumerate(leaderboard, start=1):
+                member = guild.get_member(user_id) if guild else None
+                name = member.mention if member else f"<@{user_id}>"
+                emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
+                lines.append(
+                    f"{emoji} **#{idx}** {name} — Wallet: **{balance}** | Bank: **{bank}** | Total: **{balance + bank}**"
+                )
+            embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
+
         if hasattr(destination, "response"):
             await destination.response.send_message(embed=embed)
         else:
@@ -933,7 +936,7 @@ class Economy(commands.Cog):
                 color=0x00bfae
             )
             log_econ_action("withdraw", user, amount=amount)
-        if isinstance(destination, discord.Interaction):
+        if hasattr(destination, "response"):
             await destination.response.send_message(embed=embed)
         else:
             await destination.send(embed=embed)
