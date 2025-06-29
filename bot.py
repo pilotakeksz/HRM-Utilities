@@ -20,7 +20,7 @@ bot = commands.Bot(
     command_prefix="!",
     intents=intents,
     application_id=APPLICATION_ID
-) # test 
+)
 
 @bot.event
 async def on_ready():
