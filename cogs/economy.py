@@ -356,19 +356,23 @@ class Economy(commands.Cog):
             title="Economy Leaderboard",
             color=0xd0b47b
         )
+        mentions = []
         for idx, (user_id, balance, bank) in enumerate(leaderboard, 1):
             user = self.bot.get_user(user_id)
             mention = f"<@{user_id}>"
+            mentions.append(mention)
             emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
             embed.add_field(
                 name=f"{emoji} {idx}. {mention}",
                 value=f"Wallet: {balance} | Bank: {bank} | Total: {balance + bank}",
                 inline=False
             )
+        # Add a line with all mentions at the top or bottom
+        embed.description = " ".join(mentions)
         if hasattr(destination, "response"):
-            await destination.response.send_message(embed=embed)
+            await destination.response.send_message(embed=embed, content=" ".join(mentions))
         else:
-            await destination.send(embed=embed)
+            await destination.send(embed=embed, content=" ".join(mentions))
 
     # --- WORK ---
     @commands.command(name="work")
