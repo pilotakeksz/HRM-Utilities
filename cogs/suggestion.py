@@ -186,7 +186,7 @@ class Suggestion(commands.Cog):
         msg = await channel.send(embed=embed, view=view)
         self.votes[suggestion_id] = {"yes": set(), "no": set()}
         self.message_map[suggestion_id] = msg.id
-        self.save_votes()
+        self.save_votes() # test
 
         # Register persistent view for this suggestion
         self.bot.add_view(SuggestionView.from_votes(suggestion_id, self.votes[suggestion_id]))
