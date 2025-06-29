@@ -356,8 +356,18 @@ class Economy(commands.Cog):
             title="Economy Leaderboard",
             color=0xd0b47b
         )
+        guild = None
+        # Try to get the guild from destination (ctx or interaction)
+        if hasattr(destination, "guild") and destination.guild:
+            guild = destination.guild
+        elif hasattr(destination, "user") and hasattr(destination, "guild_id"):
+            guild = self.bot.get_guild(destination.guild_id)
         for idx, (user_id, balance, bank) in enumerate(leaderboard, 1):
-            mention = f"<@{user_id}>"
+            # Try to get the member for a proper clickable mention
+            member = None
+            if guild:
+                member = guild.get_member(user_id)
+            mention = member.mention if member else f"<@{user_id}>"
             emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
             embed.add_field(
                 name=f"{emoji} {idx}. {mention}",
