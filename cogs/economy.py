@@ -357,6 +357,7 @@ class Economy(commands.Cog):
             color=0xd0b47b
         )
         for idx, (user_id, balance, bank) in enumerate(leaderboard, 1):
+            # Use mention for proper ping
             mention = f"<@{user_id}>"
             emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
             embed.add_field(
