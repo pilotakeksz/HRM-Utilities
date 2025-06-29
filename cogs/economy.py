@@ -17,6 +17,8 @@ BANK_ROLE_TIERS = [
 ]
 SHOP_ITEMS_PER_PAGE = 5
 
+ECONOMY_CHANNEL_ID = 1329910482194141185
+
 def load_shop_items():
     items = {}
     items_file = os.path.join(os.path.dirname(__file__), "econ", "items.txt")
@@ -126,6 +128,17 @@ def log_econ_action(command: str, user: discord.User, amount: int = None, item: 
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(" | ".join(parts) + "\n")
 
+def economy_channel_only():
+    async def predicate(ctx_or_interaction):
+        # For commands.Context
+        if hasattr(ctx_or_interaction, "channel") and getattr(ctx_or_interaction, "channel", None):
+            return ctx_or_interaction.channel.id == ECONOMY_CHANNEL_ID
+        # For discord.Interaction
+        if hasattr(ctx_or_interaction, "channel_id"):
+            return ctx_or_interaction.channel_id == ECONOMY_CHANNEL_ID
+        return False
+    return commands.check(predicate)
+
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -209,11 +222,13 @@ class Economy(commands.Cog):
         return DAILY_AMOUNT
 
     @commands.command(name="daily")
+    @economy_channel_only()
     @cooldown(1, 86400, BucketType.user)
     async def daily_command(self, ctx):
         await self._daily(ctx.author, ctx)
 
     @app_commands.command(name="daily", description="Claim your daily reward.")
+    @commands.check(lambda i: i.channel_id == ECONOMY_CHANNEL_ID)
     async def daily_slash(self, interaction: discord.Interaction):
         await self._daily(interaction.user, interaction)
 
@@ -373,7 +388,7 @@ class Economy(commands.Cog):
                 name = member.mention if member else f"<@{user_id}>"
                 emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
                 lines.append(
-                    f"{emoji} **#{idx}** {name} — Wallet: **{balance}** | Bank: **{bank}** | Total: **{balance + bank}**"
+                    f"{emoji} **#{idx}** {name}\nWallet: **{balance}** | Bank: **{bank}** | Total: **{balance + bank}**"
                 )
             embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
 
