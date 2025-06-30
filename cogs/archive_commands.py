@@ -148,10 +148,10 @@ class LogMessage(commands.Cog):
                 await db.commit()
             await ctx.send(f"Archive saved for `{date}` and `{name}`.")
             log_action(ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
-            await log_to_discord_channel self.bot, ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
-        except Exception:
+            await log_to_discord_channel(self.bot, ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
+        except Exception: # test
             await ctx.send("Failed to save the archive.")
-
+#testing tetsing
     @commands.command(name="viewallarchives")
     async def viewallarchives(self, ctx):
         db_path = os.path.join(os.getcwd(), "data", "Archive.db")
@@ -202,10 +202,12 @@ class LogMessage(commands.Cog):
     )
     async def sendtoarchive_slash(self, interaction: discord.Interaction, date: str, name: str, message: str):
         if not has_allowed_role_appcmd(interaction):
-            await interaction.response.send_message(
-                "You do not have permission to use this command. Only users with an save to the archive.",
-                ephemeral=True
+            embed = discord.Embed(
+                title="Permission Denied",
+                description="You do not have permission to use this command. Only users with the allowed roles can save to the archive.",
+                color=discord.Color.red()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         # Validate date and name
         if not re.match(r"^[\w\-]+$", date):
@@ -247,7 +249,6 @@ class LogMessage(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-
         # Do NOT send documentation to the log channel anymore.
         pass
 
