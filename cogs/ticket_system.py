@@ -237,6 +237,16 @@ class ConfirmCloseView(View):
         }
         await interaction.channel.edit(overwrites=overwrites)
 
+        # Find the opener (first non-bot message author)
+        messages = [msg async for msg in interaction.channel.history(limit=None, oldest_first=True)]
+        opener = None
+        for msg in messages:
+            if not msg.author.bot:
+                opener = msg.author
+                break
+        if opener is None:
+            opener = interaction.user  # fallback
+
         # Calculate next exact half hour in UTC
         now = datetime.datetime.utcnow()
         if now.minute < 30:
@@ -252,7 +262,7 @@ class ConfirmCloseView(View):
             color=discord.Color.red()
         ))
         # Transcript and logs
-        await send_transcript_and_logs(interaction.channel, interaction.user, interaction.guild)
+        await send_transcript_and_logs(interaction.channel, opener, interaction.guild)
         # Schedule deletion
         save_pending_deletion(interaction.channel.id, delete_at)
         interaction.client.loop.create_task(schedule_ticket_deletion(interaction.client, interaction.channel.id, delete_at))
