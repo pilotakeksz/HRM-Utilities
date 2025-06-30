@@ -119,129 +119,145 @@ class LogMessage(commands.Cog):
     @commands.command(name="sendtoarchive")
     async def sendtoarchive(self, ctx, date: str, name: str, *, message: str):
         if not has_allowed_role(ctx):
-            await ctx.send("You do not have permission to use this command. Only users with <@&1329910265264869387> or <@&1329910241835352064> can save to the archive.")
+            embed = discord.Embed(
+                title="Permission Denied",tle="Permission Denied",
+                description="You do not have permission to use this command. Only users with the allowed roles can save to the archive.", do not have permission to use this command. Only users with the allowed roles can save to the archive.",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed)ctx.send(embed=embed)
             return
         # Validate date and name
-        if not re.match(r"^[\w\-]+$", date):
-            await ctx.send("Invalid date format. Use only letters, numbers, dashes, or underscores.")
+        if not re.match(r"^[\w\-]+$", date):match(r"^[\w\-]+$", date):
+            await ctx.send("Invalid date format. Use only letters, numbers, dashes, or underscores.")            await ctx.send("Invalid date format. Use only letters, numbers, dashes, or underscores.")
             return
         if not re.match(r"^[\w\-]+$", name):
-            await ctx.send("Invalid name format. Use only letters, numbers, dashes, or underscores.")
+            await ctx.send("Invalid name format. Use only letters, numbers, dashes, or underscores.")await ctx.send("Invalid name format. Use only letters, numbers, dashes, or underscores.")
             return
 
         db_path = os.path.join(os.getcwd(), "data", "Archive.db")
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)rs(os.path.dirname(db_path), exist_ok=True)
         try:
             async with aiosqlite.connect(db_path) as db:
                 await db.execute(
-                    "CREATE TABLE IF NOT EXISTS Archive (Date TEXT, Name TEXT, Message TEXT)"
+                    "CREATE TABLE IF NOT EXISTS Archive (Date TEXT, Name TEXT, Message TEXT)"   "CREATE TABLE IF NOT EXISTS Archive (Date TEXT, Name TEXT, Message TEXT)"
                 )
                 await db.execute(
                     "INSERT INTO Archive (Date, Name, Message) VALUES (?, ?, ?)",
                     (date, name, message)
                 )
                 await db.commit()
-            await ctx.send(f"Archive saved for `{date}` and `{name}`.")
-            log_action(ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
-            await log_to_discord_channel(self.bot, ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
+            await ctx.send(f"Archive saved for `{date}` and `{name}`.")            await ctx.send(f"Archive saved for `{date}` and `{name}`.")
+            log_action(ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")hive", f"Date: {date} | Name: {name}")
+            await log_to_discord_channel self.bot, ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")self.bot, ctx.author, "Saved Archive", f"Date: {date} | Name: {name}")
         except Exception:
-            await ctx.send("Failed to save the archive.")
+            await ctx.send("Failed to save the archive.")ve.")
 
     @commands.command(name="viewallarchives")
-    async def viewallarchives(self, ctx):
-        db_path = os.path.join(os.getcwd(), "data", "Archive.db")
-        async with aiosqlite.connect(db_path) as db:
+    async def viewallarchives(self, ctx):hives(self, ctx):
+        db_path = os.path.join(os.getcwd(), "data", "Archive.db")ata", "Archive.db")
+        async with aiosqlite.connect(db_path) as db:iosqlite.connect(db_path) as db:
             async with db.execute(
-                "SELECT Date, Name FROM Archive ORDER BY Date DESC"
+                "SELECT Date, Name FROM Archive ORDER BY Date DESC"ELECT Date, Name FROM Archive ORDER BY Date DESC"
             ) as cursor:
                 rows = await cursor.fetchall()
         if not rows:
             await ctx.send("No archive entries found.")
-            return
+            return            return
         msg = "\n".join([f"**Date:** `{row[0]}` | **Name:** `{row[1]}`" for row in rows])
         await ctx.send(f"**All Archive Entries:**\n{msg}")
-        log_action(ctx.author, "Viewed All Archives", f"Total: {len(rows)}")
-        await log_to_discord_channel(self.bot, ctx.author, "Viewed All Archives", f"Total: {len(rows)}")
+        log_action(ctx.author, "Viewed All Archives", f"Total: {len(rows)}") "Viewed All Archives", f"Total: {len(rows)}")
+        await log_to_discord_channel(self.bot, ctx.author, "Viewed All Archives", f"Total: {len(rows)}")nnel(self.bot, ctx.author, "Viewed All Archives", f"Total: {len(rows)}")
 
-    @app_commands.command(name="archive", description="Open the HRM archive interface (interactive).")
+    @app_commands.command(name="archive", description="Open the HRM archive interface (interactive).")commands.command(name="archive", description="Open the HRM archive interface (interactive).")
     async def archive_slash(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="HRM ARCHIVE",
-            description="Welcome to the HRM archives."
+            description="Welcome to the HRM archives."            description="Welcome to the HRM archives."
         )
-        await interaction.response.send_message(embed=embed, view=ArchiveView(), ephemeral=True)
-        log_action(interaction.user, "Opened Archive Interface (slash)", f"Channel: {interaction.channel}")
-        await log_to_discord_channel(self.bot, interaction.user, "Opened Archive Interface (slash)", f"Channel: {interaction.channel}")
+        await interaction.response.send_message(embed=embed, view=ArchiveView(), ephemeral=True)w(), ephemeral=True)
+        log_action(interaction.user, "Opened Archive Interface (slash)", f"Channel: {interaction.channel}")lash)", f"Channel: {interaction.channel}")
+        await log_to_discord_channel(self.bot, interaction.user, "Opened Archive Interface (slash)", f"Channel: {interaction.channel}")action.user, "Opened Archive Interface (slash)", f"Channel: {interaction.channel}")
 
-    @app_commands.command(name="archive-viewall", description="View all archive entries (date and name).")
-    async def archive_viewall_slash(self, interaction: discord.Interaction):
-        db_path = os.path.join(os.getcwd(), "data", "Archive.db")
-        async with aiosqlite.connect(db_path) as db:
+    @app_commands.command(name="archive-viewall", description="View all archive entries (date and name).") all archive entries (date and name).")
+    async def archive_viewall_slash(self, interaction: discord.Interaction):ewall_slash(self, interaction: discord.Interaction):
+        db_path = os.path.join(os.getcwd(), "data", "Archive.db")ata", "Archive.db")
+        async with aiosqlite.connect(db_path) as db:iosqlite.connect(db_path) as db:
             async with db.execute(
-                "SELECT Date, Name FROM Archive ORDER BY Date DESC"
+                "SELECT Date, Name FROM Archive ORDER BY Date DESC"ELECT Date, Name FROM Archive ORDER BY Date DESC"
             ) as cursor:
                 rows = await cursor.fetchall()
         if not rows:
             await interaction.response.send_message("No archive entries found.", ephemeral=True)
-            return
+            return            return
         msg = "\n".join([f"**Date:** `{row[0]}` | **Name:** `{row[1]}`" for row in rows])
-        await interaction.response.send_message(f"**All Archive Entries:**\n{msg}", ephemeral=True)
-        log_action(interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")
-        await log_to_discord_channel(self.bot, interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")
+        await interaction.response.send_message(f"**All Archive Entries:**\n{msg}", ephemeral=True)esponse.send_message(f"**All Archive Entries:**\n{msg}", ephemeral=True)
+        log_action(interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")es (slash)", f"Total: {len(rows)}")
+        await log_to_discord_channel(self.bot, interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")bot, interaction.user, "Viewed All Archives (slash)", f"Total: {len(rows)}")
 
-    @app_commands.command(name="sendtoarchive", description="Save a new archive entry. Only allowed roles can use this.")
+    @app_commands.command(name="sendtoarchive", description="Save a new archive entry. Only allowed roles can use this.")app_commands.command(name="sendtoarchive", description="Save a new archive entry. Only allowed roles can use this.")
     @app_commands.describe(
-        date="Date for the archive entry (YYYY-MM-DD)",
+        date="Date for the archive entry (YYYY-MM-DD)",)",
         name="Name for the archive entry",
         message="Text to archive"
     )
-    async def sendtoarchive_slash(self, interaction: discord.Interaction, date: str, name: str, message: str):
-        if not has_allowed_role_appcmd(interaction):
-            await interaction.response.send_message(
-                "You do not have permission to use this command. Only users with <@&1329910265264869387> or <@&1329910241835352064> can save to the archive.",
-                ephemeral=True
+    async def sendtoarchive_slash(self, interaction: discord.Interaction, date: str, name: str, message: str): sendtoarchive_slash(self, interaction: discord.Interaction, date: str, name: str, message: str):
+        if not has_allowed_role_appcmd(interaction):_allowed_role_appcmd(interaction):
+            embed = discord.Embed(d(
+                title="Permission Denied",
+                description="You do not have permission to use this command. Only users with the allowed roles can save to the archive.",ion to use this command. Only users with the allowed roles can save to the archive.",
+                color=discord.Color.red()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)wait interaction.response.send_message(embed=embed, ephemeral=True)
             return
         # Validate date and name
         if not re.match(r"^[\w\-]+$", date):
             await interaction.response.send_message(
-                "Invalid date format. Use only letters, numbers, dashes, or underscores.",
-                ephemeral=True
+                "Invalid date format. Use only letters, numbers, dashes, or underscores.",format. Use only letters, numbers, dashes, or underscores.",
+                ephemeral=True   ephemeral=True
             )
-            return
+            return            return
         if not re.match(r"^[\w\-]+$", name):
             await interaction.response.send_message(
-                "Invalid name format. Use only letters, numbers, dashes, or underscores.",
+                "Invalid name format. Use only letters, numbers, dashes, or underscores.",    "Invalid name format. Use only letters, numbers, dashes, or underscores.",
                 ephemeral=True
             )
             return
 
-        db_path = os.path.join(os.getcwd(), "data", "Archive.db")
+        db_path = os.path.join(os.getcwd(), "data", "Archive.db").getcwd(), "data", "Archive.db")
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         try:
-            async with aiosqlite.connect(db_path) as db:
+            async with aiosqlite.connect(db_path) as db: with aiosqlite.connect(db_path) as db:
                 await db.execute(
-                    "CREATE TABLE IF NOT EXISTS Archive (Date TEXT, Name TEXT, Message TEXT)"
+                    "CREATE TABLE IF NOT EXISTS Archive (Date TEXT, Name TEXT, Message TEXT)"ive (Date TEXT, Name TEXT, Message TEXT)"
                 )
-                await db.execute(
-                    "INSERT INTO Archive (Date, Name, Message) VALUES (?, ?, ?)",
+                await db.execute(te(
+                    "INSERT INTO Archive (Date, Name, Message) VALUES (?, ?, ?)",       "INSERT INTO Archive (Date, Name, Message) VALUES (?, ?, ?)",
                     (date, name, message)
                 )
-                await db.commit()
+                await db.commit()commit()
             await interaction.response.send_message(
-                f"Archive saved for `{date}` and `{name}`.",
+                f"Archive saved for `{date}` and `{name}`.",nd `{name}`.",
                 ephemeral=True
             )
-            log_action(interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")
-            await log_to_discord_channel(self.bot, interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")
+            log_action(interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")            log_action(interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")
+            await log_to_discord_channel(self.bot, interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")cord_channel(self.bot, interaction.user, "Saved Archive (slash)", f"Date: {date} | Name: {name}")
         except Exception:
-            await interaction.response.send_message(
-                "Failed to save the archive.",
+            await interaction.response.send_message(            await interaction.response.send_message(
+                "Failed to save the archive.",                "Failed to save the archive.",
                 ephemeral=True
-            )
+            ))
 
-    @commands.Cog.listener()
+    @commands.Cog.listener()tener()
     async def on_ready(self):
+
+
+
+
+
+
+
+    await bot.add_cog(LogMessage(bot))async def setup(bot):        pass        # Do NOT send documentation to the log channel anymore.
+
         # Do NOT send documentation to the log channel anymore.
         pass
 
