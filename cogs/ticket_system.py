@@ -246,7 +246,7 @@ class ConfirmCloseView(View):
                 break
         if opener is None:
             opener = interaction.user  # fallback
-
+# test
         # Calculate next exact half hour in UTC
         now = datetime.datetime.utcnow()
         if now.minute < 30:
