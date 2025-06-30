@@ -7,10 +7,7 @@ import random
 from datetime import datetime, timedelta
 import math
 from discord.ext.commands import cooldown, BucketType, CommandOnCooldown
-import asyncio
 
-
-INVESTMENT_DURATION = 3600  # 1 hour in seconds
 DB_PATH = os.getenv("ECONOMY_DB_FILE", "data/economy.db")
 DAILY_AMOUNT = int(os.getenv("DAILY_AMOUNT", 250))
 BANK_ROLE_TIERS = [
@@ -21,7 +18,6 @@ BANK_ROLE_TIERS = [
 SHOP_ITEMS_PER_PAGE = 5
 
 ECONOMY_CHANNEL_ID = 1329910482194141185
-
 
 def load_shop_items():
     items = {}
@@ -208,77 +204,6 @@ class Economy(commands.Cog):
             else:
                 await db.execute("INSERT INTO inventory (user_id, item, amount) VALUES (?, ?, ?)", (user_id, item, amount))
             await db.commit()
-
-    # --- INVESTMENTS ---
-    @commands.command(name="invest")
-    @economy_channel_only()
-    async def invest_command(self, ctx, amount: int):
-        await self.invest(ctx.author, amount, ctx)
-
-    @app_commands.command(name="invest", description="Invest coins for a chance to double or lose it all after 1 hour.")
-    @app_commands.describe(amount="Amount to invest")
-    @commands.check(lambda i: i.channel_id == ECONOMY_CHANNEL_ID)
-    async def invest_slash(self, interaction: discord.Interaction, amount: int):
-        await self.invest(interaction.user, amount, interaction)
-
-    async def invest(self, user, amount, destination):
-        data = await self.get_user(user.id)
-        if amount <= 0 or data["balance"] < amount:
-            embed = discord.Embed(
-                title="Investment",
-                description="Invalid amount or insufficient wallet funds.",
-                color=discord.Color.red()
-            )
-            if hasattr(destination, "response"):
-                await destination.response.send_message(embed=embed, ephemeral=True)
-            else:
-                await destination.send(embed=embed)
-            return
-
-        await self.update_user(user.id, balance=data["balance"] - amount)
-        embed = discord.Embed(
-            title="Investment Started",
-            description=f"You invested **{amount}** coins. In 1 hour, you'll either double your money or lose it all!",
-            color=discord.Color.gold()
-        )
-        if hasattr(destination, "response"):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-        # Wait for 1 hour, then resolve the investment
-        await asyncio.sleep(INVESTMENT_DURATION)
-        # Re-fetch user data in case of changes
-        data = await self.get_user(user.id)
-        success = random.choice([True, False])
-        if success:
-            profit = amount * 2
-            await self.update_user(user.id, balance=data["balance"] + profit)
-            result_embed = discord.Embed(
-                title="Investment Result",
-                description=f"🎉 Success! Your investment of **{amount}** coins doubled to **{profit}** coins!",
-                color=discord.Color.green()
-            )
-        else:
-            result_embed = discord.Embed(
-                title="Investment Result",
-                description=f"💸 Oh no! Your investment of **{amount}** coins was lost.",
-                color=discord.Color.red()
-            )
-        # Try to DM the user, fallback to channel if not possible
-        try:
-            await user.send(embed=result_embed)
-        except Exception:
-            # Try to send in the economy channel if DM fails
-            channel = None
-            if hasattr(destination, "guild") and destination.guild:
-                channel = destination.guild.get_channel(ECONOMY_CHANNEL_ID)
-            elif hasattr(destination, "guild_id"):
-                guild = self.bot.get_guild(destination.guild_id)
-                if guild:
-                    channel = guild.get_channel(ECONOMY_CHANNEL_ID)
-            if channel:
-                await channel.send(f"{user.mention}", embed=result_embed)
 
     async def get_inventory(self, user_id):
         async with aiosqlite.connect(DB_PATH) as db:
