@@ -142,6 +142,16 @@ def economy_channel_only():
         return False
     return commands.check(predicate)
 
+INVEST_OPTIONS = [
+    "High Rock Whitelisted",
+    "High Rock Border Roleplay",
+    "High Rock National Guard",
+    "High Rock Military Corps",
+    "Low Pebble Airforce",
+    "Skittles"
+]
+INVEST_DURATION = 6 * 3600  # 6 hours in seconds
+
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -165,6 +175,15 @@ class Economy(commands.Cog):
                     item TEXT,
                     amount INTEGER,
                     PRIMARY KEY (user_id, item)
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS investments (
+                    user_id INTEGER,
+                    stock TEXT,
+                    amount INTEGER,
+                    start_time INTEGER,
+                    PRIMARY KEY (user_id, stock)
                 )
             """)
             await db.commit()
@@ -303,11 +322,18 @@ class Economy(commands.Cog):
 
     async def show_balance(self, user, destination):
         data = await self.get_user(user.id)
+        async with aiosqlite.connect(DB_PATH) as db:
+            rows = await db.execute_fetchall(
+                "SELECT stock, amount FROM investments WHERE user_id = ?", (user.id,)
+            )
+        invest_lines = [f"**{stock}**: {amount} coins" for stock, amount in rows] if rows else []
+        invest_str = "\n".join(invest_lines) if invest_lines else "None"
         embed = discord.Embed(
             title=f"{user.name}'s Balance",
             description=(
                 f"💰 **Wallet:** {data['balance']} coins\n"
                 f"🏦 **Bank:** {data['bank']} coins\n"
+                f"📈 **Investments:**\n{invest_str}\n"
                 f"📊 **Total:** {data['balance'] + data['bank']} coins"
             ),
             color=0xd0b47b
@@ -368,12 +394,20 @@ class Economy(commands.Cog):
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT user_id, balance, bank FROM users")
             rows = await cursor.fetchall()
-        leaderboard = sorted(rows, key=lambda r: (r[1] or 0) + (r[2] or 0), reverse=True)[:10]
+            invest_rows = await db.execute_fetchall(
+                "SELECT user_id, SUM(amount) FROM investments GROUP BY user_id"
+            )
+        invest_map = {row[0]: row[1] or 0 for row in invest_rows}
+        leaderboard = sorted(
+            rows,
+            key=lambda r: (r[1] or 0) + (r[2] or 0) + invest_map.get(r[0], 0),
+            reverse=True
+        )[:10]
         place_emojis = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
 
         embed = discord.Embed(
             title="Economy Leaderboard",
-            description="Top 10 users by wallet + bank",
+            description="Top 10 users by wallet + bank + investments",
             color=0xd0b47b
         )
 
@@ -389,9 +423,10 @@ class Economy(commands.Cog):
             for idx, (user_id, balance, bank) in enumerate(leaderboard, start=1):
                 member = guild.get_member(user_id) if guild else None
                 name = member.mention if member else f"<@{user_id}>"
+                invest_amt = invest_map.get(user_id, 0)
                 emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
                 lines.append(
-                    f"{emoji} **#{idx}** {name}\nWallet: **{balance}** | Bank: **{bank}** | Total: **{balance + bank}**"
+                    f"{emoji} **#{idx}** {name}\nWallet: **{balance}** | Bank: **{bank}** | Investments: **{invest_amt}** | Total: **{balance + bank + invest_amt}**"
                 )
             embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
 
@@ -963,6 +998,114 @@ class Economy(commands.Cog):
     # In all commands that spend coins (buy, bet, crime, rob, etc.), always use data["balance"] (wallet) only.
     # No changes needed if you already use data["balance"] for all spending checks and updates.
 
+    @app_commands.command(name="invest", description="Invest coins in a stock for 6 hours. Random return between -100% and +250%.")
+    @app_commands.describe(stock="Stock to invest in", amount="Amount to invest")
+    @app_commands.choices(stock=[
+        app_commands.Choice(name=opt, value=opt) for opt in INVEST_OPTIONS
+    ])
+    async def invest_slash(self, interaction: discord.Interaction, stock: app_commands.Choice[str], amount: int):
+        await self.invest(interaction.user, stock.value, amount, interaction)
+
+    async def invest(self, user, stock, amount, destination):
+        # Check if already invested in this stock in the last hour
+        async with aiosqlite.connect(DB_PATH) as db:
+            row = await db.execute_fetchone(
+                "SELECT start_time FROM investments WHERE user_id = ? AND stock = ?", (user.id, stock)
+            )
+            now = int(datetime.utcnow().timestamp())
+            if row and now - row[0] < 3600:
+                embed = discord.Embed(
+                    title="Investment",
+                    description=f"You can only invest in **{stock}** once per hour.",
+                    color=0xd0b47b
+                )
+                if hasattr(destination, "response"):
+                    await destination.response.send_message(embed=embed, ephemeral=True)
+                else:
+                    await destination.send(embed=embed)
+                return
+
+            data = await self.get_user(user.id)
+            if amount <= 0 or data["balance"] < amount:
+                embed = discord.Embed(
+                    title="Investment",
+                    description="Invalid amount or insufficient wallet funds.",
+                    color=discord.Color.red()
+                )
+                if hasattr(destination, "response"):
+                    await destination.response.send_message(embed=embed, ephemeral=True)
+                else:
+                    await destination.send(embed=embed)
+                return
+
+            await self.update_user(user.id, balance=data["balance"] - amount)
+            await db.execute(
+                "INSERT OR REPLACE INTO investments (user_id, stock, amount, start_time) VALUES (?, ?, ?, ?)",
+                (user.id, stock, amount, now)
+            )
+            await db.commit()
+
+        embed = discord.Embed(
+            title="Investment Started",
+            description=f"You invested **{amount}** coins in **{stock}**. In 6 hours, you'll get a random return between -100% and +250%.",
+            color=0xd0b47b
+        )
+        if hasattr(destination, "response"):
+            await destination.response.send_message(embed=embed)
+        else:
+            await destination.send(embed=embed)
+
+        # Schedule investment result
+        self.bot.loop.create_task(self.resolve_investment(user.id, stock, amount, now, destination))
+
+    async def resolve_investment(self, user_id, stock, amount, start_time, destination):
+        await asyncio.sleep(INVEST_DURATION)
+        async with aiosqlite.connect(DB_PATH) as db:
+            row = await db.execute_fetchone(
+                "SELECT amount, start_time FROM investments WHERE user_id = ? AND stock = ?", (user_id, stock)
+            )
+            if not row or row[1] != start_time:
+                return  # Already resolved or replaced
+            # Random percent between -100 and 250, rounded to nearest 5
+            percent = random.uniform(-100, 250)
+            percent_rounded = round(percent / 5) * 5
+            final_amount = round(amount * (1 + percent_rounded / 100) / 5) * 5
+            final_amount = max(0, final_amount)
+            user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+            data = await self.get_user(user_id)
+            await self.update_user(user_id, balance=data["balance"] + final_amount)
+            await db.execute(
+                "DELETE FROM investments WHERE user_id = ? AND stock = ?", (user_id, stock)
+            )
+            await db.commit()
+        if percent_rounded >= 0:
+            desc = f"🎉 Your investment in **{stock}** returned **+{percent_rounded}%**!\nYou receive **{final_amount}** coins."
+            color = discord.Color.green()
+        else:
+            desc = f"💸 Your investment in **{stock}** returned **{percent_rounded}%**.\nYou receive **{final_amount}** coins."
+            color = discord.Color.red()
+        result_embed = discord.Embed(
+            title="Investment Result",
+            description=desc,
+            color=color
+        )
+        # Try to DM, fallback to channel
+        try:
+            await user.send(embed=result_embed)
+        except Exception:
+            channel = None
+            if hasattr(destination, "guild") and destination.guild:
+                channel = destination.guild.get_channel(ECONOMY_CHANNEL_ID)
+            elif hasattr(destination, "guild_id"):
+                guild = self.bot.get_guild(destination.guild_id)
+                if guild:
+                    channel = guild.get_channel(ECONOMY_CHANNEL_ID)
+            if channel:
+                await channel.send(f"<@{user_id}>", embed=result_embed)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Economy(bot))
+
 def get_shop_embed(page=1):
     items = list(SHOP_ITEMS.items())
     total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
@@ -1006,6 +1149,3 @@ class ShopView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
         else:
             await interaction.response.defer()
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Economy(bot))
