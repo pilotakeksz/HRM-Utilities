@@ -1,0 +1,260 @@
+import discord
+from discord.ext import commands
+from discord import app_commands, ui
+import os
+import datetime
+import json
+import asyncio
+
+MDT_ROLE = 1329910329701830686
+DEPLOY_ROLES = {1329910290619437158, 1329910265264869387, 1329910285594525886, 1329910241835352064}
+LOG_CHANNEL_ID = 1343686645815181382
+DEPLOY_ANNOUNCE_CHANNEL_ID = 1329910519892807763
+TAN = 0xd0b37b
+YELLOW = 0xffd966
+RED = 0xe74c3c
+DEPLOY_STATE_FILE = os.path.join("data", "deployment_state.json")
+LOG_FILE = os.path.join("logs", "mdt_log.txt")
+
+def ensure_data_dirs():
+    os.makedirs("data", exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
+
+def log_action(user, action, details):
+    ensure_data_dirs()
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{now}] {user} | {action} | {details}\n")
+
+async def log_to_discord(bot, user, action, details):
+    channel = bot.get_channel(LOG_CHANNEL_ID)
+    if channel:
+        embed = discord.Embed(
+            title="MDT Action Log",
+            color=TAN,
+            timestamp=datetime.datetime.utcnow()
+        )
+        embed.add_field(name="User", value=f"{user} ({getattr(user, 'id', 'N/A')})", inline=False)
+        embed.add_field(name="Action", value=action, inline=False)
+        embed.add_field(name="Details", value=details, inline=False)
+        await channel.send(embed=embed)
+
+def load_deploy_state():
+    ensure_data_dirs()
+    if not os.path.exists(DEPLOY_STATE_FILE):
+        return {"active": False, "last_start": 0, "last_move": 0, "last_end": 0, "data": {}}
+    with open(DEPLOY_STATE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_deploy_state(state):
+    ensure_data_dirs()
+    with open(DEPLOY_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+
+def has_mdt_role(interaction):
+    return any(r.id == MDT_ROLE for r in getattr(interaction.user, "roles", []))
+
+def has_deploy_role(interaction):
+    return any(r.id in DEPLOY_ROLES for r in getattr(interaction.user, "roles", []))
+
+class MDTView(ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @ui.button(label="Log Arrest", style=discord.ButtonStyle.primary, custom_id="mdt_log_arrest")
+    async def log_arrest(self, interaction: discord.Interaction, button: ui.Button):
+        if not has_mdt_role(interaction):
+            await interaction.response.send_message("You do not have permission.", ephemeral=True)
+            return
+        await interaction.response.send_message("Arrest logging coming soon.", ephemeral=True)
+        log_action(interaction.user, "Log Arrest", "Clicked Log Arrest")
+        await log_to_discord(self.bot, interaction.user, "Log Arrest", "Clicked Log Arrest")
+
+    @ui.button(label="Deployment Management", style=discord.ButtonStyle.secondary, custom_id="mdt_deploy_mgmt")
+    async def deploy_mgmt(self, interaction: discord.Interaction, button: ui.Button):
+        if not has_deploy_role(interaction):
+            await interaction.response.send_message("You do not have permission.", ephemeral=True)
+            return
+        state = load_deploy_state()
+        now = datetime.datetime.utcnow().timestamp()
+        can_start = not state["active"]
+        can_move = state["active"]
+        can_end = state["active"]
+        # Build deployment management embed
+        embed1 = discord.Embed(color=TAN)
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed2 = discord.Embed(
+            title="<:HighRockMilitary:1376605942765977800> // Deployment Management",
+            description="Manage deployments below.",
+            color=TAN
+        )
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        view = DeploymentView(self.bot, can_start, can_move, can_end)
+        await interaction.response.edit_message(embeds=[embed1, embed2], view=view)
+        log_action(interaction.user, "Deployment Management", "Opened deployment management")
+        await log_to_discord(self.bot, interaction.user, "Deployment Management", "Opened deployment management")
+
+class DeploymentView(ui.View):
+    def __init__(self, bot, can_start, can_move, can_end):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.can_start = can_start
+        self.can_move = can_move
+        self.can_end = can_end
+        self.add_item(ui.Button(label="Start Deployment", style=discord.ButtonStyle.success, custom_id="start_deploy", disabled=not can_start))
+        self.add_item(ui.Button(label="Move Location", style=discord.ButtonStyle.primary, custom_id="move_deploy", disabled=not can_move))
+        self.add_item(ui.Button(label="Close Deployment", style=discord.ButtonStyle.danger, custom_id="close_deploy", disabled=not can_end))
+
+    @ui.button(label="Start Deployment", style=discord.ButtonStyle.success, custom_id="start_deploy", row=0)
+    async def start_deploy(self, interaction: discord.Interaction, button: ui.Button):
+        state = load_deploy_state()
+        now = datetime.datetime.utcnow().timestamp()
+        if state["active"]:
+            await interaction.response.send_message("A deployment is already active.", ephemeral=True)
+            return
+        if now - state.get("last_start", 0) < 1800:
+            await interaction.response.send_message("Deployment start is on cooldown (30 min).", ephemeral=True)
+            return
+        modal = StartDeploymentModal(self.bot)
+        await interaction.response.send_modal(modal)
+
+    @ui.button(label="Move Location", style=discord.ButtonStyle.primary, custom_id="move_deploy", row=0)
+    async def move_deploy(self, interaction: discord.Interaction, button: ui.Button):
+        state = load_deploy_state()
+        now = datetime.datetime.utcnow().timestamp()
+        if not state["active"]:
+            await interaction.response.send_message("No deployment is currently active.", ephemeral=True)
+            return
+        if now - state.get("last_move", 0) < 420:
+            await interaction.response.send_message("Move location is on cooldown (7 min).", ephemeral=True)
+            return
+        modal = MoveDeploymentModal(self.bot)
+        await interaction.response.send_modal(modal)
+
+    @ui.button(label="Close Deployment", style=discord.ButtonStyle.danger, custom_id="close_deploy", row=0)
+    async def close_deploy(self, interaction: discord.Interaction, button: ui.Button):
+        state = load_deploy_state()
+        now = datetime.datetime.utcnow().timestamp()
+        if not state["active"]:
+            await interaction.response.send_message("No deployment is currently active.", ephemeral=True)
+            return
+        if now - state.get("last_end", 0) < 420:
+            await interaction.response.send_message("Close deployment is on cooldown (7 min).", ephemeral=True)
+            return
+        # End deployment
+        state["active"] = False
+        state["last_end"] = now
+        save_deploy_state(state)
+        # Announce in deployment channel
+        channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
+        embed1 = discord.Embed(color=TAN)
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed2 = discord.Embed(
+            title="<:HighRockMilitary:1376605942765977800> // Deployment Ended",
+            description="**The most recent deployment has ended.**",
+            color=RED
+        )
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.set_footer(text=f"Ended by {interaction.user}")
+        await channel.send(embeds=[embed1, embed2])
+        await interaction.response.send_message("Deployment ended.", ephemeral=True)
+        log_action(interaction.user, "Deployment Ended", "Deployment ended")
+        await log_to_discord(self.bot, interaction.user, "Deployment Ended", "Deployment ended")
+
+class StartDeploymentModal(ui.Modal, title="Start Deployment"):
+    deployment_type = ui.TextInput(label="Deployment Type", required=True)
+    location = ui.TextInput(label="Location", required=True)
+    notes = ui.TextInput(label="Notes", required=False)
+    entry_code = ui.TextInput(label="Entry Code", required=True)
+
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+
+    async def on_submit(self, interaction: discord.Interaction):
+        state = load_deploy_state()
+        now = datetime.datetime.utcnow().timestamp()
+        state["active"] = True
+        state["last_start"] = now
+        state["data"] = {
+            "type": self.deployment_type.value,
+            "location": self.location.value,
+            "notes": self.notes.value,
+            "entry_code": self.entry_code.value,
+            "by": interaction.user.id
+        }
+        save_deploy_state(state)
+        # Announce in deployment channel
+        channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
+        embed1 = discord.Embed(color=TAN)
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed2 = discord.Embed(
+            title="<:HighRockMilitary:1376605942765977800> // Deployment",
+            description=f"{interaction.user.mention} has **started a deployment.**\n\n"
+                        f"> - Type: **{self.deployment_type.value}**\n"
+                        f"> - Location: **{self.location.value}**\n"
+                        f"> - Entry code: **{self.entry_code.value}**\n"
+                        f"> - Notes: **{self.notes.value or 'None'}**",
+            color=TAN
+        )
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        await channel.send(embeds=[embed1, embed2])
+        await interaction.response.send_message("Deployment started.", ephemeral=True)
+        log_action(interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
+        await log_to_discord(self.bot, interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
+
+class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
+    location = ui.TextInput(label="New Location", required=True)
+    notes = ui.TextInput(label="Notes", required=False)
+
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+
+    async def on_submit(self, interaction: discord.Interaction):
+        state = load_deploy_state()
+        now = datetime.datetime.utcnow().timestamp()
+        state["last_move"] = now
+        state["data"]["location"] = self.location.value
+        state["data"]["notes"] = self.notes.value
+        save_deploy_state(state)
+        # Announce in deployment channel
+        channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
+        embed1 = discord.Embed(color=YELLOW)
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed2 = discord.Embed(
+            title="<:HighRockMilitary:1376605942765977800> // Deployment Location Change",
+            description=f"> - Location: **{self.location.value}**\n> - Notes: **{self.notes.value or 'None'}**",
+            color=YELLOW
+        )
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        await channel.send(embeds=[embed1, embed2])
+        await interaction.response.send_message("Deployment location updated.", ephemeral=True)
+        log_action(interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
+        await log_to_discord(self.bot, interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
+
+class MDT(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(name="mdt", description="Open the Mobile Data Terminal.")
+    @app_commands.check(lambda i: any(r.id == MDT_ROLE for r in getattr(i.user, "roles", [])))
+    async def mdt_slash(self, interaction: discord.Interaction):
+        # Embed 1: just image
+        embed1 = discord.Embed(color=TAN)
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390783319997939863/MDT.png?ex=68698366&is=686831e6&hm=14150316b5ba33309f0a4a872497146d6da5623c2ebae685c9a297160ba14a69&")
+        # Embed 2: main interface
+        embed2 = discord.Embed(
+            title="<:HighRockMilitary:1376605942765977800> // Mobile Data Terminal",
+            color=TAN
+        )
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.add_field(name="Log arrest", value="Log an arrest in the system.", inline=True)
+        embed2.add_field(name="Deployment Management", value="Manage deployments and locations.", inline=True)
+        await interaction.response.send_message(embeds=[embed1, embed2], view=MDTView(self.bot), ephemeral=True)
+        log_action(interaction.user, "Opened MDT", "Opened MDT interface")
+        await log_to_discord(self.bot, interaction.user, "Opened MDT", "Opened MDT interface")
+
+async def setup(bot):
+    await bot.add_cog(MDT(bot))

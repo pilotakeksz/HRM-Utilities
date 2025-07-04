@@ -51,6 +51,7 @@ async def main():
         await bot.load_extension("cogs.afk")
         await bot.load_extension("cogs.blacklist")
         await bot.load_extension("cogs.archive_commands")
+        await bot.load_extension("cogs.MDT")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
