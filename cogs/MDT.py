@@ -37,9 +37,21 @@ def log_action(user, action, details):
 async def log_to_discord(bot, user, action, details):
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if channel:
+        # Choose color based on action
+        if "arrest" in action.lower():
+            color = 0x8d5524  # brown for arrest log
+        elif "deployment started" in action.lower():
+            color = 0x2ecc40  # green for deployment start
+        elif "deployment ended" in action.lower():
+            color = 0xe74c3c  # red for deployment end
+        elif "location change" in action.lower() or "move" in action.lower():
+            color = 0xffd966  # yellow for move
+        else:
+            color = TAN  # default tan
+
         embed = discord.Embed(
             title="MDT Action Log",
-            color=TAN,
+            color=color,
             timestamp=datetime.datetime.utcnow()
         )
         embed.add_field(name="User", value=f"{user} ({getattr(user, 'id', 'N/A')})", inline=False)
