@@ -142,16 +142,6 @@ def economy_channel_only():
         return False
     return commands.check(predicate)
 
-INVEST_OPTIONS = [
-    "High Rock Whitelisted",
-    "High Rock Border Roleplay",
-    "High Rock National Guard",
-    "High Rock Military Corps",
-    "Low Pebble Airforce",
-    "Skittles"
-]
-INVEST_DURATION = 10  # 10 seconds for debug
-
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -175,15 +165,6 @@ class Economy(commands.Cog):
                     item TEXT,
                     amount INTEGER,
                     PRIMARY KEY (user_id, item)
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS investments (
-                    user_id INTEGER,
-                    stock TEXT,
-                    amount INTEGER,
-                    start_time INTEGER,
-                    PRIMARY KEY (user_id, stock)
                 )
             """)
             await db.commit()
@@ -322,18 +303,11 @@ class Economy(commands.Cog):
 
     async def show_balance(self, user, destination):
         data = await self.get_user(user.id)
-        async with aiosqlite.connect(DB_PATH) as db:
-            rows = await db.execute_fetchall(
-                "SELECT stock, amount FROM investments WHERE user_id = ?", (user.id,)
-            )
-        invest_lines = [f"**{stock}**: {amount} coins" for stock, amount in rows] if rows else []
-        invest_str = "\n".join(invest_lines) if invest_lines else "None"
         embed = discord.Embed(
             title=f"{user.name}'s Balance",
             description=(
                 f"💰 **Wallet:** {data['balance']} coins\n"
                 f"🏦 **Bank:** {data['bank']} coins\n"
-                f"📈 **Investments:**\n{invest_str}\n"
                 f"📊 **Total:** {data['balance'] + data['bank']} coins"
             ),
             color=0xd0b47b
@@ -394,20 +368,12 @@ class Economy(commands.Cog):
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT user_id, balance, bank FROM users")
             rows = await cursor.fetchall()
-            invest_rows = await db.execute_fetchall(
-                "SELECT user_id, SUM(amount) FROM investments GROUP BY user_id"
-            )
-        invest_map = {row[0]: row[1] or 0 for row in invest_rows}
-        leaderboard = sorted(
-            rows,
-            key=lambda r: (r[1] or 0) + (r[2] or 0) + invest_map.get(r[0], 0),
-            reverse=True
-        )[:10]
+        leaderboard = sorted(rows, key=lambda r: (r[1] or 0) + (r[2] or 0), reverse=True)[:10]
         place_emojis = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
 
         embed = discord.Embed(
             title="Economy Leaderboard",
-            description="Top 10 users by wallet + bank + investments",
+            description="Top 10 users by wallet + bank",
             color=0xd0b47b
         )
 
@@ -423,10 +389,9 @@ class Economy(commands.Cog):
             for idx, (user_id, balance, bank) in enumerate(leaderboard, start=1):
                 member = guild.get_member(user_id) if guild else None
                 name = member.mention if member else f"<@{user_id}>"
-                invest_amt = invest_map.get(user_id, 0)
                 emoji = place_emojis[idx - 1] if idx <= len(place_emojis) else "🏅"
                 lines.append(
-                    f"{emoji} **#{idx}** {name}\nWallet: **{balance}** | Bank: **{bank}** | Investments: **{invest_amt}** | Total: **{balance + bank + invest_amt}**"
+                    f"{emoji} **#{idx}** {name}\nWallet: **{balance}** | Bank: **{bank}** | Total: **{balance + bank}**"
                 )
             embed.add_field(name="Ranks", value="\n".join(lines), inline=False)
 
@@ -998,15 +963,49 @@ class Economy(commands.Cog):
     # In all commands that spend coins (buy, bet, crime, rob, etc.), always use data["balance"] (wallet) only.
     # No changes needed if you already use data["balance"] for all spending checks and updates.
 
-    @app_commands.command(name="invest", description="Invest coins in a stock for 10 seconds (debug). Random return between -100% and +250%.")
-    @app_commands.describe(stock="Stock to invest in", amount="Amount to invest")
-    @app_commands.choices(stock=[
-        app_commands.Choice(name=opt, value=opt) for opt in INVEST_OPTIONS
-    ])
-    async def invest_slash(self, interaction: discord.Interaction, stock: app_commands.Choice[str], amount: int):
-        try:
-            await self.invest(interaction.user, stock.value, amount, interaction)
-            await interaction.response.send_message("Success", ephemeral=True)
-        except Exception as e:
-            await interaction.response.send_message(f"Fault: {e}", ephemeral=True)
-       
+def get_shop_embed(page=1):
+    items = list(SHOP_ITEMS.items())
+    total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * SHOP_ITEMS_PER_PAGE
+    end = start + SHOP_ITEMS_PER_PAGE
+    embed = discord.Embed(
+        title=f"Shop (Page {page}/{total_pages})",
+        color=0xd0b47b
+    )
+    for name, data in items[start:end]:
+        embed.add_field(
+            name=f"{name.title()} — {data['price']} coins",
+            value=data['desc'],
+            inline=False
+        )
+    embed.set_footer(text="Use !buy <item> <amount> or /buy to purchase. Use !shop <page> to view more.")
+    return embed
+
+class ShopView(discord.ui.View):
+    def __init__(self, page=1):
+        super().__init__(timeout=60)
+        self.page = page
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page > 1:
+            self.page -= 1
+            embed = get_shop_embed(self.page)
+            await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
+        else:
+            await interaction.response.defer()
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        items = list(SHOP_ITEMS.items())
+        total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
+        if self.page < total_pages:
+            self.page += 1
+            embed = get_shop_embed(self.page)
+            await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
+        else:
+            await interaction.response.defer()
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Economy(bot))
