@@ -116,15 +116,15 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
             if info:
                 avatar_url = get_roblox_avatar_url(info["userId"])
             else:
-                avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"  # fallback
+                avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"  # fallback
         except Exception:
-            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"
+            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
 
         display_name = info["displayName"] if info else username
         roblox_username = info["username"] if info else username
 
         embed = discord.Embed(
-            title=":HighRockMilitary: // Arrest Log",
+            title="<:HighRockMilitary:1376605942765977800> // Arrest Log",
             color=TAN,
             description=(
                 f"> **Username:** {roblox_username}\n"
