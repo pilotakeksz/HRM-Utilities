@@ -5,6 +5,7 @@ import os
 import datetime
 import json
 import asyncio
+import requests
 
 MDT_ROLE = 1329910329701830686
 DEPLOY_ROLES = {1329910290619437158, 1329910265264869387, 1329910285594525886, 1329910241835352064}
@@ -15,6 +16,8 @@ YELLOW = 0xffd966
 RED = 0xe74c3c
 DEPLOY_STATE_FILE = os.path.join("data", "deployment_state.json")
 LOG_FILE = os.path.join("logs", "mdt_log.txt")
+ARREST_LOG_CHANNEL_ID = 1379091390478159972
+ARREST_ID_FILE = os.path.join("data", "arrest_id.json")
 
 def ensure_data_dirs():
     os.makedirs("data", exist_ok=True)
@@ -57,6 +60,106 @@ def has_mdt_role(interaction):
 def has_deploy_role(interaction):
     return any(r.id in DEPLOY_ROLES for r in getattr(interaction.user, "roles", []))
 
+def get_next_arrest_id():
+    ensure_data_dirs()
+    if not os.path.exists(ARREST_ID_FILE):
+        with open(ARREST_ID_FILE, "w", encoding="utf-8") as f:
+            json.dump({"id": 1}, f)
+        return 1
+    with open(ARREST_ID_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    arrest_id = data.get("id", 1)
+    data["id"] = arrest_id + 1
+    with open(ARREST_ID_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return arrest_id
+
+def get_roblox_user_info(username):
+    # Get userId and displayName from username
+    url = "https://users.roblox.com/v1/usernames/users"
+    resp = requests.post(url, json={"usernames": [username], "excludeBannedUsers": False}, timeout=10)
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    if not data["data"]:
+        return None
+    user = data["data"][0]
+    return {
+        "userId": user["id"],
+        "username": user["name"],
+        "displayName": user.get("displayName", user["name"])
+    }
+
+def get_roblox_avatar_url(user_id, size=420):
+    return f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size={size}x{size}&format=Png&isCircular=false"
+
+class ArrestLogModal(ui.Modal, title="Log Arrest"):
+    roblox_username = ui.TextInput(label="Roblox Username", required=True)
+    charges = ui.TextInput(label="Charges", required=True)
+    notes = ui.TextInput(label="Notes", required=False)
+
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+
+    async def on_submit(self, interaction: discord.Interaction):
+        username = self.roblox_username.value.strip()
+        charges = self.charges.value.strip()
+        notes = self.notes.value.strip()
+        arrest_id = get_next_arrest_id()
+
+        # Try to get Roblox info
+        info = None
+        avatar_url = None
+        try:
+            info = get_roblox_user_info(username)
+            if info:
+                avatar_url = get_roblox_avatar_url(info["userId"])
+            else:
+                avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"  # fallback
+        except Exception:
+            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"
+
+        display_name = info["displayName"] if info else username
+        roblox_username = info["username"] if info else username
+
+        embed = discord.Embed(
+            title=":HighRockMilitary: // Arrest Log",
+            color=TAN,
+            description=(
+                f"> **Username:** {roblox_username}\n"
+                f"> **Display Name:** {display_name}\n\n"
+                f"> **Charges:** {charges}\n"
+                f"> **Notes:** {notes or 'None'}\n\n"
+                f"> Detained By: {interaction.user.mention}"
+            )
+        )
+        embed.set_thumbnail(url=avatar_url)
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed.set_footer(text=f"ID: {arrest_id}")
+
+        # Log to file
+        log_action(
+            interaction.user,
+            "Arrest Log",
+            f"ID: {arrest_id} | Username: {roblox_username} | Display: {display_name} | Charges: {charges} | Notes: {notes}"
+        )
+
+        # Log to Discord
+        await log_to_discord(
+            self.bot,
+            interaction.user,
+            "Arrest Log",
+            f"ID: {arrest_id} | Username: {roblox_username} | Display: {display_name} | Charges: {charges} | Notes: {notes}"
+        )
+
+        # Send to arrest log channel
+        channel = interaction.client.get_channel(ARREST_LOG_CHANNEL_ID)
+        if channel:
+            await channel.send(embed=embed)
+
+        await interaction.response.send_message("Arrest logged.", ephemeral=True)
+
 class MDTView(ui.View):
     def __init__(self, bot):
         super().__init__(timeout=None)
@@ -67,9 +170,9 @@ class MDTView(ui.View):
         if not has_mdt_role(interaction):
             await interaction.response.send_message("You do not have permission.", ephemeral=True)
             return
-        await interaction.response.send_message("Arrest logging coming soon.", ephemeral=True)
-        log_action(interaction.user, "Log Arrest", "Clicked Log Arrest")
-        await log_to_discord(self.bot, interaction.user, "Log Arrest", "Clicked Log Arrest")
+        await interaction.response.send_modal(ArrestLogModal(self.bot))
+        log_action(interaction.user, "Log Arrest", "Opened Arrest Log Modal")
+        await log_to_discord(self.bot, interaction.user, "Log Arrest", "Opened Arrest Log Modal")
 
     @ui.button(label="Deployment Management", style=discord.ButtonStyle.secondary, custom_id="mdt_deploy_mgmt")
     async def deploy_mgmt(self, interaction: discord.Interaction, button: ui.Button):
