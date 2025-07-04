@@ -102,9 +102,6 @@ class DeploymentView(ui.View):
         self.can_start = can_start
         self.can_move = can_move
         self.can_end = can_end
-        self.add_item(ui.Button(label="Start Deployment", style=discord.ButtonStyle.success, custom_id="start_deploy", disabled=not can_start))
-        self.add_item(ui.Button(label="Move Location", style=discord.ButtonStyle.primary, custom_id="move_deploy", disabled=not can_move))
-        self.add_item(ui.Button(label="Close Deployment", style=discord.ButtonStyle.danger, custom_id="close_deploy", disabled=not can_end))
 
     @ui.button(label="Start Deployment", style=discord.ButtonStyle.success, custom_id="start_deploy", row=0)
     async def start_deploy(self, interaction: discord.Interaction, button: ui.Button):
