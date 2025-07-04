@@ -150,7 +150,7 @@ INVEST_OPTIONS = [
     "Low Pebble Airforce",
     "Skittles"
 ]
-INVEST_DURATION = 6 * 3600  # 6 hours in seconds
+INVEST_DURATION = 10  # 10 seconds for debug
 
 class Economy(commands.Cog):
     def __init__(self, bot):
@@ -998,162 +998,15 @@ class Economy(commands.Cog):
     # In all commands that spend coins (buy, bet, crime, rob, etc.), always use data["balance"] (wallet) only.
     # No changes needed if you already use data["balance"] for all spending checks and updates.
 
-    @app_commands.command(name="invest", description="Invest coins in a stock for 6 hours. Random return between -100% and +250%.")
+    @app_commands.command(name="invest", description="Invest coins in a stock for 10 seconds (debug). Random return between -100% and +250%.")
     @app_commands.describe(stock="Stock to invest in", amount="Amount to invest")
     @app_commands.choices(stock=[
         app_commands.Choice(name=opt, value=opt) for opt in INVEST_OPTIONS
     ])
     async def invest_slash(self, interaction: discord.Interaction, stock: app_commands.Choice[str], amount: int):
-        await self.invest(interaction.user, stock.value, amount, interaction)
-
-    async def invest(self, user, stock, amount, destination):
-        # Check if already invested in this stock in the last hour
-        async with aiosqlite.connect(DB_PATH) as db:
-            row = await db.execute_fetchone(
-                "SELECT start_time FROM investments WHERE user_id = ? AND stock = ?", (user.id, stock)
-            )
-            now = int(datetime.utcnow().timestamp())
-            if row and now - row[0] < 3600:
-                embed = discord.Embed(
-                    title="Investment",
-                    description=f"You can only invest in **{stock}** once per hour.",
-                    color=0xd0b47b
-                )
-                if hasattr(destination, "response"):
-                    await destination.response.send_message(embed=embed, ephemeral=True)
-                else:
-                    await destination.send(embed=embed)
-                return
-
-            data = await self.get_user(user.id)
-            if amount <= 0 or data["balance"] < amount:
-                embed = discord.Embed(
-                    title="Investment",
-                    description="Invalid amount or insufficient wallet funds.",
-                    color=discord.Color.red()
-                )
-                if hasattr(destination, "response"):
-                    await destination.response.send_message(embed=embed, ephemeral=True)
-                else:
-                    await destination.send(embed=embed)
-                return
-
-            await self.update_user(user.id, balance=data["balance"] - amount)
-            await db.execute(
-                "INSERT OR REPLACE INTO investments (user_id, stock, amount, start_time) VALUES (?, ?, ?, ?)",
-                (user.id, stock, amount, now)
-            )
-            await db.commit()
-
-        embed = discord.Embed(
-            title="Investment Started",
-            description=f"You invested **{amount}** coins in **{stock}**. In 6 hours, you'll get a random return between -100% and +250%.",
-            color=0xd0b47b
-        )
-        if hasattr(destination, "response"):
-            await destination.response.send_message(embed=embed)
-        else:
-            await destination.send(embed=embed)
-
-        # Schedule investment result
-        self.bot.loop.create_task(self.resolve_investment(user.id, stock, amount, now, destination))
-
-    async def resolve_investment(self, user_id, stock, amount, start_time, destination):
-        await asyncio.sleep(INVEST_DURATION)
-        async with aiosqlite.connect(DB_PATH) as db:
-            row = await db.execute_fetchone(
-                "SELECT amount, start_time FROM investments WHERE user_id = ? AND stock = ?", (user_id, stock)
-            )
-            if not row or row[1] != start_time:
-                return  # Already resolved or replaced
-            # Random percent between -100 and 250, rounded to nearest 5
-            percent = random.uniform(-100, 250)
-            percent_rounded = round(percent / 5) * 5
-            final_amount = round(amount * (1 + percent_rounded / 100) / 5) * 5
-            final_amount = max(0, final_amount)
-            user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
-            data = await self.get_user(user_id)
-            await self.update_user(user_id, balance=data["balance"] + final_amount)
-            await db.execute(
-                "DELETE FROM investments WHERE user_id = ? AND stock = ?", (user_id, stock)
-            )
-            await db.commit()
-        if percent_rounded >= 0:
-            desc = f"🎉 Your investment in **{stock}** returned **+{percent_rounded}%**!\nYou receive **{final_amount}** coins."
-            color = discord.Color.green()
-        else:
-            desc = f"💸 Your investment in **{stock}** returned **{percent_rounded}%**.\nYou receive **{final_amount}** coins."
-            color = discord.Color.red()
-        result_embed = discord.Embed(
-            title="Investment Result",
-            description=desc,
-            color=color
-        )
-        # Try to DM, fallback to channel
         try:
-            await user.send(embed=result_embed)
-        except Exception:
-            channel = None
-            if hasattr(destination, "guild") and destination.guild:
-                channel = destination.guild.get_channel(ECONOMY_CHANNEL_ID)
-            elif hasattr(destination, "guild_id"):
-                guild = self.bot.get_guild(destination.guild_id)
-                if guild:
-                    channel = guild.get_channel(ECONOMY_CHANNEL_ID)
-            if channel:
-                await channel.send(f"<@{user_id}>", embed=result_embed)
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        try:
-            synced = await self.bot.tree.sync()
-            print(f"Synced {len(synced)} app commands.")
+            await self.invest(interaction.user, stock.value, amount, interaction)
+            await interaction.response.send_message("Success", ephemeral=True)
         except Exception as e:
-            print(f"Failed to sync app commands: {e}")
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Economy(bot))
-
-def get_shop_embed(page=1):
-    items = list(SHOP_ITEMS.items())
-    total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
-    page = max(1, min(page, total_pages))
-    start = (page - 1) * SHOP_ITEMS_PER_PAGE
-    end = start + SHOP_ITEMS_PER_PAGE
-    embed = discord.Embed(
-        title=f"Shop (Page {page}/{total_pages})",
-        color=0xd0b47b
-    )
-    for name, data in items[start:end]:
-        embed.add_field(
-            name=f"{name.title()} — {data['price']} coins",
-            value=data['desc'],
-            inline=False
-        )
-    embed.set_footer(text="Use !buy <item> <amount> or /buy to purchase. Use !shop <page> to view more.")
-    return embed
-
-class ShopView(discord.ui.View):
-    def __init__(self, page=1):
-        super().__init__(timeout=60)
-        self.page = page
-
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
-    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page > 1:
-            self.page -= 1
-            embed = get_shop_embed(self.page)
-            await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
-        else:
-            await interaction.response.defer()
-
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        items = list(SHOP_ITEMS.items())
-        total_pages = max(1, math.ceil(len(items) / SHOP_ITEMS_PER_PAGE))
-        if self.page < total_pages:
-            self.page += 1
-            embed = get_shop_embed(self.page)
-            await interaction.response.edit_message(embed=embed, view=ShopView(page=self.page))
-        else:
-            await interaction.response.defer()
+            await interaction.response.send_message(f"Fault: {e}", ephemeral=True)
+       
