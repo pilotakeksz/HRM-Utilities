@@ -1103,6 +1103,14 @@ class Economy(commands.Cog):
             if channel:
                 await channel.send(f"<@{user_id}>", embed=result_embed)
 
+    @commands.Cog.listener()
+    async def on_ready(self):
+        try:
+            synced = await self.bot.tree.sync()
+            print(f"Synced {len(synced)} app commands.")
+        except Exception as e:
+            print(f"Failed to sync app commands: {e}")
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
 
