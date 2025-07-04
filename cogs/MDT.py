@@ -7,8 +7,13 @@ import json
 import asyncio
 import requests
 
-MDT_ROLE = 1329910329701830686
-DEPLOY_ROLES = {1329910290619437158, 1329910265264869387, 1329910285594525886, 1329910241835352064}
+ARREST_ROLE = 1329910329701830686
+DEPLOY_ROLES = {
+    1329910265264869387,
+    1329910285594525886,
+    1329910295703064577,
+    1329910241835352064,
+}
 LOG_CHANNEL_ID = 1343686645815181382
 DEPLOY_ANNOUNCE_CHANNEL_ID = 1329910519892807763
 TAN = 0xd0b37b
@@ -54,8 +59,8 @@ def save_deploy_state(state):
     with open(DEPLOY_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f)
 
-def has_mdt_role(interaction):
-    return any(r.id == MDT_ROLE for r in getattr(interaction.user, "roles", []))
+def has_arrest_role(interaction):
+    return any(r.id == ARREST_ROLE for r in getattr(interaction.user, "roles", []))
 
 def has_deploy_role(interaction):
     return any(r.id in DEPLOY_ROLES for r in getattr(interaction.user, "roles", []))
@@ -101,7 +106,7 @@ def get_roblox_avatar_url(user_id, size=420):
     except Exception:
         pass
     # fallback
-    return "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
+    return "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"
 
 class ArrestLogModal(ui.Modal, title="Log Arrest"):
     roblox_username = ui.TextInput(label="Roblox Username", required=True)
@@ -131,7 +136,7 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
                 return
             avatar_url = get_roblox_avatar_url(info["userId"])
         except Exception:
-            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
+            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"
 
         display_name = info["displayName"] if info else username
         roblox_username = info["username"] if info else username
@@ -180,7 +185,7 @@ class MDTView(ui.View):
 
     @ui.button(label="Log Arrest", style=discord.ButtonStyle.primary, custom_id="mdt_log_arrest")
     async def log_arrest(self, interaction: discord.Interaction, button: ui.Button):
-        if not has_mdt_role(interaction):
+        if not has_arrest_role(interaction):
             await interaction.response.send_message("You do not have permission.", ephemeral=True)
             return
         await interaction.response.send_modal(ArrestLogModal(self.bot))
@@ -355,7 +360,7 @@ class MDT(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="mdt", description="Open the Mobile Data Terminal.")
-    @app_commands.check(lambda i: any(r.id == MDT_ROLE for r in getattr(i.user, "roles", [])))
+    @app_commands.check(lambda i: has_arrest_role(i) or has_deploy_role(i))
     async def mdt_slash(self, interaction: discord.Interaction):
         # Embed 1: just image
         embed1 = discord.Embed(color=TAN)
