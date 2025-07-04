@@ -118,17 +118,20 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
         notes = self.notes.value.strip()
         arrest_id = get_next_arrest_id()
 
-        # Try to get Roblox info
+        # Try to get Roblox info and validate username
         info = None
         avatar_url = None
         try:
             info = get_roblox_user_info(username)
-            if info:
-                avatar_url = get_roblox_avatar_url(info["userId"])
-            else:
-                avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"  # fallback
+            if not info:
+                await interaction.response.send_message(
+                    f"❌ Roblox user `{username}` does not exist. Please check the username and try again.",
+                    ephemeral=True
+                )
+                return
+            avatar_url = get_roblox_avatar_url(info["userId"])
         except Exception:
-            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
+            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
 
         display_name = info["displayName"] if info else username
         roblox_username = info["username"] if info else username
