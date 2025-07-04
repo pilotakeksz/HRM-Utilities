@@ -145,7 +145,8 @@ class DeploymentView(ui.View):
         save_deploy_state(state)
         # Announce in deployment channel
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
-        embed1 = discord.Embed(color=TAN)
+        ping = "<@&1329910276912447608>"
+        embed1 = discord.Embed(color=RED)
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
         embed2 = discord.Embed(
             title="<:HighRockMilitary:1376605942765977800> // Deployment Ended",
@@ -154,7 +155,7 @@ class DeploymentView(ui.View):
         )
         embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
         embed2.set_footer(text=f"Ended by {interaction.user}")
-        await channel.send(embeds=[embed1, embed2])
+        await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment ended.", ephemeral=True)
         log_action(interaction.user, "Deployment Ended", "Deployment ended")
         await log_to_discord(self.bot, interaction.user, "Deployment Ended", "Deployment ended")
@@ -184,6 +185,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
         save_deploy_state(state)
         # Announce in deployment channel
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
+        ping = "<@&1329910394831114281>"
         embed1 = discord.Embed(color=TAN)
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
         embed2 = discord.Embed(
@@ -196,7 +198,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
             color=TAN
         )
         embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
-        await channel.send(embeds=[embed1, embed2])
+        await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment started.", ephemeral=True)
         log_action(interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
         await log_to_discord(self.bot, interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
@@ -218,6 +220,7 @@ class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
         save_deploy_state(state)
         # Announce in deployment channel
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
+        ping = "<@&1329910276912447608>"
         embed1 = discord.Embed(color=YELLOW)
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
         embed2 = discord.Embed(
@@ -226,7 +229,7 @@ class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
             color=YELLOW
         )
         embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
-        await channel.send(embeds=[embed1, embed2])
+        await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment location updated.", ephemeral=True)
         log_action(interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
         await log_to_discord(self.bot, interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
