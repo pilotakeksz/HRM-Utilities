@@ -91,7 +91,17 @@ def get_roblox_user_info(username):
     }
 
 def get_roblox_avatar_url(user_id, size=420):
-    return f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size={size}x{size}&format=Png&isCircular=false"
+    url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size={size}x{size}&format=Png&isCircular=false"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data["data"] and "imageUrl" in data["data"][0]:
+            return data["data"][0]["imageUrl"]
+    except Exception:
+        pass
+    # fallback
+    return "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
 
 class ArrestLogModal(ui.Modal, title="Log Arrest"):
     roblox_username = ui.TextInput(label="Roblox Username", required=True)
@@ -116,9 +126,9 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
             if info:
                 avatar_url = get_roblox_avatar_url(info["userId"])
             else:
-                avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"  # fallback
+                avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"  # fallback
         except Exception:
-            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
+            avatar_url = "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7/420/420/AvatarHeadshot/Png"
 
         display_name = info["displayName"] if info else username
         roblox_username = info["username"] if info else username
