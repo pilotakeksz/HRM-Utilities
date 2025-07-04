@@ -28,7 +28,7 @@ def log_action(user, action, details):
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{now}] {user} | {action} | {details}\n")
-
+# test
 async def log_to_discord(bot, user, action, details):
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if channel:
