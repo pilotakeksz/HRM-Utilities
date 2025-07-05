@@ -149,11 +149,13 @@ async def create_ticket(interaction, ticket_type, request_content):
         category_id = CATEGORY_GENERAL
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
         overwrites[guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+    # Store opener ID in topic for accurate transcript delivery
     channel = await guild.create_text_channel(
         ticket_name,
         category=guild.get_channel(category_id),
         overwrites=overwrites,
-        reason=f"Ticket opened by {user}"
+        reason=f"Ticket opened by {user}",
+        topic=f"Ticket opener: {user.id}"
     )
 
     # Embed 1 (image)
@@ -237,16 +239,27 @@ class ConfirmCloseView(View):
         }
         await interaction.channel.edit(overwrites=overwrites)
 
-        # Find the opener (first non-bot message author)
-        messages = [msg async for msg in interaction.channel.history(limit=None, oldest_first=True)]
+        # Find the opener from the channel topic (robust against message order)
+        opener_id = None
+        if interaction.channel.topic and "Ticket opener:" in interaction.channel.topic:
+            try:
+                opener_id = int(interaction.channel.topic.split("Ticket opener:")[1].strip().split()[0])
+            except Exception:
+                opener_id = None
+
         opener = None
-        for msg in messages:
-            if not msg.author.bot:
-                opener = msg.author
-                break
-        if opener is None:
-            opener = interaction.user  # fallback
-# test
+        if opener_id:
+            opener = interaction.guild.get_member(opener_id) or await interaction.guild.fetch_member(opener_id)
+        else:
+            # fallback to old logic
+            messages = [msg async for msg in interaction.channel.history(limit=None, oldest_first=True)]
+            for msg in messages:
+                if not msg.author.bot:
+                    opener = msg.author
+                    break
+            if opener is None:
+                opener = interaction.user
+
         # Calculate next exact half hour in UTC
         now = datetime.datetime.utcnow()
         if now.minute < 30:
