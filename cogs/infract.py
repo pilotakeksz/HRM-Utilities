@@ -266,7 +266,7 @@ class Infraction(commands.Cog):
 
     @app_commands.command(name="infraction-issue", description="Issue an infraction to personnel.")
     @app_commands.describe(personnel="User to discipline", action="Type", reason="Reason", proof="Proof file")
-    async def infraction_issue(self, interaction: discord.Interaction, personnel: discord.Member, action: str, reason: str = None, proof: discord.Attachment = None):
+    async def infraction_issue(self, interaction: discord.Interaction, personnel: discord.Member, action: str, reason: str, proof: discord.Attachment = None):
         # Permission checks
         if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to issue infractions.", ephemeral=True)
@@ -276,6 +276,10 @@ class Infraction(commands.Cog):
             return
         if action not in INFRACTION_TYPES:
             await interaction.response.send_message("Invalid infraction type.", ephemeral=True)
+            return
+
+        if not reason or not reason.strip():
+            await interaction.response.send_message("A reason is required for this infraction.", ephemeral=True)
             return
 
         if action == "Activity Notice":
@@ -304,17 +308,119 @@ class Infraction(commands.Cog):
             await interaction.followup.send("Infraction cancelled.", ephemeral=True)
             return
 
+        # --- Discipline Logic Fix ---
+        # Get current role states
+        has_w1 = any(r.id == WARNING_1_ROLE_ID for r in personnel.roles)
+        has_w2 = any(r.id == WARNING_2_ROLE_ID for r in personnel.roles)
+        has_s1 = any(r.id == STRIKE_1_ROLE_ID for r in personnel.roles)
+        has_s2 = any(r.id == STRIKE_2_ROLE_ID for r in personnel.roles)
+        has_s3 = any(r.id == STRIKE_3_ROLE_ID for r in personnel.roles)
+        has_susp = any(r.id == SUSPENDED_ROLE_ID for r in personnel.roles)
+
+        # Track what discipline action is being taken
+        discipline_action = None
+        termination_required = False
+        suspension_required = False
+
+        if action == "Warning":
+            if not has_w1:
+                discipline_action = "warning1"
+            elif not has_w2:
+                discipline_action = "warning2"
+            else:
+                # Already has W1 and W2, escalate to strike
+                # Remove warnings
+                await personnel.remove_roles(
+                    interaction.guild.get_role(WARNING_1_ROLE_ID),
+                    interaction.guild.get_role(WARNING_2_ROLE_ID),
+                    reason="Escalated to strike"
+                )
+                if not has_s1:
+                    discipline_action = "strike1"
+                elif not has_s2:
+                    discipline_action = "strike2"
+                elif not has_s3:
+                    discipline_action = "strike3"
+                    suspension_required = True
+                else:
+                    termination_required = True
+        elif action == "Strike":
+            if not has_s1:
+                discipline_action = "strike1"
+            elif not has_s2:
+                discipline_action = "strike2"
+            elif not has_s3:
+                discipline_action = "strike3"
+                suspension_required = True
+            else:
+                termination_required = True
+        elif action == "Suspension":
+            suspension_required = True
+        elif action == "Termination":
+            termination_required = True
+
+        # Apply discipline roles
+        if discipline_action == "warning1":
+            await personnel.add_roles(interaction.guild.get_role(WARNING_1_ROLE_ID), reason="Issued Warning 1")
+        elif discipline_action == "warning2":
+            await personnel.add_roles(interaction.guild.get_role(WARNING_2_ROLE_ID), reason="Issued Warning 2")
+        elif discipline_action == "strike1":
+            await personnel.add_roles(interaction.guild.get_role(STRIKE_1_ROLE_ID), reason="Issued Strike 1")
+        elif discipline_action == "strike2":
+            await personnel.add_roles(interaction.guild.get_role(STRIKE_2_ROLE_ID), reason="Issued Strike 2")
+        elif discipline_action == "strike3":
+            await personnel.add_roles(interaction.guild.get_role(STRIKE_3_ROLE_ID), reason="Issued Strike 3")
+        if suspension_required:
+            await personnel.add_roles(interaction.guild.get_role(SUSPENDED_ROLE_ID), reason="Issued Suspension")
+            # Remove all warnings and strikes
+            await personnel.remove_roles(
+                *(role for role in [
+                    interaction.guild.get_role(WARNING_1_ROLE_ID),
+                    interaction.guild.get_role(WARNING_2_ROLE_ID),
+                    interaction.guild.get_role(STRIKE_1_ROLE_ID),
+                    interaction.guild.get_role(STRIKE_2_ROLE_ID),
+                    interaction.guild.get_role(STRIKE_3_ROLE_ID)
+                ] if role in personnel.roles),
+                reason="Suspension issued"
+            )
+        if termination_required:
+            # Remove all discipline roles
+            await personnel.remove_roles(
+                *(role for role in [
+                    interaction.guild.get_role(WARNING_1_ROLE_ID),
+                    interaction.guild.get_role(WARNING_2_ROLE_ID),
+                    interaction.guild.get_role(STRIKE_1_ROLE_ID),
+                    interaction.guild.get_role(STRIKE_2_ROLE_ID),
+                    interaction.guild.get_role(STRIKE_3_ROLE_ID),
+                    interaction.guild.get_role(SUSPENDED_ROLE_ID)
+                ] if role in personnel.roles),
+                reason="Termination issued"
+            )
+
         # Issue infraction
         infraction_id = str(uuid.uuid4())
         inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
         embed = self.get_infraction_embed(infraction_id, personnel, interaction.user, action, reason, proof_url, datetime.datetime.utcnow().isoformat())
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
-            msg = await inf_channel.send(content=personnel.mention, embed=embed)
-        elif proof:
-            msg = await inf_channel.send(content=personnel.mention, embed=embed, file=await proof.to_file())
-        else:
-            msg = await inf_channel.send(content=personnel.mention, embed=embed)
+        msg = await inf_channel.send(content=personnel.mention, embed=embed)
+
+        # --- Add second red embed if suspended or terminated ---
+        extra_embed = None
+        if suspension_required and not termination_required:
+            extra_embed = discord.Embed(
+                title="🚨 SUSPENDED",
+                description=f"{personnel.mention} has been **suspended** due to reaching the maximum number of strikes or by direct discipline.",
+                color=discord.Color.red()
+            )
+        elif termination_required:
+            extra_embed = discord.Embed(
+                title="⛔ TERMINATED",
+                description=f"{personnel.mention} has been **terminated** due to reaching the maximum number of strikes or by direct discipline.",
+                color=discord.Color.red()
+            )
+        if extra_embed:
+            await inf_channel.send(embed=extra_embed)
 
         # DM the infracted user
         dm_success = False
@@ -333,17 +439,13 @@ class Infraction(commands.Cog):
             if proof and proof.content_type and proof.content_type.startswith("image/"):
                 dm_embed.set_image(url=proof.url)
             await personnel.send(embed=dm_embed)
+            if extra_embed:
+                await personnel.send(embed=extra_embed)
             dm_success = True
         except Exception as e:
             print(f"Failed to DM user: {e}")
 
         await self.add_infraction(infraction_id, personnel, interaction.user, action, reason, proof_url, msg.id)
-        result = await self.update_roles(personnel, action, interaction.guild, add=True)
-        if result == "terminate":
-            await interaction.followup.send(
-                f"⚠️ {personnel.mention} has reached the maximum strikes. Please proceed with termination.",
-                ephemeral=True
-            )
 
         # Log to logging file (one line per infraction)
         log_to_file(
@@ -370,6 +472,8 @@ class Infraction(commands.Cog):
             log_embed.add_field(name="Infraction ID", value=infraction_id, inline=False)
             log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
             await log_channel.send(embed=log_embed)
+            if extra_embed:
+                await log_channel.send(embed=extra_embed)
 
     @infraction_issue.autocomplete('action')
     async def infraction_action_autocomplete(self, interaction: discord.Interaction, current: str):
