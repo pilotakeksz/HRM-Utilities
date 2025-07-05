@@ -332,19 +332,19 @@ class Infraction(commands.Cog):
             elif not has_w2:
                 discipline_action = "warning2"
             else:
-                # Already has W1 and W2, escalate to strike
+                # Already has W1 and W2, escalate to next strike
                 await personnel.remove_roles(
                     interaction.guild.get_role(WARNING_1_ROLE_ID),
                     interaction.guild.get_role(WARNING_2_ROLE_ID),
                     reason="Escalated to strike"
                 )
-                if not has_s1:
+                if not has_s1 and not has_s2 and not has_s3:
                     discipline_action = "strike1"
-                elif not has_s2:
+                elif has_s1 and not has_s2 and not has_s3:
                     discipline_action = "strike2"
                     suspension_required = True
                     suspension_days = 5
-                elif not has_s3:
+                elif has_s1 and has_s2 and not has_s3:
                     discipline_action = "strike3"
                     suspension_required = True
                     suspension_days = 10
@@ -353,13 +353,13 @@ class Infraction(commands.Cog):
         elif action == "Strike":
             if has_s3:
                 termination_required = True
-            elif not has_s1:
+            elif not has_s1 and not has_s2 and not has_s3:
                 discipline_action = "strike1"
-            elif not has_s2:
+            elif has_s1 and not has_s2 and not has_s3:
                 discipline_action = "strike2"
                 suspension_required = True
                 suspension_days = 5
-            elif not has_s3:
+            elif has_s1 and has_s2 and not has_s3:
                 discipline_action = "strike3"
                 suspension_required = True
                 suspension_days = 10
@@ -428,22 +428,15 @@ class Infraction(commands.Cog):
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
             )
-            # Match field structure for size
-            extra_embed.add_field(name="User", value=f"{personnel}", inline=True)
-            extra_embed.add_field(name="Action", value="Termination", inline=True)
-            extra_embed.add_field(name="Reason", value=reason, inline=False)
             extra_embed.add_field(name="Infraction ID", value=str(infraction_id), inline=True)
         elif suspension_required and not termination_required:
             days_text = f" for **{suspension_days} days**" if suspension_days else ""
             extra_embed = discord.Embed(
                 title="🚨 SUSPENDED",
-                description=f"{personnel.mention} has been **suspended{days_text}** due to reaching the required number of strikes or by direct discipline.",
+                description=f"{personnel.mention} has been **suspended{days_text}**.",
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
             )
-            extra_embed.add_field(name="User", value=f"{personnel}", inline=True)
-            extra_embed.add_field(name="Action", value="Suspension", inline=True)
-            extra_embed.add_field(name="Reason", value=reason, inline=False)
             extra_embed.add_field(name="Infraction ID", value=str(infraction_id), inline=True)
         if extra_embed:
             await inf_channel.send(embed=extra_embed)
