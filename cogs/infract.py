@@ -30,6 +30,7 @@ INFRACTION_TYPES = {
     "Demotion": {"color": discord.Color.red(), "roles": []},
     "Termination": {"color": discord.Color.dark_red(), "roles": []},
     "Suspension": {"color": discord.Color.blue(), "roles": [SUSPENDED_ROLE_ID]},
+    "Activity Notice": {"color": discord.Color.teal(), "roles": []},  # New type
 }
 
 def log_to_file(user_id, channel_id, message, embed=False):
@@ -68,6 +69,80 @@ class ConfirmView(discord.ui.View):
             child.disabled = True
         await interaction.response.edit_message(view=self)
         self.stop()
+
+class ActivityNoticeModal(discord.ui.Modal, title="Issue Activity Notice"):
+    required_time = discord.ui.TextInput(
+        label="Required Duty Time (hours)",
+        placeholder="e.g. 5",
+        required=True,
+        min_length=1,
+        max_length=10
+    )
+    reason = discord.ui.TextInput(
+        label="Reason for Activity Notice",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        min_length=5,
+        max_length=200
+    )
+
+    def __init__(self, cog, personnel, interaction):
+        super().__init__()
+        self.cog = cog
+        self.personnel = personnel
+        self.interaction = interaction
+
+    async def on_submit(self, interaction: discord.Interaction):
+        infraction_id = str(uuid.uuid4())
+        required_time = self.required_time.value
+        reason = self.reason.value
+        issued_by = interaction.user
+        personnel = self.personnel
+        proof_url = None
+        action = "Activity Notice"
+        now = datetime.datetime.utcnow().isoformat()
+        inf_channel = interaction.guild.get_channel(INFRACTION_CHANNEL_ID)
+        embed = discord.Embed(
+            title=f"Infraction: {action}",
+            color=INFRACTION_TYPES[action]["color"],
+            timestamp=datetime.datetime.utcnow()
+        )
+        embed.add_field(name="User", value=f"{personnel}", inline=True)
+        embed.add_field(name="Issued by", value=f"{issued_by}", inline=True)
+        embed.add_field(name="Required Duty Time", value=f"{required_time} hours", inline=True)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Infraction ID", value=str(infraction_id), inline=True)
+        msg = await inf_channel.send(content=personnel.mention, embed=embed)
+
+        # DM the user
+        try:
+            dm_embed = discord.Embed(
+                title="You have received an Activity Notice",
+                description=(
+                    f"You have received an Activity Notice in **{interaction.guild.name}**.\n\n"
+                    f"**Required Duty Time:** {required_time} hours\n"
+                    f"**Reason:** {reason}\n"
+                    f"**Infraction ID:** {infraction_id}"
+                ),
+                color=INFRACTION_TYPES[action]["color"]
+            )
+            dm_embed.set_footer(text=f"Issued by: {issued_by}")
+            await personnel.send(embed=dm_embed)
+        except Exception as e:
+            print(f"Failed to DM user: {e}")
+
+        await self.cog.add_infraction(
+            infraction_id, personnel, issued_by, action, f"Required Duty Time: {required_time} | {reason}", proof_url, msg.id
+        )
+
+        # Log to logging file
+        log_to_file(
+            issued_by.id,
+            interaction.channel.id,
+            f"Issued Activity Notice to {personnel.id} | Required Duty Time: {required_time} | Reason: {reason} | Infraction ID: {infraction_id}",
+            embed=True
+        )
+        await interaction.response.send_message(f"Activity Notice issued and logged. Infraction ID: {infraction_id}", ephemeral=True)
 
 class Infraction(commands.Cog):
     def __init__(self, bot):
@@ -168,7 +243,7 @@ class Infraction(commands.Cog):
 
     @app_commands.command(name="infraction-issue", description="Issue an infraction to personnel.")
     @app_commands.describe(personnel="User to discipline", action="Type", reason="Reason", proof="Proof file")
-    async def infraction_issue(self, interaction: discord.Interaction, personnel: discord.Member, action: str, reason: str, proof: discord.Attachment = None):
+    async def infraction_issue(self, interaction: discord.Interaction, personnel: discord.Member, action: str, reason: str = None, proof: discord.Attachment = None):
         # Permission checks
         if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to issue infractions.", ephemeral=True)
@@ -178,6 +253,10 @@ class Infraction(commands.Cog):
             return
         if action not in INFRACTION_TYPES:
             await interaction.response.send_message("Invalid infraction type.", ephemeral=True)
+            return
+
+        if action == "Activity Notice":
+            await interaction.response.send_modal(ActivityNoticeModal(self, personnel, interaction))
             return
 
         # Log command usage to txt
@@ -266,7 +345,7 @@ class Infraction(commands.Cog):
 
     @infraction_issue.autocomplete('action')
     async def infraction_action_autocomplete(self, interaction: discord.Interaction, current: str):
-        actions = ["Warning", "Strike", "Demotion", "Termination", "Suspension"]
+        actions = ["Warning", "Strike", "Demotion", "Termination", "Suspension", "Activity Notice"]
         return [
             app_commands.Choice(name=action, value=action)
             for action in actions if current.lower() in action.lower()
