@@ -199,23 +199,45 @@ class Infraction(commands.Cog):
     async def update_roles(self, member, action, guild, add=True):
         roles_to_add = []
         roles_to_remove = []
+        # Get current role states
+        has_w1 = any(r.id == WARNING_1_ROLE_ID for r in member.roles)
+        has_w2 = any(r.id == WARNING_2_ROLE_ID for r in member.roles)
+        has_s1 = any(r.id == STRIKE_1_ROLE_ID for r in member.roles)
+        has_s2 = any(r.id == STRIKE_2_ROLE_ID for r in member.roles)
+        has_s3 = any(r.id == STRIKE_3_ROLE_ID for r in member.roles)
+        has_susp = any(r.id == SUSPENDED_ROLE_ID for r in member.roles)
+
         if action == "Warning":
-            has_warning1 = any(r.id == WARNING_1_ROLE_ID for r in member.roles)
-            has_warning2 = any(r.id == WARNING_2_ROLE_ID for r in member.roles)
-            if has_warning1 and has_warning2:
+            # Escalate to strike if already has both warnings
+            if has_w1 and has_w2:
                 roles_to_remove += [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID]
-                roles_to_add.append(STRIKE_1_ROLE_ID)
-            elif has_warning1:
+                # Escalate to next strike
+                if has_s1 and has_s2:
+                    # Already has S1 and S2, next is S3+Suspension
+                    roles_to_remove += [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID]
+                    if has_s3:
+                        # Already has S3, should terminate
+                        return "terminate"
+                    else:
+                        roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
+                elif has_s1:
+                    roles_to_add.append(STRIKE_2_ROLE_ID)
+                else:
+                    roles_to_add.append(STRIKE_1_ROLE_ID)
+            elif has_w1:
                 roles_to_add.append(WARNING_2_ROLE_ID)
             else:
                 roles_to_add.append(WARNING_1_ROLE_ID)
         elif action == "Strike":
-            has_strike1 = any(r.id == STRIKE_1_ROLE_ID for r in member.roles)
-            has_strike2 = any(r.id == STRIKE_2_ROLE_ID for r in member.roles)
-            if has_strike1 and has_strike2:
+            # Escalate to S3+Suspension if already has S1 and S2
+            if has_s1 and has_s2:
                 roles_to_remove += [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID]
-                roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
-            elif has_strike1:
+                if has_s3:
+                    # Already has S3, should terminate
+                    return "terminate"
+                else:
+                    roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
+            elif has_s1:
                 roles_to_add.append(STRIKE_2_ROLE_ID)
             else:
                 roles_to_add.append(STRIKE_1_ROLE_ID)
@@ -240,6 +262,7 @@ class Infraction(commands.Cog):
             role = guild.get_role(rid)
             if role and role not in member.roles:
                 await member.add_roles(role, reason="Infraction system discipline update")
+        return None
 
     @app_commands.command(name="infraction-issue", description="Issue an infraction to personnel.")
     @app_commands.describe(personnel="User to discipline", action="Type", reason="Reason", proof="Proof file")
@@ -315,7 +338,12 @@ class Infraction(commands.Cog):
             print(f"Failed to DM user: {e}")
 
         await self.add_infraction(infraction_id, personnel, interaction.user, action, reason, proof_url, msg.id)
-        await self.update_roles(personnel, action, interaction.guild, add=True)
+        result = await self.update_roles(personnel, action, interaction.guild, add=True)
+        if result == "terminate":
+            await interaction.followup.send(
+                f"⚠️ {personnel.mention} has reached the maximum strikes. Please proceed with termination.",
+                ephemeral=True
+            )
 
         # Log to logging file (one line per infraction)
         log_to_file(
