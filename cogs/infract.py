@@ -435,6 +435,34 @@ class Infraction(commands.Cog):
                 now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
                 dm_embed.set_footer(text=f"Voided: {now_utc}")
                 await user.send(embed=dm_embed)
+                # --- REVERSE ROLES LOGIC ---
+                # Remove discipline roles if appropriate
+                member = user
+                guild = interaction.guild
+                if action == "Warning":
+                    # Remove warning roles
+                    for rid in [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID]:
+                        role = guild.get_role(rid)
+                        if role and role in member.roles:
+                            await member.remove_roles(role, reason="Infraction voided")
+                elif action == "Strike":
+                    # Remove strike roles and suspension if present
+                    for rid in [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID, STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]:
+                        role = guild.get_role(rid)
+                        if role and role in member.roles:
+                            await member.remove_roles(role, reason="Infraction voided")
+                elif action == "Suspension":
+                    # Remove suspension role
+                    role = guild.get_role(SUSPENDED_ROLE_ID)
+                    if role and role in member.roles:
+                        await member.remove_roles(role, reason="Infraction voided")
+                elif action == "Termination":
+                    # Remove all discipline roles
+                    for rid in [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID, STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID, STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]:
+                        role = guild.get_role(rid)
+                        if role and role in member.roles:
+                            await member.remove_roles(role, reason="Infraction voided")
+                # Demotion: no roles to remove
             except Exception:
                 pass
 
@@ -453,7 +481,7 @@ class Infraction(commands.Cog):
                 interaction.user,
                 interaction.channel,
                 infraction_id=infraction_id,
-                target_user=f"{user_name} ({user_id})",  # <-- Renamed from 'user' to 'target_user'
+                target_user=f"{user_name} ({user_id})",
                 action=action,
                 original_reason=orig_reason,
                 void_reason=reason
