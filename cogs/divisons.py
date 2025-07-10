@@ -22,7 +22,11 @@ class DivisionSelect(discord.ui.Select):
                 value="mia",
                 emoji="<:MIA:1364309116859715654>"
             ),
-          #tes
+          #  discord.SelectOption(
+        #        label="High Rock National Guard",
+          #      value="ng",
+           #     emoji="<:NationalGuard:1368532752625963048>"
+           # ),
         ]
         super().__init__(
             placeholder="Select a division:",
