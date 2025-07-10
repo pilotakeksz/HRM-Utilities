@@ -22,7 +22,7 @@ class DivisionSelect(discord.ui.Select):
                 value="mia",
                 emoji="<:MIA:1364309116859715654>"
             ),
-          #test
+          #tes
         ]
         super().__init__(
             placeholder="Select a division:",
