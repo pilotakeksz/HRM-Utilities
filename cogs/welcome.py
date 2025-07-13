@@ -32,13 +32,7 @@ class Welcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        role = member.guild.get_role(ROLE_ID_ON_JOIN)
-        if role:
-            try:
-                await member.add_roles(role, reason="Auto role on join")
-            except Exception as e:
-                print(f"Failed to add role: {e}")
-
+        
         member_count = member.guild.member_count
         welcome_text = f"Welcome {member.mention}!"
 
