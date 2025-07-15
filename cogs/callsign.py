@@ -74,10 +74,24 @@ def get_next_callsign(prefix, letter, callsigns):
 
 def callsign_sort_key(item):
     cs = item[1]
+    # Custom order for first and second letter
+    first_order = {"CO": 0, "WO": 1, "E": 2}
+    second_order = {
+        "CO": {"G": 0, "S": 1, "J": 2},
+        "WO": {"W": 0},
+        "E": {"S": 0, "N": 1, "J": 2}
+    }
     m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
     if m:
-        return (m.group(1), m.group(2), int(m.group(3)))
-    return ("Z", "Z", 999)
+        first = m.group(1)
+        second = m.group(2)
+        num = int(m.group(3))
+        return (
+            first_order.get(first, 99),
+            second_order.get(first, {}).get(second, 99),
+            num
+        )
+    return (99, 99, 999)
 
 def log_command(user, command, detail=""):
     os.makedirs(LOGS_DIR, exist_ok=True)
@@ -263,15 +277,21 @@ class CallsignBasicView(discord.ui.View):
             desc = "No callsigns assigned."
         else:
             desc = ""
-            last_y = None
+            last_first = None
+            last_second = None
             for uid, cs in callsigns:
-                m = re.fullmatch(r"[1-6]M-([SHWLIC])(\d{2})", cs)
-                y = m.group(1) if m else None
-                if y != last_y:
-                    if last_y is not None:
-                        desc += "\n"
-                    desc += f"**----- {y or '?'} -----**\n"
-                    last_y = y
+                m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
+                if m:
+                    first, second, num = m.group(1), m.group(2), m.group(3)
+                    if first != last_first:
+                        if last_first is not None:
+                            desc += "\n"
+                        desc += f"**===== {first} =====**\n"
+                        last_first = first
+                        last_second = None
+                    if second != last_second:
+                        desc += f"__{second}__\n"
+                        last_second = second
                 desc += f"<@{uid}>: **{cs}**\n"
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
@@ -341,15 +361,21 @@ class CallsignAdminView(discord.ui.View):
             desc = "No callsigns assigned."
         else:
             desc = ""
-            last_y = None
+            last_first = None
+            last_second = None
             for uid, cs in callsigns:
-                m = re.fullmatch(r"[1-6]M-([SHWLIC])(\d{2})", cs)
-                y = m.group(1) if m else None
-                if y != last_y:
-                    if last_y is not None:
-                        desc += "\n"
-                    desc += f"**----- {y or '?'} -----**\n"
-                    last_y = y
+                m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
+                if m:
+                    first, second, num = m.group(1), m.group(2), m.group(3)
+                    if first != last_first:
+                        if last_first is not None:
+                            desc += "\n"
+                        desc += f"**===== {first} =====**\n"
+                        last_first = first
+                        last_second = None
+                    if second != last_second:
+                        desc += f"__{second}__\n"
+                        last_second = second
                 desc += f"<@{uid}>: **{cs}**\n"
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
