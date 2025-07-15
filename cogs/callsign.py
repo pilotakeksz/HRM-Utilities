@@ -146,7 +146,7 @@ class CallsignCog(commands.Cog):
         view = CallsignBasicView(
             self,
             is_admin=has_admin_menu,
-            can_request=False,  # Requests disabled until finalized
+            can_request=can_request,
             allowed_user_id=author.id,
             has_command_role=can_add_callsign
         )
