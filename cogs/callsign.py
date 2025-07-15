@@ -219,21 +219,18 @@ class CallsignCog(commands.Cog):
                 # Find all ZZs in use for ANY X/Y
                 used = set()
                 for cs in callsigns.values():
-                    m = re.fullmatch(r"[1-6]M-[SHWLIC](\d{2})", cs)
+                    m = re.fullmatch(rf"{x}-{y}(\d{{2}})", cs)
                     if m:
                         used.add(int(m.group(1)))
                 zz = 1
                 while zz in used:
                     zz += 1
-                # Find the lowest ZZ in use for ANY callsign
-                min_zz = min(used) if used else 1
                 current_callsign = callsigns.get(user.id)
-                if current_callsign:
-                    m = re.fullmatch(rf"{x}M-{y}(\d{{2}})", current_callsign)
-                    if m and int(m.group(1)) == min_zz:
-                        return False, f"Your callsign is already up to date: **{current_callsign}**"
-                # Otherwise, assign the lowest available universal ZZ
-                callsigns[user.id] = f"{x}M-{y}{zz:02d}"
+                # If already has correct callsign, don't reassign
+                if current_callsign == f"{x}-{y}{zz:02d}":
+                    return False, f"Your callsign is already up to date: **{current_callsign}**"
+                # Assign the lowest available ZZ
+                callsigns[user.id] = f"{x}-{y}{zz:02d}"
                 save_callsigns(callsigns)
                 # Remove role 1371198982340083712 if user did not have a callsign before
                 if not current_callsign:
