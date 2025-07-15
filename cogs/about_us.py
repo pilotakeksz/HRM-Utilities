@@ -12,11 +12,12 @@ FOOTER_TEXT = "High Rock Military Corps"
 class RankInfoSelect(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Commissioned Officers", value="commissioned", description="View Commissioned Officers"),
-            discord.SelectOption(label="Intermediate Operation Corps", value="intermediate", description="View Intermediate Operation Corps"),
-            discord.SelectOption(label="Low Command", value="low", description="View Low Command"),
+            discord.SelectOption(label="Junior Enlisted", value="commissioned", description="View Junior Enlisted ranks"),
+            discord.SelectOption(label="Non-commissioned Officers", value="intermediate", description="View NCOs"),
+            discord.SelectOption(label="Senior Non-commissioned Officers", value="low", description="View Senior NCOs"),
             discord.SelectOption(label="Warrant Officers", value="warrant", description="View Warrant Officers"),
-            discord.SelectOption(label="High Command", value="high", description="View High Command"),
+            discord.SelectOption(label="Junior Officers", value="junior", description="View Junior Officers"),
+            discord.SelectOption(label="Senior Officers", value="high", description="View Senior Officers"),
         discord.SelectOption(label="General Officers", value="senior", description="View General Officers"),
         ]
         super().__init__(
@@ -30,70 +31,77 @@ class RankInfoSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         embeds = {
             "senior": discord.Embed(
-                title="__Senior High Command__",
+                title="__General officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "# - GEN (General officers)\n"
-                    "- GOA (General of the Army)\n"
-                    "- GEN (General)\n"
-                    "- LTG (Lieutenant General)\n"
-                    "- MJG (Major General)\n"
-                    "- BRG (Brigadier General)\n"
+                    "- [GA] - General of the Army\n"
+                    "- [GEN] - General\n"
+                    "- [LTG] - Lieutenant General\n"
+                    "- [MG] - Major General\n"
+                    "- [BG] - Brigadier General\n"
 
                 )
             ),
             "high": discord.Embed(
-                title="__High Command__",
+                title="__Senior Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- COL (Colonel)\n"
-                    "- LCOL (Lieutenant Colonel)\n"
-                    "- MAJ (Major)\n"
-                    "- CPT (Captain)\n"
-                    "- FL (First Lieutenant)\n"
-                    "- SL (Second Lieutenant)"
-                )
+                    "- [COL] - Colonel\n"
+                    "- [LTC] - Lieutenant Colonel\n"
+                    "- [MAJ] - Major\n"
+                )    
+
+            ),
+            "junior": discord.Embed(
+                title="__Junior Officers__",
+                color=EMBED_COLOR,
+                description=(
+                    "- [CPT] - Captain\n"
+                    "- [1LT] - First Lieutenant\n"
+                    "- [2LT] - Second Lieutenant\n"
+                )    
+
             ),
             "warrant": discord.Embed(
                 title="__Warrant Officers__ *(Middle Command)*",
                 color=EMBED_COLOR,
                 description=(
-                    "- CWO (Chief Warrant Officer)\n"
-                    "- HWO (Head Warrant Officer)\n"
-                    "- SWO (Senior Warrant Officer)\n"
-                    "- WO (Warrant Officer)"
+                    "- [CW5] - Chief Warrant Officer 5\n"
+                    "- [CW4] - Chief Warrant Officer 4\n"
+                    "- [CW3] - Chief Warrant Officer 3\n"
+                    "- [CW2] - Chief Warrant Officer 2\n"
+                    "- [WO1] - Warrant Officer 1\n"
                 )
             ),
             "low": discord.Embed(
-                title="__Low Command__",
+                title="__Senior Non-commissioned Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- MSGT (Master Sergeant)\n"
-                    "- SFC (Sergeant First Class)\n"
-                    "- SS (Staff Sergeant)\n"
-                    "- SGT (Sergeant)\n"
-                    "- CPL (Corporal)"
+                    "- [SMA] - Sergeant Major of the Army\n"
+                    "- [CSM] - Command Sergeant Major\n"
+                    "- [SGM] - Sergeant Major\n"
+                    "- [1SG] - First Sergeant\n"
+                    "- [MSG] - Master Sergeant\n"
+                    "- [SFC] - Sergeant First Class\n"
                 )
             ),
             "intermediate": discord.Embed(
-                title="__Intermediate Operation Corps__",
+                title="__Non-commissioned Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- OL (Operations Lieutenant)\n"
-                    "- OS (Operations Supervisor)\n"
-                    "- OSPT (Operations Specialist)\n"
-                    "- SO (Senior Operator)\n"
-                    "- JO (Junior Operator)\n"
-                    "- OC (Operations Cadet)"
+                    "- [SSG] - Staff Sergeant\n"
+                    "- [SGT] - Sergeant\n"
+                    "- [CPL] - Corporal\n"
                 )
             ),
             "commissioned": discord.Embed(
-                title="__Commissioned Officers__",
+                title="__Junior Enlisted Ranks__",
                 color=EMBED_COLOR,
                 description=(
-                    "- PFC (Private First Class)\n"
-                    "- PSC (Private Second Class)\n"
-                    "- PVT (Private)"
+                    "- [SPC] - Specialist\n"
+                    "- [PFC] - Private First Class\n"
+                    "- [PV2] - Private\n"
+                    "- [PVT] - Private\n"
                 )
             ),
         }
