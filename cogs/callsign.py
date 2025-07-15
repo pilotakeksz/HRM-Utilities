@@ -246,28 +246,29 @@ class CallsignCog(commands.Cog):
         return False, "You do not have a role eligible for a callsign or all are taken."
 
 def callsign_group_title(first, second):
+    # Only used for the inner group title
     if first == "CO":
         if second == "G":
-            return "Commissioned Officers — General Officers"
+            return "**__General Officers__**"
         elif second == "S":
-            return "Commissioned Officers — Senior Officers"
+            return "**__Senior Officers__**"
         elif second == "J":
-            return "Commissioned Officers — Junior Officers"
+            return "**__Junior Officers__**"
         else:
-            return "Commissioned Officers — General Officers"
+            return "**__General Officers__**"
     elif first == "WO":
-        return "Warrant Officers"
+        return "**__Warrant Officers__**"
     elif first == "E":
         if second == "S":
-            return "Enlisted — Senior NCOs"
+            return "**__Senior NCOs__**"
         elif second == "N":
-            return "Enlisted — Non-Commissioned Officers"
+            return "**__Non-Commissioned Officers__**"
         elif second == "J":
-            return "Enlisted — Junior Enlisted Ranks"
+            return "**__Junior Enlisted Ranks__**"
         else:
-            return "Commissioned Officers — General Officers"
+            return "**__General Officers__**"
     else:
-        return "Commissioned Officers — General Officers"
+        return "**__General Officers__**"
 
 # --- Views for Menus ---
 
@@ -307,18 +308,25 @@ class CallsignBasicView(discord.ui.View):
                 m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
                 if m:
                     first, second, num = m.group(1), m.group(2), m.group(3)
-                    if first != last_first or second != last_second:
-                        if last_first is not None:
-                            desc += "\n"
-                        desc += f"**{callsign_group_title(first, second)}**\n"
-                        last_first = first
-                        last_second = second
                 else:
-                    # Not matching, put under CO G
-                    if last_first != "CO" or last_second != "G":
-                        desc += "\n**Commissioned Officers — General Officers**\n"
-                        last_first = "CO"
-                        last_second = "G"
+                    # Not matching, treat as CO-G for grouping
+                    first, second = "CO", "G"
+                # Section title
+                if first != last_first:
+                    if last_first is not None:
+                        desc += "\n"
+                    if first == "CO":
+                        desc += "=== Commissioned Officers ===\n"
+                    elif first == "WO":
+                        desc += "=== Warrant Officers ===\n"
+                    elif first == "E":
+                        desc += "=== Enlisted Personnel ===\n"
+                    last_first = first
+                    last_second = None
+                # Subgroup title
+                if second != last_second:
+                    desc += f"{callsign_group_title(first, second)}\n"
+                    last_second = second
                 desc += f"<@{uid}>: **{cs}**\n"
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
@@ -394,18 +402,25 @@ class CallsignAdminView(discord.ui.View):
                 m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
                 if m:
                     first, second, num = m.group(1), m.group(2), m.group(3)
-                    if first != last_first or second != last_second:
-                        if last_first is not None:
-                            desc += "\n"
-                        desc += f"**{callsign_group_title(first, second)}**\n"
-                        last_first = first
-                        last_second = second
                 else:
-                    # Not matching, put under CO G
-                    if last_first != "CO" or last_second != "G":
-                        desc += "\n**Commissioned Officers — General Officers**\n"
-                        last_first = "CO"
-                        last_second = "G"
+                    # Not matching, treat as CO-G for grouping
+                    first, second = "CO", "G"
+                # Section title
+                if first != last_first:
+                    if last_first is not None:
+                        desc += "\n"
+                    if first == "CO":
+                        desc += "=== Commissioned Officers ===\n"
+                    elif first == "WO":
+                        desc += "=== Warrant Officers ===\n"
+                    elif first == "E":
+                        desc += "=== Enlisted Personnel ===\n"
+                    last_first = first
+                    last_second = None
+                # Subgroup title
+                if second != last_second:
+                    desc += f"{callsign_group_title(first, second)}\n"
+                    last_second = second
                 desc += f"<@{uid}>: **{cs}**\n"
         embed = discord.Embed(title="All Callsigns", description=desc, color=EMBED_COLOUR)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
