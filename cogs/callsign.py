@@ -309,7 +309,7 @@ class CallsignBasicView(discord.ui.View):
                 if m:
                     first, second, num = m.group(1), m.group(2), m.group(3)
                 else:
-                    # Not matching, treat as CO-G for grouping
+                    # Not matching, treat as CO-G for grouping and ordering
                     first, second = "CO", "G"
                 # Section title
                 if first != last_first:
@@ -403,7 +403,7 @@ class CallsignAdminView(discord.ui.View):
                 if m:
                     first, second, num = m.group(1), m.group(2), m.group(3)
                 else:
-                    # Not matching, treat as CO-G for grouping
+                    # Not matching, treat as CO-G for grouping and ordering
                     first, second = "CO", "G"
                 # Section title
                 if first != last_first:
