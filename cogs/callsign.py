@@ -211,7 +211,8 @@ class CallsignCog(commands.Cog):
 
     async def request_callsign(self, user: discord.Member):
         callsigns = load_callsigns()
-        if not any(r.id == REQUEST_ROLE for r in getattr(user, "roles", [])):
+        # Allow admin to always request
+        if user.id != ADMIN_ID and not any(r.id == REQUEST_ROLE for r in getattr(user, "roles", [])):
             return False, "You do not have permission to request a callsign."
         for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
             if any(r.id == role_id for r in getattr(user, "roles", [])):
