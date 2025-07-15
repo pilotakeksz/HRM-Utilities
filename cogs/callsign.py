@@ -9,13 +9,15 @@ ADMIN_ID = 840949634071658507
 ADMIN_ROLES = [1355842403134603275, 1329910280834252903]
 REQUEST_ROLE = 1329910329701830686
 
+# New role/callsign mapping
 ROLE_CALLSIGN_MAP = {
-    1329910241835352064: ("1", "S"),
-    1329910265264869387: ("2", "H"),
-    1329910285594525886: ("3", "W"),
-    1329910295703064577: ("4", "L"),
-    1329910298525696041: ("5", "I"),
-    1331644226781577316: ("6", "C"),
+    1355842403134603275: ("CO", "G"),
+    1329910280834252903: ("CO", "S"),
+    1394667511374680105: ("CO", "J"),
+    1329910281903673344: ("WO", "W"),
+    1329910295703064577: ("E", "S"),
+    1355842399338889288: ("E", "N"),
+    1329910298525696041: ("E", "J"),
 }
 
 EMBED_COLOUR = 0xd0b47b
@@ -55,27 +57,27 @@ def save_callsigns(callsigns):
             f.write(f"{user_id}|{callsign}\n")
 
 def is_valid_callsign(callsign):
-    return bool(re.fullmatch(r"[1-6]M-[SHWLIC][0-9]{2}", callsign))
+    # Format: PREFIX-LETTERxx, e.g. CO-G01
+    return bool(re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)[0-9]{2}", callsign))
 
-def get_next_callsign(x, y, callsigns):
-    # Find all ZZs in use for ANY X/Y (not just for this role/letter)
+def get_next_callsign(prefix, letter, callsigns):
+    # Find all xx in use for ANY prefix/letter
     used = set()
     for cs in callsigns.values():
-        m = re.fullmatch(r"[1-6]M-[SHWLIC](\d{2})", cs)
+        m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
         if m:
-            used.add(int(m.group(1)))
+            used.add(int(m.group(3)))
     zz = 1
     while zz in used:
         zz += 1
-    return f"{x}M-{y}{zz:02d}"
+    return f"{prefix}-{letter}{zz:02d}"
 
 def callsign_sort_key(item):
-    # item: (user_id, callsign)
     cs = item[1]
-    m = re.fullmatch(r"([1-6])M-([SHWLIC])(\d{2})", cs)
+    m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", cs)
     if m:
-        return (int(m.group(1)), m.group(2), int(m.group(3)))
-    return (99, "Z", 999)
+        return (m.group(1), m.group(2), int(m.group(3)))
+    return ("Z", "Z", 999)
 
 def log_command(user, command, detail=""):
     os.makedirs(LOGS_DIR, exist_ok=True)
@@ -89,10 +91,11 @@ class CallsignCog(commands.Cog):
     @commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
     @app_commands.describe(user="User to check (optional)")
     async def callsign(self, ctx, user: discord.Member = None):
-        # Restrict !callsign to channels and roles
-        if ctx.prefix and ctx.prefix.startswith("!"):
-            # If user does NOT have the 1329910241835352064 role, restrict to allowed channels
-            if not any(r.id == 1329910241835352064 for r in getattr(ctx.author, "roles", [])):
+        # Admins can use everywhere
+        is_admin = ctx.author.id == ADMIN_ID or any(r.id == 1355842403134603275 for r in getattr(ctx.author, "roles", []))
+        if not is_admin:
+            # Restrict !callsign to channels and roles
+            if ctx.prefix and ctx.prefix.startswith("!"):
                 if ctx.channel.id not in ALLOWED_CHANNELS:
                     allowed_mentions = " or ".join(f"<#{cid}>" for cid in ALLOWED_CHANNELS)
                     await ctx.send(f"Please use me in {allowed_mentions}.", ephemeral=True)
@@ -102,10 +105,13 @@ class CallsignCog(commands.Cog):
     async def handle_callsign(self, ctx_or_interaction, user: discord.Member = None):
         author = ctx_or_interaction.user if isinstance(ctx_or_interaction, discord.Interaction) else ctx_or_interaction.author
         callsigns = load_callsigns()
-        is_admin = author.id == ADMIN_ID
-        has_admin_role = any(r.id in ADMIN_ROLES for r in getattr(author, "roles", []))
-        has_request_role = any(r.id == REQUEST_ROLE for r in getattr(author, "roles", []))
-        has_command_role = any(r.id in (COMMAND_ROLE, 1329910241835352064) for r in getattr(author, "roles", []))
+        is_admin = author.id == ADMIN_ID or any(r.id == 1355842403134603275 for r in getattr(author, "roles", [])
+        )
+        # Admin menu access for these roles
+        admin_menu_roles = {1355842403134603275, 1329910280834252903, 1394667511374680105}
+        has_admin_menu = is_admin or any(r.id in admin_menu_roles for r in getattr(author, "roles", []))
+        # Only main admin and CO-G role can add callsigns
+        can_add_callsign = is_admin or any(r.id == 1355842403134603275 for r in getattr(author, "roles", []))
 
         # Log all command opens
         log_command(author, "callsign", f"user={user.id if user else 'self'}")
@@ -125,10 +131,10 @@ class CallsignCog(commands.Cog):
 
         view = CallsignBasicView(
             self,
-            is_admin=is_admin or has_admin_role,
-            can_request=has_request_role,
+            is_admin=has_admin_menu,
+            can_request=False,  # Requests disabled until finalized
             allowed_user_id=author.id,
-            has_command_role=has_command_role
+            has_command_role=can_add_callsign
         )
         await self._send_menu(ctx_or_interaction, "Callsign Menu", view)
 
@@ -289,7 +295,15 @@ class CallsignAdminMenuButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         view = CallsignAdminView(self.cog, show_add=self.show_add)
-        embed = discord.Embed(title="Admin Callsign Menu", color=EMBED_COLOUR)
+        embed = discord.Embed(
+            title="Admin Callsign Menu",
+            description=(
+                "Callsigns are currently being updated by myself and the rest of the GCO team. "
+                "Until the GCO team has said that the roles have been __finalized__,\n\n"
+                "**__Please do not edit or request callsigns.__**"
+            ),
+            color=EMBED_COLOUR
+        )
         embed.set_image(url=EMBED2_IMAGE)
         embed.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
