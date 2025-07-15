@@ -17,7 +17,7 @@ class RankInfoSelect(discord.ui.Select):
             discord.SelectOption(label="Low Command", value="low", description="View Low Command"),
             discord.SelectOption(label="Warrant Officers", value="warrant", description="View Warrant Officers"),
             discord.SelectOption(label="High Command", value="high", description="View High Command"),
-            discord.SelectOption(label="Senior High Command", value="senior", description="View Senior High Command"),
+        discord.SelectOption(label="General Officers", value="senior", description="View General Officers"),
         ]
         super().__init__(
             placeholder="Rank info",
@@ -33,13 +33,13 @@ class RankInfoSelect(discord.ui.Select):
                 title="__Senior High Command__",
                 color=EMBED_COLOR,
                 description=(
-                    "- SHC (Super High Command)\n"
-                    "- GOTA (General of The Army)\n"
+                    "# - GEN (General officers)\n"
+                    "- GOA (General of the Army)\n"
                     "- GEN (General)\n"
-                    "- LG (Lieutenant General)\n"
-                    "- MG (Major General)\n"
-                    "- BG (Brigadier General)\n"
-                    "- SHR (Super High Rank)"
+                    "- LTG (Lieutenant General)\n"
+                    "- MJG (Major General)\n"
+                    "- BRG (Brigadier General)\n"
+
                 )
             ),
             "high": discord.Embed(
