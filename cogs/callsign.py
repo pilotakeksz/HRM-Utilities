@@ -391,10 +391,13 @@ class CallsignAddModal(discord.ui.Modal, title="Add Callsign"):
         self.cog = cog
 
     async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild or interaction.client.get_guild(interaction.guild_id)
         try:
-            user = await interaction.client.fetch_user(int(self.user_id.value))
+            user = guild.get_member(int(self.user_id.value))
+            if user is None:
+                user = await guild.fetch_member(int(self.user_id.value))
         except Exception:
-            await interaction.response.send_message("Invalid user ID.", ephemeral=True)
+            await interaction.response.send_message("Invalid user ID or user not in server.", ephemeral=True)
             return
         ok, msg = await self.cog.add_callsign(user, self.callsign.value)
         await interaction.response.send_message(msg, ephemeral=True)
@@ -408,10 +411,13 @@ class CallsignRemoveModal(discord.ui.Modal, title="Remove Callsign"):
         self.cog = cog
 
     async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild or interaction.client.get_guild(interaction.guild_id)
         try:
-            user = await interaction.client.fetch_user(int(self.user_id.value))
+            user = guild.get_member(int(self.user_id.value))
+            if user is None:
+                user = await guild.fetch_member(int(self.user_id.value))
         except Exception:
-            await interaction.response.send_message("Invalid user ID.", ephemeral=True)
+            await interaction.response.send_message("Invalid user ID or user not in server.", ephemeral=True)
             return
         ok, msg = await self.cog.remove_callsign(user)
         await interaction.response.send_message(msg, ephemeral=True)
