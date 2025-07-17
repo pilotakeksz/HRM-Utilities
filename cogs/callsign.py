@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import re
+import asyncio
 
 CALLSIGN_FILE = os.path.join(os.path.dirname(__file__), "../data/callsigns.txt")
 ADMIN_ID = 840949634071658507
@@ -101,6 +102,7 @@ def log_command(user, command, detail=""):
 class CallsignCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.callsign_lock = asyncio.Lock()
 
     @commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
     @app_commands.describe(user="User to check (optional)")
@@ -210,37 +212,42 @@ class CallsignCog(commands.Cog):
         return sorted_items
 
     async def request_callsign(self, user: discord.Member):
-        callsigns = load_callsigns()
-        # Allow admin to always request
-        if user.id != ADMIN_ID and not any(r.id == REQUEST_ROLE for r in getattr(user, "roles", [])):
-            return False, "You do not have permission to request a callsign."
-        for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
-            if any(r.id == role_id for r in getattr(user, "roles", [])):
-                # Find all ZZs in use globally (not just for this prefix/letter)
-                used = set()
-                for cs in callsigns.values():
-                    m = re.fullmatch(r".*-(\d{2})", cs)
-                    if m:
-                        used.add(int(m.group(1)))
-                zz = 1
-                while zz in used:
-                    zz += 1
-                current_callsign = callsigns.get(user.id)
-                new_callsign = f"{x}-{y}{zz:02d}"
-                if current_callsign == new_callsign:
-                    return False, f"Your callsign is already up to date: **{current_callsign}**"
-                callsigns[user.id] = new_callsign
-                save_callsigns(callsigns)
-                # Remove role 1371198982340083712 if user did not have a callsign before
-                if not current_callsign:
-                    role = user.guild.get_role(1371198982340083712)
-                    if role:
-                        try:
-                            await user.remove_roles(role, reason="Callsign assigned")
-                        except Exception:
-                            pass
-                return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
-        return False, "You do not have a role eligible for a callsign or all are taken."
+        async with self.callsign_lock:
+            callsigns = load_callsigns()
+            # Allow admin to always request
+            if user.id != ADMIN_ID and not any(r.id == REQUEST_ROLE for r in getattr(user, "roles", [])):
+                return False, "You do not have permission to request a callsign."
+            # Find the first eligible role
+            for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
+                if any(r.id == role_id for r in getattr(user, "roles", [])):
+                    # Find all ZZs in use globally
+                    used = set()
+                    for cs in callsigns.values():
+                        m = re.fullmatch(r".*-(\d{2})", cs)
+                        if m:
+                            used.add(int(m.group(1)))
+                    zz = 1
+                    while zz in used:
+                        zz += 1
+                    current_callsign = callsigns.get(user.id)
+                    new_callsign = f"{x}-{y}{zz:02d}"
+                    # Prevent duplicate assignment
+                    if new_callsign in callsigns.values():
+                        return False, "A callsign collision occurred. Please try again."
+                    if current_callsign == new_callsign:
+                        return False, f"Your callsign is already up to date: **{current_callsign}**"
+                    callsigns[user.id] = new_callsign
+                    save_callsigns(callsigns)
+                    # Remove role 1371198982340083712 if user did not have a callsign before
+                    if not current_callsign:
+                        role = user.guild.get_role(1371198982340083712)
+                        if role:
+                            try:
+                                await user.remove_roles(role, reason="Callsign assigned")
+                            except Exception:
+                                pass
+                    return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
+            return False, "You do not have a role eligible for a callsign or all are taken."
 
 def callsign_group_title(first, second):
     # Only used for the inner group title
