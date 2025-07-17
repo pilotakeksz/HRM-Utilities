@@ -220,33 +220,33 @@ class CallsignCog(commands.Cog):
             # Find the first eligible role
             for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
                 if any(r.id == role_id for r in getattr(user, "roles", [])):
-                    # Find all ZZs in use globally test
+                    # Collect all last two digits in use globally
                     used = set()
                     for cs in callsigns.values():
                         m = re.fullmatch(r".*-(\d{2})", cs)
                         if m:
-                            used.add(int(m.group(1)))
-                    zz = 1
-                    while zz in used:
-                        zz += 1
-                    current_callsign = callsigns.get(user.id)
-                    new_callsign = f"{x}-{y}{zz:02d}"
-                    # Prevent duplicate assignment
-                    if new_callsign in callsigns.values():
-                        return False, "A callsign collision occurred. Please try again."
-                    if current_callsign == new_callsign:
-                        return False, f"Your callsign is already up to date: **{current_callsign}**"
-                    callsigns[user.id] = new_callsign
-                    save_callsigns(callsigns)
-                    # Remove role 1371198982340083712 if user did not have a callsign before
-                    if not current_callsign:
-                        role = user.guild.get_role(1371198982340083712)
-                        if role:
-                            try:
-                                await user.remove_roles(role, reason="Callsign assigned")
-                            except Exception:
-                                pass
-                    return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
+                            used.add(m.group(1))
+                    # Try numbers from 1 up to 99
+                    for zz in range(1, 100):
+                        zz_str = f"{zz:02d}"
+                        # Make sure no callsign ends with this number
+                        if zz_str not in used:
+                            new_callsign = f"{x}-{y}{zz_str}"
+                            current_callsign = callsigns.get(user.id)
+                            if current_callsign == new_callsign:
+                                return False, f"Your callsign is already up to date: **{current_callsign}**"
+                            callsigns[user.id] = new_callsign
+                            save_callsigns(callsigns)
+                            # Remove role 1371198982340083712 if user did not have a callsign before
+                            if not current_callsign:
+                                role = user.guild.get_role(1371198982340083712)
+                                if role:
+                                    try:
+                                        await user.remove_roles(role, reason="Callsign assigned")
+                                    except Exception:
+                                        pass
+                            return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
+                    return False, "No available callsign numbers left."
             return False, "You do not have a role eligible for a callsign or all are taken."
 
 def callsign_group_title(first, second):
