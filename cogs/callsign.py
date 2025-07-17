@@ -240,7 +240,7 @@ class CallsignCog(commands.Cog):
                         except Exception:
                             pass
                 return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
-    return False, "You do not have a role eligible for a callsign or all are taken."
+        return False, "You do not have a role eligible for a callsign or all are taken."
 
 def callsign_group_title(first, second):
     # Only used for the inner group title
