@@ -216,21 +216,20 @@ class CallsignCog(commands.Cog):
             return False, "You do not have permission to request a callsign."
         for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
             if any(r.id == role_id for r in getattr(user, "roles", [])):
-                # Find all ZZs in use for ANY X/Y
+                # Find all ZZs in use globally (not just for this prefix/letter)
                 used = set()
                 for cs in callsigns.values():
-                    m = re.fullmatch(rf"{x}-{y}(\d{{2}})", cs)
+                    m = re.fullmatch(r".*-(\d{2})", cs)
                     if m:
                         used.add(int(m.group(1)))
                 zz = 1
                 while zz in used:
                     zz += 1
                 current_callsign = callsigns.get(user.id)
-                # If already has correct callsign, don't reassign
-                if current_callsign == f"{x}-{y}{zz:02d}":
+                new_callsign = f"{x}-{y}{zz:02d}"
+                if current_callsign == new_callsign:
                     return False, f"Your callsign is already up to date: **{current_callsign}**"
-                # Assign the lowest available ZZ
-                callsigns[user.id] = f"{x}-{y}{zz:02d}"
+                callsigns[user.id] = new_callsign
                 save_callsigns(callsigns)
                 # Remove role 1371198982340083712 if user did not have a callsign before
                 if not current_callsign:
@@ -241,7 +240,7 @@ class CallsignCog(commands.Cog):
                         except Exception:
                             pass
                 return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
-        return False, "You do not have a role eligible for a callsign or all are taken."
+    return False, "You do not have a role eligible for a callsign or all are taken."
 
 def callsign_group_title(first, second):
     # Only used for the inner group title
