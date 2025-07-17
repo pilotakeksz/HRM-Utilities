@@ -220,7 +220,7 @@ class CallsignCog(commands.Cog):
             # Find the first eligible role
             for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
                 if any(r.id == role_id for r in getattr(user, "roles", [])):
-                    # Find all ZZs in use globally
+                    # Find all ZZs in use globally test
                     used = set()
                     for cs in callsigns.values():
                         m = re.fullmatch(r".*-(\d{2})", cs)
