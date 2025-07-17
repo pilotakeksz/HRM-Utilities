@@ -212,7 +212,6 @@ class CallsignCog(commands.Cog):
             callsigns = load_callsigns()
             if user.id != ADMIN_ID and not any(r.id == REQUEST_ROLE for r in getattr(user, "roles", [])):
                 return False, "You do not have permission to request a callsign."
-            # Find the first eligible role for this user
             eligible = None
             for role_id, (x, y) in ROLE_CALLSIGN_MAP.items():
                 if any(r.id == role_id for r in getattr(user, "roles", [])):
@@ -221,22 +220,16 @@ class CallsignCog(commands.Cog):
             if not eligible:
                 return False, "You do not have a role eligible for a callsign or all are taken."
             x, y = eligible
-            # Collect all last two digits in use globally
             used = set()
             for cs in callsigns.values():
-                m = re.fullmatch(r".*-(\d{2})", cs)
+                m = re.search(r"(\d{2})$", cs)
                 if m:
                     used.add(m.group(1))
-            # Try numbers from 1 up to 99, assign the first available
             for zz in range(1, 100):
                 zz_str = f"{zz:02d}"
-                # Make sure no callsign ends with this number
                 if zz_str in used:
                     continue
                 new_callsign = f"{x}-{y}{zz_str}"
-                # Double-check: don't assign if any callsign ends with this number
-                if any(cs.endswith(zz_str) for cs in callsigns.values()):
-                    continue
                 current_callsign = callsigns.get(user.id)
                 if current_callsign == new_callsign:
                     return False, f"Your callsign is already up to date: **{current_callsign}**"
@@ -249,7 +242,8 @@ class CallsignCog(commands.Cog):
                             await user.remove_roles(role, reason="Callsign assigned")
                         except Exception:
                             pass
-                return True, f"Auto-assigned callsign {callsigns[user.id]} to {user.mention}."
+                # Always use new_callsign in the confirmation message
+                return True, f"Auto-assigned callsign **{new_callsign}** to {user.mention}."
             return False, "No available callsign numbers left."
 
 class CallsignBasicView(discord.ui.View):
