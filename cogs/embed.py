@@ -398,11 +398,21 @@ def session_to_view(embed_data):
 async def update_embed_preview(interaction, session):
     embed = session_to_embed(session.get())
     view = EmbedBuilderView(session, interaction.client.get_cog("EmbedCreator"))
-    await interaction.response.edit_message(
-        content=f"Embed builder (Embed {session.current+1}/{len(session.embeds)})",
-        embed=embed,
-        view=view
-    )
+    # If this is a modal, interaction.response.edit_message will fail.
+    # Instead, use interaction.message.edit (works for modals).
+    try:
+        await interaction.response.edit_message(
+            content=f"Embed builder (Embed {session.current+1}/{len(session.embeds)})",
+            embed=embed,
+            view=view
+        )
+    except discord.errors.InteractionResponded:
+        # Modal: edit the original message directly
+        await interaction.message.edit(
+            content=f"Embed builder (Embed {session.current+1}/{len(session.embeds)})",
+            embed=embed,
+            view=view
+        )
 
 class EmbedCreator(commands.Cog):
     def __init__(self, bot):
