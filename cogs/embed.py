@@ -61,37 +61,33 @@ class EmbedBuilderView(discord.ui.View):
         self.cog = cog
         self.parent_interaction = parent_interaction
 
-        # Navigation row
+        # Row 0: Navigation
         self.add_item(PrevEmbedButton(session, parent_interaction, row=0))
         self.add_item(NextEmbedButton(session, parent_interaction, row=0))
         self.add_item(AddEmbedButton(session, parent_interaction, row=0))
         self.add_item(RemoveEmbedButton(session, parent_interaction, row=0))
 
-        # Main properties row
+        # Row 1: Main properties
         self.add_item(EditTitleButton(session, parent_interaction, row=1))
         self.add_item(EditDescriptionButton(session, parent_interaction, row=1))
         self.add_item(EditColorButton(session, parent_interaction, row=1))
 
-        # Images row
+        # Row 2: Images & Footer
         self.add_item(EditImageButton(session, parent_interaction, row=2))
         self.add_item(EditThumbnailButton(session, parent_interaction, row=2))
+        self.add_item(EditFooterButton(session, parent_interaction, row=2))
+        self.add_item(EditFooterIconButton(session, parent_interaction, row=2))
 
-        # Footer row
-        self.add_item(EditFooterButton(session, parent_interaction, row=3))
-        self.add_item(EditFooterIconButton(session, parent_interaction, row=3))
+        # Row 3: Fields & Link buttons
+        self.add_item(AddFieldButton(session, parent_interaction, row=3))
+        self.add_item(RemoveFieldButton(session, parent_interaction, row=3))
+        self.add_item(AddLinkButtonButton(session, parent_interaction, row=3))
+        self.add_item(RemoveLinkButtonButton(session, parent_interaction, row=3))
 
-        # Fields row
-        self.add_item(AddFieldButton(session, parent_interaction, row=4))
-        self.add_item(RemoveFieldButton(session, parent_interaction, row=4))
-
-        # Link buttons row
-        self.add_item(AddLinkButtonButton(session, parent_interaction, row=5))
-        self.add_item(RemoveLinkButtonButton(session, parent_interaction, row=5))
-
-        # Actions row
-        self.add_item(DoneButton(session, cog, parent_interaction, row=6))
-        self.add_item(SaveButton(session, cog, parent_interaction, row=6))
-        self.add_item(LoadButton(session, cog, parent_interaction, row=6))
+        # Row 4: Actions
+        self.add_item(DoneButton(session, cog, parent_interaction, row=4))
+        self.add_item(SaveButton(session, cog, parent_interaction, row=4))
+        self.add_item(LoadButton(session, cog, parent_interaction, row=4))
 
 # Navigation
 class PrevEmbedButton(discord.ui.Button):
