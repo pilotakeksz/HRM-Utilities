@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-EMBED_CREATOR_ROLE = 123456789012345678  # Replace with your role ID
+EMBED_CREATOR_ROLE = 1365703451220377642  # Replace with your role ID
 
 class EmbedBuilderView(discord.ui.View):
     def __init__(self):
