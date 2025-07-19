@@ -143,7 +143,7 @@ class EditTitleDescButton(discord.ui.Button):
 
 class TitleDescModal(discord.ui.Modal, title="Set Embed Title and Description"):
     title = discord.ui.TextInput(label="Title", required=False)
-    description = discord.ui.TextInput(label="Description", required=True)
+    description = discord.ui.TextInput(label="Description", required=False)
 
     def __init__(self, session, parent_interaction):
         super().__init__()
@@ -151,8 +151,11 @@ class TitleDescModal(discord.ui.Modal, title="Set Embed Title and Description"):
         self.parent_interaction = parent_interaction
 
     async def on_submit(self, interaction: discord.Interaction):
-        self.session.get()["title"] = self.title.value or "(NO CONTENT)"
-        self.session.get()["description"] = self.description.value or "(NO CONTENT)"
+        # Update only if provided, else keep previous value
+        if self.title.value is not None:
+            self.session.get()["title"] = self.title.value
+        if self.description.value is not None:
+            self.session.get()["description"] = self.description.value if self.description.value.strip() else "(NO CONTENT)"
         await update_embed_preview(self.parent_interaction, self.session)
         await interaction.response.send_message("Title and description updated!", ephemeral=True, delete_after=2)
 
