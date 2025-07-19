@@ -99,6 +99,7 @@ class PrevEmbedButton(discord.ui.Button):
         if self.session.current > 0:
             self.session.current -= 1
         await update_embed_preview(self.parent_interaction, self.session)
+        await interaction.response.send_message("Switched embed!", ephemeral=True, delete_after=2)
 
 class NextEmbedButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=0):
@@ -109,6 +110,7 @@ class NextEmbedButton(discord.ui.Button):
         if self.session.current < len(self.session.embeds) - 1:
             self.session.current += 1
         await update_embed_preview(self.parent_interaction, self.session)
+        await interaction.response.send_message("Switched embed!", ephemeral=True, delete_after=2)
 
 class AddEmbedButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=0):
@@ -118,6 +120,7 @@ class AddEmbedButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         self.session.add_embed()
         await update_embed_preview(self.parent_interaction, self.session)
+        await interaction.response.send_message("Embed added!", ephemeral=True, delete_after=2)
 
 class RemoveEmbedButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=0):
@@ -127,8 +130,9 @@ class RemoveEmbedButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         self.session.remove_embed(self.session.current)
         await update_embed_preview(self.parent_interaction, self.session)
+        await interaction.response.send_message("Embed removed!", ephemeral=True, delete_after=2)
 
-# Main properties
+# Main properties (blue buttons)
 class EditTitleButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=1):
         super().__init__(label="Title", style=discord.ButtonStyle.primary, row=row)
@@ -146,6 +150,7 @@ class TitleModal(discord.ui.Modal, title="Set Embed Title"):
     async def on_submit(self, interaction: discord.Interaction):
         self.session.get()["title"] = self.title.value
         await update_embed_preview(self.parent_interaction, self.session)
+        await interaction.response.send_message("Title updated!", ephemeral=True, delete_after=2)
 
 class EditDescriptionButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=1):
@@ -162,8 +167,9 @@ class DescriptionModal(discord.ui.Modal, title="Set Embed Description"):
         self.session = session
         self.parent_interaction = parent_interaction
     async def on_submit(self, interaction: discord.Interaction):
-        self.session.get()["description"] = self.description.value or " "
+        self.session.get()["description"] = self.description.value or "(NO CONTENT)"
         await update_embed_preview(self.parent_interaction, self.session)
+        await interaction.response.send_message("Description updated!", ephemeral=True, delete_after=2)
 
 class EditColorButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=1):
@@ -182,9 +188,10 @@ class ColorModal(discord.ui.Modal, title="Set Embed Color"):
     async def on_submit(self, interaction: discord.Interaction):
         try:
             self.session.get()["color"] = int(self.color.value, 16)
+            await update_embed_preview(self.parent_interaction, self.session)
+            await interaction.response.send_message("Color updated!", ephemeral=True, delete_after=2)
         except Exception:
-            pass
-        await update_embed_preview(self.parent_interaction, self.session)
+            await interaction.response.send_message("Invalid color format.", ephemeral=True, delete_after=2)
 
 # Images & Footer
 class EditImageButton(discord.ui.Button):
