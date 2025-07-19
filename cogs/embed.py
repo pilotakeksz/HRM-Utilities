@@ -450,11 +450,19 @@ def session_to_view(embed_data):
 async def update_embed_preview(parent_interaction, session):
     embed = session_to_embed(session.get())
     view = EmbedBuilderView(session, parent_interaction.client.get_cog("EmbedCreator"), parent_interaction)
-    await parent_interaction.edit_original_response(
-        content=f"Embed builder (Embed {session.current+1}/{len(session.embeds)})",
-        embed=embed,
-        view=view
-    )
+    try:
+        await parent_interaction.edit_original_response(
+            content=f"Embed builder (Embed {session.current+1}/{len(session.embeds)})",
+            embed=embed,
+            view=view
+        )
+    except discord.errors.InteractionResponded:
+        # If the interaction is already responded (e.g. after a modal), edit the message directly
+        await parent_interaction.message.edit(
+            content=f"Embed builder (Embed {session.current+1}/{len(session.embeds)})",
+            embed=embed,
+            view=view
+        )
 
 class EmbedCreator(commands.Cog):
     def __init__(self, bot):
