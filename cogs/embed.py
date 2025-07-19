@@ -6,7 +6,7 @@ import os
 import uuid
 from datetime import datetime
 
-EMBED_CREATOR_ROLE = 1365703451220377642
+EMBED_CREATOR_ROLE = 1329910230066401361
 DB_PATH = os.path.join(os.path.dirname(__file__), "../data/embed_builder.db")
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../logs/embed_builder.txt")
 
