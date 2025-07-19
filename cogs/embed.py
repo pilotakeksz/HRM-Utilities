@@ -470,8 +470,8 @@ class EmbedCreator(commands.Cog):
 
     @app_commands.command(name="embed", description="Start the interactive embed builder")
     async def embed(self, interaction: discord.Interaction):
-        member = interaction.guild.get_member(interaction.user.id)
-        if not member or EMBED_CREATOR_ROLE not in [role.id for role in member.roles]:
+        # Use interaction.user directly
+        if not hasattr(interaction.user, "roles") or EMBED_CREATOR_ROLE not in [role.id for role in interaction.user.roles]:
             await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
             return
         session = EmbedSession(interaction.user.id)
