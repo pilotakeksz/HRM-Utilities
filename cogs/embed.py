@@ -24,7 +24,7 @@ class EmbedSession:
     def _new_embed(self):
         return {
             "title": "",
-            "description": "",
+            "description": " ",  # <-- fallback to space if empty
             "color": 0x2f3136,
             "image_url": "",
             "thumbnail_url": "",
@@ -78,13 +78,13 @@ class EmbedBuilderView(discord.ui.View):
         self.add_item(EditFooterButton(session, parent_interaction, row=2))
         self.add_item(EditFooterIconButton(session, parent_interaction, row=2))
 
-        # Row 3: Fields & Link buttons
+        # Row 3: Fields
         self.add_item(AddFieldButton(session, parent_interaction, row=3))
         self.add_item(RemoveFieldButton(session, parent_interaction, row=3))
-        self.add_item(AddLinkButtonButton(session, parent_interaction, row=3))
-        self.add_item(RemoveLinkButtonButton(session, parent_interaction, row=3))
 
-        # Row 4: Actions
+        # Row 4: Link buttons & Actions
+        self.add_item(AddLinkButtonButton(session, parent_interaction, row=4))
+        self.add_item(RemoveLinkButtonButton(session, parent_interaction, row=4))
         self.add_item(DoneButton(session, cog, parent_interaction, row=4))
         self.add_item(SaveButton(session, cog, parent_interaction, row=4))
         self.add_item(LoadButton(session, cog, parent_interaction, row=4))
@@ -162,7 +162,7 @@ class DescriptionModal(discord.ui.Modal, title="Set Embed Description"):
         self.session = session
         self.parent_interaction = parent_interaction
     async def on_submit(self, interaction: discord.Interaction):
-        self.session.get()["description"] = self.description.value
+        self.session.get()["description"] = self.description.value or " "
         await update_embed_preview(self.parent_interaction, self.session)
 
 class EditColorButton(discord.ui.Button):
@@ -186,7 +186,7 @@ class ColorModal(discord.ui.Modal, title="Set Embed Color"):
             pass
         await update_embed_preview(self.parent_interaction, self.session)
 
-# Images
+# Images & Footer
 class EditImageButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=2):
         super().__init__(label="Image", style=discord.ButtonStyle.primary, row=row)
@@ -223,9 +223,8 @@ class ThumbnailModal(discord.ui.Modal, title="Set Embed Thumbnail"):
         self.session.get()["thumbnail_url"] = self.thumbnail_url.value
         await update_embed_preview(self.parent_interaction, self.session)
 
-# Footer
 class EditFooterButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=3):
+    def __init__(self, session, parent_interaction, row=2):
         super().__init__(label="Footer", style=discord.ButtonStyle.primary, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
@@ -243,7 +242,7 @@ class FooterModal(discord.ui.Modal, title="Set Embed Footer"):
         await update_embed_preview(self.parent_interaction, self.session)
 
 class EditFooterIconButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=3):
+    def __init__(self, session, parent_interaction, row=2):
         super().__init__(label="Footer Icon", style=discord.ButtonStyle.primary, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
@@ -262,7 +261,7 @@ class FooterIconModal(discord.ui.Modal, title="Set Footer Icon URL"):
 
 # Fields
 class AddFieldButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=4):
+    def __init__(self, session, parent_interaction, row=3):
         super().__init__(label="Add Field", style=discord.ButtonStyle.secondary, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
@@ -283,7 +282,7 @@ class FieldModal(discord.ui.Modal, title="Add Field"):
         await update_embed_preview(self.parent_interaction, self.session)
 
 class RemoveFieldButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=4):
+    def __init__(self, session, parent_interaction, row=3):
         super().__init__(label="Remove Field", style=discord.ButtonStyle.danger, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
@@ -293,9 +292,9 @@ class RemoveFieldButton(discord.ui.Button):
             fields.pop()
         await update_embed_preview(self.parent_interaction, self.session)
 
-# Link buttons
+# Link buttons & Actions (row 4)
 class AddLinkButtonButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=5):
+    def __init__(self, session, parent_interaction, row=4):
         super().__init__(label="Add Link Button", style=discord.ButtonStyle.secondary, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
@@ -314,7 +313,7 @@ class LinkButtonModal(discord.ui.Modal, title="Add Link Button"):
         await update_embed_preview(self.parent_interaction, self.session)
 
 class RemoveLinkButtonButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=5):
+    def __init__(self, session, parent_interaction, row=4):
         super().__init__(label="Remove Link Button", style=discord.ButtonStyle.danger, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
@@ -324,9 +323,8 @@ class RemoveLinkButtonButton(discord.ui.Button):
             buttons.pop()
         await update_embed_preview(self.parent_interaction, self.session)
 
-# Actions
 class DoneButton(discord.ui.Button):
-    def __init__(self, session, cog, parent_interaction, row=6):
+    def __init__(self, session, cog, parent_interaction, row=4):
         super().__init__(label="Send Embeds", style=discord.ButtonStyle.success, row=row)
         self.session = session
         self.cog = cog
@@ -354,7 +352,7 @@ class ChannelModal(discord.ui.Modal, title="Send Embeds"):
         await interaction.response.send_message("Embeds sent!", ephemeral=True)
 
 class SaveButton(discord.ui.Button):
-    def __init__(self, session, cog, parent_interaction, row=6):
+    def __init__(self, session, cog, parent_interaction, row=4):
         super().__init__(label="Save Session", style=discord.ButtonStyle.secondary, row=row)
         self.session = session
         self.cog = cog
@@ -379,7 +377,7 @@ class SaveButton(discord.ui.Button):
         await interaction.response.send_message(f"Session saved! Your key: `{key}`", ephemeral=True)
 
 class LoadButton(discord.ui.Button):
-    def __init__(self, session, cog, parent_interaction, row=6):
+    def __init__(self, session, cog, parent_interaction, row=4):
         super().__init__(label="Load Session", style=discord.ButtonStyle.secondary, row=row)
         self.session = session
         self.cog = cog
@@ -473,4 +471,4 @@ class EmbedCreator(commands.Cog):
             await interaction.response.send_message(f"Error: {e}", ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(EmbedCreator(bot)) #test
+    await bot.add_cog(EmbedCreator(bot))
