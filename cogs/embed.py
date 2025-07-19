@@ -350,3 +350,41 @@ class SaveButton(discord.ui.Button):
                     datetime.utcnow().isoformat()
                 )
             )
+
+class EmbedCreator(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    def session_to_embed(self, session):
+        embed = discord.Embed(
+            title=session.title,
+            description=session.description,
+            color=session.color
+        )
+        if session.image_url:
+            embed.set_image(url=session.image_url)
+        if session.thumbnail_url:
+            embed.set_thumbnail(url=session.thumbnail_url)
+        if session.footer:
+            embed.set_footer(text=session.footer, icon_url=session.footer_icon if session.footer_icon else discord.Embed.Empty)
+        for name, value, inline in session.fields:
+            embed.add_field(name=name, value=value, inline=inline)
+        return embed
+
+    def session_to_view(self, session):
+        view = discord.ui.View()
+        for label, url in session.buttons:
+            view.add_item(EmbedButton(label, url))
+        return view
+
+    @commands.command(name="embed")
+    async def embed_command(self, ctx):
+        if EMBED_CREATOR_ROLE not in [role.id for role in ctx.author.roles]:
+            await ctx.send("You do not have permission to use this command.")
+            return
+        session = EmbedSession(ctx.author.id)
+        view = EmbedBuilderView(session, self)
+        await ctx.send("Embed builder started!", view=view)
+
+async def setup(bot):
+    await bot.add_cog(EmbedCreator(bot))
