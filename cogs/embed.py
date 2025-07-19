@@ -68,7 +68,6 @@ class EmbedBuilderView(discord.ui.View):
         self.add_item(RemoveEmbedButton(session, parent_interaction, row=0))
 
         # Row 1: Main properties
-        self.add_item(EditTitleButton(session, parent_interaction, row=1))
         self.add_item(EditDescriptionButton(session, parent_interaction, row=1))
         self.add_item(EditColorButton(session, parent_interaction, row=1))
 
@@ -133,47 +132,29 @@ class RemoveEmbedButton(discord.ui.Button):
         await interaction.response.send_message("Embed removed!", ephemeral=True, delete_after=2)
 
 # Main properties (blue buttons)
-class EditTitleButton(discord.ui.Button):
-    def __init__(self, session, parent_interaction, row=1):
-        super().__init__(label="Title", style=discord.ButtonStyle.primary, row=row)
-        self.session = session
-        self.parent_interaction = parent_interaction
-
-    async def callback(self, interaction: discord.Interaction):
-        # Only call send_modal, do NOT call update_embed_preview or send_message here
-        await interaction.response.send_modal(TitleModal(self.session, self.parent_interaction))
-
-class TitleModal(discord.ui.Modal, title="Set Embed Title"):
-    title = discord.ui.TextInput(label="Title", required=True)
-
-    def __init__(self, session, parent_interaction):
-        super().__init__()
-        self.session = session
-        self.parent_interaction = parent_interaction
-
-    async def on_submit(self, interaction: discord.Interaction):
-        self.session.get()["title"] = self.title.value or "(NO CONTENT)"
-        await update_embed_preview(self.parent_interaction, self.session)
-        await interaction.response.send_message("Title updated!", ephemeral=True, delete_after=2)
-
 class EditDescriptionButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=1):
-        super().__init__(label="Description", style=discord.ButtonStyle.primary, row=row)
+        super().__init__(label="Title & Description", style=discord.ButtonStyle.primary, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(DescriptionModal(self.session, self.parent_interaction))
 
-class DescriptionModal(discord.ui.Modal, title="Set Embed Description"):
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(TitleDescriptionModal(self.session, self.parent_interaction))
+
+class TitleDescriptionModal(discord.ui.Modal, title="Set Title & Description"):
+    title = discord.ui.TextInput(label="Title", required=False)
     description = discord.ui.TextInput(label="Description", required=True)
+
     def __init__(self, session, parent_interaction):
         super().__init__()
         self.session = session
         self.parent_interaction = parent_interaction
+
     async def on_submit(self, interaction: discord.Interaction):
+        self.session.get()["title"] = self.title.value or ""
         self.session.get()["description"] = self.description.value or "(NO CONTENT)"
         await update_embed_preview(self.parent_interaction, self.session)
-        await interaction.response.send_message("Description updated!", ephemeral=True, delete_after=2)
+        await interaction.response.send_message("Title & Description updated!", ephemeral=True, delete_after=2)
 
 class EditColorButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=1):
