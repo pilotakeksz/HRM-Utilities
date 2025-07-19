@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import aiosqlite
 import os
 import uuid
@@ -377,10 +378,10 @@ class EmbedCreator(commands.Cog):
             view.add_item(EmbedButton(label, url))
         return view
 
-    @commands.command(name="embed")
-    async def embed_command(self, ctx):
+    @commands.hybrid_command(name="embed", description="Start the interactive embed builder")
+    async def embed(self, ctx):
         if EMBED_CREATOR_ROLE not in [role.id for role in ctx.author.roles]:
-            await ctx.send("You do not have permission to use this command.")
+            await ctx.send("You do not have permission to use this command.", ephemeral=True)
             return
         session = EmbedSession(ctx.author.id)
         view = EmbedBuilderView(session, self)
