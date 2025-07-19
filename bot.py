@@ -52,7 +52,7 @@ async def main():
         await bot.load_extension("cogs.blacklist")
         await bot.load_extension("cogs.archive_commands")
         await bot.load_extension("cogs.MDT")
-        await bot.load_extension("embed")
+        await bot.load_extension("cogs.embed")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
