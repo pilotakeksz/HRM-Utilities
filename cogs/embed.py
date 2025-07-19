@@ -140,7 +140,7 @@ class EditTitleButton(discord.ui.Button):
         self.parent_interaction = parent_interaction
 
     async def callback(self, interaction: discord.Interaction):
-        # Only call send_modal, do NOT call update_embed_preview or send_message here!
+        # Only call send_modal, do NOT call update_embed_preview or send_message here
         await interaction.response.send_modal(TitleModal(self.session, self.parent_interaction))
 
 class TitleModal(discord.ui.Modal, title="Set Embed Title"):
