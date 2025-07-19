@@ -69,17 +69,14 @@ class EmbedCreator(commands.Cog):
 
     @app_commands.command(name="embed", description="Start the embed builder")
     async def embed(self, interaction: discord.Interaction):
-        if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
-            return
-
-        if EMBED_CREATOR_ROLE not in [role.id for role in interaction.user.roles]:
+        member = interaction.guild.get_member(interaction.user.id)
+        if not member or EMBED_CREATOR_ROLE not in [role.id for role in member.roles]:
             await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
             return
 
         embed = discord.Embed(title="", description="", color=0x2f3136)
         view = EmbedBuilderView()
-        await interaction.response.send_message("Embed builder started:", embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message("Embed builder", embed=embed, view=view, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(EmbedCreator(bot))
