@@ -404,10 +404,10 @@ class LoadSessionModal(discord.ui.Modal, title="Load Session"):
                     await interaction.response.send_message("No session found with that key.", ephemeral=True)
 
 def session_to_embed(embed_data):
-    # Enforce Discord limits
-    title = (embed_data["title"] or "")[:256]
-    description = (embed_data["description"] or " ")[:4096]
-    footer = (embed_data["footer"] or "")[:2048]
+    # Enforce Discord limits and replace empty fields with "(NO CONTENT)"
+    title = (embed_data["title"] or "(NO CONTENT)")[:256]
+    description = (embed_data["description"] or "(NO CONTENT)")[:4096]
+    footer = (embed_data["footer"] or "(NO CONTENT)")[:2048]
     embed = discord.Embed(
         title=title,
         description=description,
@@ -422,11 +422,11 @@ def session_to_embed(embed_data):
             text=footer,
             icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else discord.Embed.Empty
         )
-    # Only add up to 25 fields, truncate name/value
+    # Only add up to 25 fields, truncate name/value, replace empty with "(NO CONTENT)"
     for name, value, inline in embed_data["fields"][:25]:
         embed.add_field(
-            name=(name or "")[:256],
-            value=(value or "")[:1024],
+            name=(name or "(NO CONTENT)")[:256],
+            value=(value or "(NO CONTENT)")[:1024],
             inline=inline
         )
     return embed
