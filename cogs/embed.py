@@ -378,14 +378,14 @@ class EmbedCreator(commands.Cog):
             view.add_item(EmbedButton(label, url))
         return view
 
-    @commands.hybrid_command(name="embed", description="Start the interactive embed builder")
-    async def embed(self, ctx):
-        if EMBED_CREATOR_ROLE not in [role.id for role in ctx.author.roles]:
-            await ctx.send("You do not have permission to use this command.", ephemeral=True)
+    @app_commands.command(name="embed", description="Start the interactive embed builder")
+    async def embed(self, interaction: discord.Interaction):
+        if EMBED_CREATOR_ROLE not in [role.id for role in interaction.user.roles]:
+            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
-        session = EmbedSession(ctx.author.id)
+        session = EmbedSession(interaction.user.id)
         view = EmbedBuilderView(session, self)
-        await ctx.send("Embed builder started!", view=view)
+        await interaction.response.send_message("Embed builder started!", view=view, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(EmbedCreator(bot))
