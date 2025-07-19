@@ -140,7 +140,6 @@ class EditTitleButton(discord.ui.Button):
         self.parent_interaction = parent_interaction
 
     async def callback(self, interaction: discord.Interaction):
-        # Only send the modal, do NOT send any other response here!
         await interaction.response.send_modal(TitleModal(self.session, self.parent_interaction))
 
 class TitleModal(discord.ui.Modal, title="Set Embed Title"):
@@ -152,7 +151,7 @@ class TitleModal(discord.ui.Modal, title="Set Embed Title"):
         self.parent_interaction = parent_interaction
 
     async def on_submit(self, interaction: discord.Interaction):
-        self.session.get()["title"] = self.title.value
+        self.session.get()["title"] = self.title.value or "(NO CONTENT)"
         await update_embed_preview(self.parent_interaction, self.session)
         await interaction.response.send_message("Title updated!", ephemeral=True, delete_after=2)
 
@@ -420,7 +419,7 @@ def session_to_embed(embed_data):
     description = embed_data["description"] if embed_data["description"].strip() else "(NO CONTENT)"
     footer = embed_data["footer"] if embed_data["footer"].strip() else "(NO CONTENT)"
     embed = discord.Embed(
-        title=title[:256],
+        title=title[:256],  # Title will be set only by default or programmatically
         description=description[:4096],
         color=embed_data["color"]
     )
