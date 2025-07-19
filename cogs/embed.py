@@ -411,29 +411,31 @@ class LoadSessionModal(discord.ui.Modal, title="Load Session"):
                     await interaction.response.send_message("No session found with that key.", ephemeral=True)
 
 def session_to_embed(embed_data):
-    # Enforce Discord limits and replace empty fields with "(NO CONTENT)"
-    title = (embed_data["title"] or "(NO CONTENT)")[:256]
-    description = (embed_data["description"] or "(NO CONTENT)")[:4096]
-    footer = (embed_data["footer"] or "(NO CONTENT)")[:2048]
+    # Only use "(NO CONTENT)" if the field is truly empty
+    title = embed_data["title"] if embed_data["title"].strip() else "(NO CONTENT)"
+    description = embed_data["description"] if embed_data["description"].strip() else "(NO CONTENT)"
+    footer = embed_data["footer"] if embed_data["footer"].strip() else "(NO CONTENT)"
     embed = discord.Embed(
-        title=title,
-        description=description,
+        title=title[:256],
+        description=description[:4096],
         color=embed_data["color"]
     )
     if embed_data["image_url"]:
         embed.set_image(url=embed_data["image_url"])
     if embed_data["thumbnail_url"]:
         embed.set_thumbnail(url=embed_data["thumbnail_url"])
-    if footer:
+    if footer != "(NO CONTENT)":
         embed.set_footer(
-            text=footer,
-            icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None  # <-- FIXED HERE
+            text=footer[:2048],
+            icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None
         )
     # Only add up to 25 fields, truncate name/value, replace empty with "(NO CONTENT)"
     for name, value, inline in embed_data["fields"][:25]:
+        field_name = name if name.strip() else "(NO CONTENT)"
+        field_value = value if value.strip() else "(NO CONTENT)"
         embed.add_field(
-            name=(name or "(NO CONTENT)")[:256],
-            value=(value or "(NO CONTENT)")[:1024],
+            name=field_name[:256],
+            value=field_value[:1024],
             inline=inline
         )
     return embed
