@@ -420,7 +420,7 @@ def session_to_embed(embed_data):
     if footer:
         embed.set_footer(
             text=footer,
-            icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else discord.Embed.Empty
+            icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None  # <-- FIXED HERE
         )
     # Only add up to 25 fields, truncate name/value, replace empty with "(NO CONTENT)"
     for name, value, inline in embed_data["fields"][:25]:
