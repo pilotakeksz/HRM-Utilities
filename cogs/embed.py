@@ -453,20 +453,28 @@ class EmbedCreator(commands.Cog):
 
     @app_commands.command(name="embed", description="Start the interactive embed builder")
     async def embed(self, interaction: discord.Interaction):
-        member = interaction.guild.get_member(interaction.user.id)
-        if not member or EMBED_CREATOR_ROLE not in [role.id for role in member.roles]:
-            await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
-            return
-        session = EmbedSession(interaction.user.id)
-        embed = session_to_embed(session.get())
-        view = EmbedBuilderView(session, self, interaction)
-        await interaction.response.send_message(
-            content=f"Embed builder (Embed 1/1)",
-            embed=embed,
-            view=view,
-            ephemeral=False
-        )
-        log_action(interaction.user, "started_builder")
+        print("DEBUG: /embed command called")
+        try:
+            member = interaction.guild.get_member(interaction.user.id)
+            print(f"DEBUG: member={member}")
+            if not member or EMBED_CREATOR_ROLE not in [role.id for role in member.roles]:
+                print("DEBUG: Permission denied")
+                await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+                return
+            session = EmbedSession(interaction.user.id)
+            embed = session_to_embed(session.get())
+            view = EmbedBuilderView(session, self, interaction)
+            print("DEBUG: Sending builder message")
+            await interaction.response.send_message(
+                content=f"Embed builder (Embed 1/1)",
+                embed=embed,
+                view=view,
+                ephemeral=False
+            )
+            log_action(interaction.user, "started_builder")
+        except Exception as e:
+            print(f"ERROR in /embed: {e}")
+            await interaction.response.send_message(f"Error: {e}", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(EmbedCreator(bot))
