@@ -138,15 +138,19 @@ class EditTitleButton(discord.ui.Button):
         super().__init__(label="Title", style=discord.ButtonStyle.primary, row=row)
         self.session = session
         self.parent_interaction = parent_interaction
+
     async def callback(self, interaction: discord.Interaction):
+        # Only send the modal, do NOT send any other response here!
         await interaction.response.send_modal(TitleModal(self.session, self.parent_interaction))
 
 class TitleModal(discord.ui.Modal, title="Set Embed Title"):
     title = discord.ui.TextInput(label="Title", required=True)
+
     def __init__(self, session, parent_interaction):
         super().__init__()
         self.session = session
         self.parent_interaction = parent_interaction
+
     async def on_submit(self, interaction: discord.Interaction):
         self.session.get()["title"] = self.title.value
         await update_embed_preview(self.parent_interaction, self.session)
