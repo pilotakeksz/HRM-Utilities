@@ -151,7 +151,7 @@ class TitleModal(discord.ui.Modal, title="Set Embed Title"):
         self.parent_interaction = parent_interaction
 
     async def on_submit(self, interaction: discord.Interaction):
-        self.session.get()["title"] = self.title.value if self.title.value.strip() else "(NO CONTENT)"
+        self.session.get()["title"] = self.title.value if self.title.value.strip() else ""
         await update_embed_preview(self.parent_interaction, self.session)
         await interaction.response.send_message("Title updated!", ephemeral=True, delete_after=2)
 
