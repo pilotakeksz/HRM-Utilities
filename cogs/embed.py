@@ -477,4 +477,4 @@ class EmbedCreator(commands.Cog):
             await interaction.response.send_message(f"Error: {e}", ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(EmbedCreator(bot))
+    await bot.add_cog(EmbedCreator(bot)) #test
