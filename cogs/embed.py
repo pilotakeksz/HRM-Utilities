@@ -408,7 +408,7 @@ class LoadSessionModal(discord.ui.Modal, title="Load Session"):
 def session_to_embed(embed_data):
     embed = discord.Embed(
         title=embed_data["title"],
-        description=embed_data["description"],
+        description=embed_data["description"] or " ",  # <-- fallback to space if empty
         color=embed_data["color"]
     )
     if embed_data["image_url"]:
