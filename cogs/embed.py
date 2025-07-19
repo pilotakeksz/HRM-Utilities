@@ -139,11 +139,10 @@ class EditTitleDescButton(discord.ui.Button):
         self.parent_interaction = parent_interaction
 
     async def callback(self, interaction: discord.Interaction):
-        # Only call send_modal, do NOT call update_embed_preview or send_message here
         await interaction.response.send_modal(TitleDescModal(self.session, self.parent_interaction))
 
 class TitleDescModal(discord.ui.Modal, title="Set Embed Title and Description"):
-    title = discord.ui.TextInput(label="Title", required=True)
+    title = discord.ui.TextInput(label="Title", required=False)
     description = discord.ui.TextInput(label="Description", required=True)
 
     def __init__(self, session, parent_interaction):
