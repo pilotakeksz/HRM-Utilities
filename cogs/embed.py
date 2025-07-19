@@ -68,7 +68,7 @@ class EmbedBuilderView(discord.ui.View):
         self.add_item(RemoveEmbedButton(session, parent_interaction, row=0))
 
         # Row 1: Main properties
-        self.add_item(EditTitleButton(session, parent_interaction, row=1))
+        self.add_item(EditTitleButton(session, parent_interaction, row=0))
         self.add_item(EditDescriptionButton(session, parent_interaction, row=1))
         self.add_item(EditColorButton(session, parent_interaction, row=1))
 
