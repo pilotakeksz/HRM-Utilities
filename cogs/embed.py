@@ -417,33 +417,40 @@ class LoadSessionModal(discord.ui.Modal, title="Load Session"):
                     await interaction.response.send_message("No session found with that key.", ephemeral=True)
 
 def session_to_embed(embed_data):
-    # Only use "(NO CONTENT)" if the field is truly empty
-    title = embed_data["title"] if embed_data["title"].strip() else "(NO CONTENT)"
-    description = embed_data["description"] if embed_data["description"].strip() else "(NO CONTENT)"
-    footer = embed_data["footer"] if embed_data["footer"].strip() else "(NO CONTENT)"
-    embed = discord.Embed(
-        title=title[:256],  # Title will be set only by default or programmatically
-        description=description[:4096],
-        color=embed_data["color"]
-    )
+    embed = discord.Embed(color=embed_data["color"])
+    
+    # Only add title if it has content
+    if embed_data["title"].strip():
+        embed.title = embed_data["title"][:256]
+    
+    # Only add description if it has content
+    if embed_data["description"].strip():
+        embed.description = embed_data["description"][:4096]
+    
+    # Only add image if URL is provided
     if embed_data["image_url"]:
         embed.set_image(url=embed_data["image_url"])
+    
+    # Only add thumbnail if URL is provided
     if embed_data["thumbnail_url"]:
         embed.set_thumbnail(url=embed_data["thumbnail_url"])
-    if footer != "(NO CONTENT)":
+    
+    # Only add footer if text is provided
+    if embed_data["footer"].strip():
         embed.set_footer(
-            text=footer[:2048],
+            text=embed_data["footer"][:2048],
             icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None
         )
-    # Only add up to 25 fields, truncate name/value, replace empty with "(NO CONTENT)"
+    
+    # Only add fields that have content
     for name, value, inline in embed_data["fields"][:25]:
-        field_name = name if name.strip() else "(NO CONTENT)"
-        field_value = value if value.strip() else "(NO CONTENT)"
-        embed.add_field(
-            name=field_name[:256],
-            value=field_value[:1024],
-            inline=inline
-        )
+        if name.strip() and value.strip():
+            embed.add_field(
+                name=name[:256],
+                value=value[:1024],
+                inline=inline
+            )
+    
     return embed
 
 def session_to_view(embed_data):
@@ -453,7 +460,44 @@ def session_to_view(embed_data):
     return view
 
 async def update_embed_preview(parent_interaction, session):
-    embed = session_to_embed(session.get())
+    # Create preview embed with "(NO CONTENT)" placeholders for empty fields
+    embed_data = session.get()
+    embed = discord.Embed(color=embed_data["color"])
+    
+    # Add title with fallback
+    title = embed_data["title"] if embed_data["title"].strip() else "(NO CONTENT)"
+    embed.title = title[:256]
+    
+    # Add description with fallback
+    description = embed_data["description"] if embed_data["description"].strip() else "(NO CONTENT)"
+    embed.description = description[:4096]
+    
+    # Add image if URL is provided
+    if embed_data["image_url"]:
+        embed.set_image(url=embed_data["image_url"])
+    
+    # Add thumbnail if URL is provided
+    if embed_data["thumbnail_url"]:
+        embed.set_thumbnail(url=embed_data["thumbnail_url"])
+    
+    # Add footer with fallback
+    footer = embed_data["footer"] if embed_data["footer"].strip() else "(NO CONTENT)"
+    if footer != "(NO CONTENT)":
+        embed.set_footer(
+            text=footer[:2048],
+            icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None
+        )
+    
+    # Add fields with fallbacks
+    for name, value, inline in embed_data["fields"][:25]:
+        field_name = name if name.strip() else "(NO CONTENT)"
+        field_value = value if value.strip() else "(NO CONTENT)"
+        embed.add_field(
+            name=field_name[:256],
+            value=field_value[:1024],
+            inline=inline
+        )
+    
     view = EmbedBuilderView(session, parent_interaction.client.get_cog("EmbedCreator"), parent_interaction)
     try:
         await parent_interaction.edit_original_response(
