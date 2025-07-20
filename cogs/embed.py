@@ -423,8 +423,8 @@ def session_to_embed(embed_data):
     if embed_data["title"].strip() and embed_data["title"] != "(NO CONTENT)":
         embed.title = embed_data["title"][:256]
     
-    # Always add description (Discord requirement), but make it empty if no content
-    description = embed_data["description"].strip() if embed_data["description"].strip() and embed_data["description"] != "(NO CONTENT)" else ""
+    # Always add description (Discord requirement), but make it minimal if no content
+    description = embed_data["description"].strip() if embed_data["description"].strip() and embed_data["description"] != "(NO CONTENT)" else " "
     embed.description = description[:4096]
     
     # Only add image if URL is provided
