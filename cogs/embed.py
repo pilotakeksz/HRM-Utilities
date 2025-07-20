@@ -419,12 +419,12 @@ class LoadSessionModal(discord.ui.Modal, title="Load Session"):
 def session_to_embed(embed_data):
     embed = discord.Embed(color=embed_data["color"])
     
-    # Only add title if it has content
-    if embed_data["title"].strip():
+    # Only add title if it has content (no "(NO CONTENT)" in final embed)
+    if embed_data["title"].strip() and embed_data["title"] != "(NO CONTENT)":
         embed.title = embed_data["title"][:256]
     
     # Always add description (Discord requirement), but make it empty if no content
-    description = embed_data["description"].strip() if embed_data["description"].strip() else ""
+    description = embed_data["description"].strip() if embed_data["description"].strip() and embed_data["description"] != "(NO CONTENT)" else ""
     embed.description = description[:4096]
     
     # Only add image if URL is provided
@@ -435,16 +435,17 @@ def session_to_embed(embed_data):
     if embed_data["thumbnail_url"]:
         embed.set_thumbnail(url=embed_data["thumbnail_url"])
     
-    # Only add footer if text is provided
-    if embed_data["footer"].strip():
+    # Only add footer if text is provided (no "(NO CONTENT)" in final embed)
+    if embed_data["footer"].strip() and embed_data["footer"] != "(NO CONTENT)":
         embed.set_footer(
             text=embed_data["footer"][:2048],
             icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None
         )
     
-    # Only add fields that have content
+    # Only add fields that have content (no "(NO CONTENT)" in final embed)
     for name, value, inline in embed_data["fields"][:25]:
-        if name.strip() and value.strip():
+        if (name.strip() and value.strip() and 
+            name != "(NO CONTENT)" and value != "(NO CONTENT)"):
             embed.add_field(
                 name=name[:256],
                 value=value[:1024],
