@@ -466,7 +466,7 @@ def session_to_view(embed_data):
     return view
 
 async def update_embed_preview(parent_interaction, session):
-    embed = session_to_embed(session.get())
+    embed = session_to_embed(session.get(), for_preview=True)
     view = EmbedBuilderView(session, parent_interaction.client.get_cog("EmbedCreator"), parent_interaction)
     try:
         await parent_interaction.edit_original_response(
@@ -496,7 +496,7 @@ class EmbedCreator(commands.Cog):
                 await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
                 return
             session = EmbedSession(interaction.user.id)
-            embed = session_to_embed(session.get())
+            embed = session_to_embed(session.get(), for_preview=True)
             view = EmbedBuilderView(session, self, interaction)
             print("DEBUG: Sending builder message")
             await interaction.response.send_message(
