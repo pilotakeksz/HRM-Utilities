@@ -165,7 +165,7 @@ class EditDescriptionButton(discord.ui.Button):
         await interaction.response.send_modal(DescriptionModal(self.session, self.parent_interaction))
 
 class DescriptionModal(discord.ui.Modal, title="Set Embed Description"):
-    description = discord.ui.TextInput(label="Description", required=False)
+    description = discord.ui.TextInput(label="Description", required=False, style=discord.TextStyle.paragraph)
 
     def __init__(self, session, parent_interaction):
         super().__init__()
@@ -283,7 +283,7 @@ class AddFieldButton(discord.ui.Button):
 
 class FieldModal(discord.ui.Modal, title="Add Field"):
     name = discord.ui.TextInput(label="Field Name", required=True)
-    value = discord.ui.TextInput(label="Field Value", required=True)
+    value = discord.ui.TextInput(label="Field Value", required=True, style=discord.TextStyle.paragraph)
     inline = discord.ui.TextInput(label="Inline? (true/false)", required=True)
     def __init__(self, session, parent_interaction):
         super().__init__()
