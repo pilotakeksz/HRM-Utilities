@@ -40,35 +40,29 @@ class Welcome(commands.Cog):
         member_count = ctx.guild.member_count
         welcome_text = f"Welcome {ctx.author.mention}!"
 
-        embed1 = discord.Embed(
-            color=EMBED_COLOR,
-            title=f"Welcome to HRMC {ctx.author.display_name}!"
-        )
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934098332811315/Welcome.png")
-
-        embed2 = discord.Embed(
+        embed = discord.Embed(
             color=EMBED_COLOR,
             description=f"Welcome to the official High Rock Military Corps Discord server!\nYou are member number: **{member_count}**"
         )
-        embed2.add_field(
+        embed.add_field(
             name="Verify <:check:1343223894412365824>",
             value="- [Verify here](https://discord.com/channels/1329908357812981882/1329910450476945588)",
             inline=True
         )
-        embed2.add_field(
+        embed.add_field(
             name="Chat <:general:1343223933251358764>",
             value="- [Chat here](https://discord.com/channels/1329908357812981882/1329910472069353566)",
             inline=True
         )
-        embed2.add_field(
+        embed.add_field(
             name="Apply <:apply:1377014054085984318>",
             value="- [Apply here](https://discord.com/channels/1329908357812981882/1329910467698622494)",
             inline=True
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png")
-        embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png")
+        embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
-        await ctx.send(content=welcome_text, embeds=[embed1, embed2], view=WelcomeView(member_count))
+        await ctx.send(content=welcome_text, embed=embed, view=WelcomeView(member_count))
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -76,40 +70,33 @@ class Welcome(commands.Cog):
         member_count = member.guild.member_count
         welcome_text = f"Welcome {member.mention}!"
 
-        embed1 = discord.Embed(
-            color=EMBED_COLOR,
-            title=f"Welcome to HRMC {member.display_name}!"
-        )
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934098332811315/Welcome.png")
-
-
-        embed2 = discord.Embed(
+        embed = discord.Embed(
             color=EMBED_COLOR,
             description=f"Welcome to the official High Rock Military Corps Discord server!\nYou are member number: **{member_count}**"
         )
-        embed2.add_field(
+        embed.add_field(
             name="Verify <:check:1343223894412365824>",
             value="- [Verify here](https://discord.com/channels/1329908357812981882/1329910450476945588)",
             inline=True
         )
-        embed2.add_field(
+        embed.add_field(
             name="Chat <:general:1343223933251358764>",
             value="- [Chat here](https://discord.com/channels/1329908357812981882/1329910472069353566)",
             inline=True
         )
-        embed2.add_field(
+        embed.add_field(
             name="Apply <:apply:1377014054085984318>",
             value="- [Apply here](https://discord.com/channels/1329908357812981882/1329910467698622494)",
             inline=True
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png")
-        embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png")
+        embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         channel = member.guild.get_channel(WELCOME_CHANNEL_ID) or member.guild.system_channel
 
         if channel:
             try:
-                await channel.send(content=welcome_text, embeds=[embed1, embed2], view=WelcomeView(member_count))
+                await channel.send(content=welcome_text, embed=embed, view=WelcomeView(member_count))
             except Exception as e:
                 print(f"Failed to send welcome message: {e}")
         else:
