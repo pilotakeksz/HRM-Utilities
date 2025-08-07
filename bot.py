@@ -74,7 +74,7 @@ async def main():
         await bot.load_extension("cogs.archive_commands")
         await bot.load_extension("cogs.MDT")
         await bot.load_extension("cogs.embed")
-        await bot.load_extension("cogs.admin_exec")
+        await bot.load_extension("cogs.Admin_Exec")
         await bot.start(TOKEN)
 
 
