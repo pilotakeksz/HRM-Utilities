@@ -163,7 +163,7 @@ class Training(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="training-vote", description="Start a training session vote.")
-    @app_commands.guilds(discord.Object(id=YOUR_GUILD_ID))
+    @app_commands.guilds(discord.Object(id=1329908357812981882))
     async def training_vote(self, interaction: discord.Interaction):
         # Permission check
         if not any(r.id == TRAINING_ROLE_ID for r in getattr(interaction.user, "roles", [])):
