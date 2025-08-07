@@ -210,4 +210,4 @@ class Training(commands.Cog):
         await log_action(self.bot, host, "Training Vote", "Sent 10-min DM and end buttons to host.")
 
 async def setup(bot):
-    await bot.add_cog(Training(bot))
+    await bot.add_cog(Training(bot)) # test
