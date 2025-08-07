@@ -5,13 +5,19 @@ import os
 from dotenv import load_dotenv
 import sys
 import io
+import base64  # <-- built-in module, no install needed
 
 load_dotenv(".env")
 load_dotenv(".env.token")
+
 APPLICATION_ID = int(os.getenv("APPLICATION_ID"))
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-if TOKEN is None:
-    raise ValueError("No DISCORD_BOT_TOKEN found in environment variables")
+
+encoded_token = os.getenv("DISCORD_BOT_TOKEN_BASE64")
+if encoded_token is None:
+    raise ValueError("No DISCORD_BOT_TOKEN_BASE64 found in environment variables")
+
+# Decode the base64-encoded token
+TOKEN = base64.b64decode(encoded_token).decode()
 
 intents = discord.Intents.default()
 intents.members = True
@@ -83,7 +89,7 @@ async def main():
             "cogs.blacklist",
             "cogs.archive_commands",
             "cogs.MDT",
-            "cogs.embed",
+            "cogs.embed",        # <-- added comma here
             "cogs.token_editor"
         ]
         
@@ -92,7 +98,6 @@ async def main():
         
         print("All cogs loaded. Starting bot...")
         await bot.start(TOKEN)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
