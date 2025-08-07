@@ -8,7 +8,7 @@ import io
 import base64  # <-- built-in module, no install needed
 
 load_dotenv(".env")
-load_dotenv(".env.token")
+# load_dotenv(".env.token")
 
 APPLICATION_ID = int(os.getenv("APPLICATION_ID"))
 
