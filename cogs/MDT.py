@@ -332,7 +332,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
             color=TAN
         )
         embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
-        await channel.send(content=ping, embeds=[embed1, embed2])
+        await channel.send(content=ping, embeds=[embed1, embed2], view=DeploymentJoinView())
         await interaction.response.send_message("Deployment started.", ephemeral=True)
         log_action(interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
         await log_to_discord(self.bot, interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
@@ -367,6 +367,32 @@ class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
         await interaction.response.send_message("Deployment location updated.", ephemeral=True)
         log_action(interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
         await log_to_discord(self.bot, interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
+
+class DeploymentJoinView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.yes_users = set()
+        self.maybe_users = set()
+
+    @ui.button(label='<:yes:1358812809558753401>', style=discord.ButtonStyle.success, custom_id='deploy_yes')
+    async def yes_button(self, interaction: discord.Interaction, button: ui.Button):
+        self.yes_users.add(interaction.user)
+        self.maybe_users.discard(interaction.user)
+        await interaction.response.send_message('You are marked as joining!', ephemeral=True)
+
+    @ui.button(label='<:maybe:1358812794585354391>', style=discord.ButtonStyle.primary, custom_id='deploy_maybe')
+    async def maybe_button(self, interaction: discord.Interaction, button: ui.Button):
+        self.maybe_users.add(interaction.user)
+        self.yes_users.discard(interaction.user)
+        await interaction.response.send_message('You are marked as joining late!', ephemeral=True)
+
+    @ui.button(label='<:Member:1343945679390904330>', style=discord.ButtonStyle.secondary, custom_id='deploy_members')
+    async def member_button(self, interaction: discord.Interaction, button: ui.Button):
+        yes_mentions = [user.mention for user in self.yes_users]
+        maybe_mentions = [user.mention for user in self.maybe_users]
+        msg = '**Joining:**\n' + ('\n'.join(yes_mentions) if yes_mentions else 'None')
+        msg += '\n\n**Joining Late:**\n' + ('\n'.join(maybe_mentions) if maybe_mentions else 'None')
+        await interaction.response.send_message(msg, ephemeral=True)
 
 class MDT(commands.Cog):
     def __init__(self, bot):
