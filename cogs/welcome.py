@@ -31,7 +31,7 @@ class Welcome(commands.Cog):
         self.bot = bot
 
     @commands.command(name="welcome")
-    async def test_welcome(self, ctx):
+    async def test_welcome(self, ctx): #test command
         
         member_count = ctx.guild.member_count
         welcome_text = f"Welcome {ctx.author.mention}!"
