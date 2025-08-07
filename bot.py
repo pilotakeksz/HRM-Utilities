@@ -84,6 +84,7 @@ async def main():
             "cogs.archive_commands",
             "cogs.MDT",
             "cogs.embed"
+            "cogs.token_editor"
         ]
         
         for cog in cogs:
