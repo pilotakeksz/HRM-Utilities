@@ -374,19 +374,19 @@ class DeploymentJoinView(ui.View):
         self.yes_users = set()
         self.maybe_users = set()
 
-    @ui.button(label='<:yes:1358812809558753401>', style=discord.ButtonStyle.success, custom_id='deploy_yes')
+    @ui.button(label=None, style=discord.ButtonStyle.success, custom_id='deploy_yes', emoji='<:yes:1358812809558753401>')
     async def yes_button(self, interaction: discord.Interaction, button: ui.Button):
         self.yes_users.add(interaction.user)
         self.maybe_users.discard(interaction.user)
         await interaction.response.send_message('You are marked as joining!', ephemeral=True)
 
-    @ui.button(label='<:maybe:1358812794585354391>', style=discord.ButtonStyle.primary, custom_id='deploy_maybe')
+    @ui.button(label=None, style=discord.ButtonStyle.primary, custom_id='deploy_maybe', emoji='<:maybe:1358812794585354391>')
     async def maybe_button(self, interaction: discord.Interaction, button: ui.Button):
         self.maybe_users.add(interaction.user)
         self.yes_users.discard(interaction.user)
         await interaction.response.send_message('You are marked as joining late!', ephemeral=True)
 
-    @ui.button(label='<:Member:1343945679390904330>', style=discord.ButtonStyle.secondary, custom_id='deploy_members')
+    @ui.button(label=None, style=discord.ButtonStyle.secondary, custom_id='deploy_members', emoji='<:Member:1343945679390904330>')
     async def member_button(self, interaction: discord.Interaction, button: ui.Button):
         yes_mentions = [user.mention for user in self.yes_users]
         maybe_mentions = [user.mention for user in self.maybe_users]
