@@ -74,7 +74,6 @@ async def main():
         await bot.load_extension("cogs.archive_commands")
         await bot.load_extension("cogs.MDT")
         await bot.load_extension("cogs.embed")
-        await bot.load_extension("cogs.training")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
