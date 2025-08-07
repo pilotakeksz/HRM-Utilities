@@ -32,10 +32,6 @@ class Welcome(commands.Cog):
 
     @commands.command(name="welcome")
     async def test_welcome(self, ctx):
-        # Check if the user is the authorized user
-        if ctx.author.id != 840949634071658507:
-            await ctx.send("You don't have permission to use this command.", delete_after=5)
-            return
         
         member_count = ctx.guild.member_count
         welcome_text = f"Welcome {ctx.author.mention}!"
