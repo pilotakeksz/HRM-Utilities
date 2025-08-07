@@ -1,10 +1,11 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import datetime
 import asyncio
+import datetime
 import os
 
+GUILD_ID = 1329908357812981882
 TRAINING_ROLE_ID = 1329910342301515838
 TRAINING_CHANNEL_ID = 1329910558954098701
 TRAINING_PING_ROLE = 1329910324002029599
@@ -29,8 +30,6 @@ class TrainingVoteView(ui.View):
         self.message = message
         self.locked = False
         self.cancelled = False
-        self.training_message_id = None
-        self.training_channel_id = None
 
     @ui.button(label=None, style=discord.ButtonStyle.success, custom_id='training_tick', emoji='<:tick1:1330953719344402584>')
     async def tick_button(self, interaction: discord.Interaction, button: ui.Button):
@@ -140,12 +139,10 @@ class TrainingEndView(ui.View):
         await log_action(self.bot, interaction.user, "Training Vote", "Training cancelled.")
 
 async def log_action(bot, user, action, details):
-    # Local log
     os.makedirs("logs", exist_ok=True)
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{now}] {user} | {action} | {details}\n")
-    # Discord log
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if channel:
         embed = discord.Embed(
@@ -163,9 +160,8 @@ class Training(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="training-vote", description="Start a training session vote.")
-    @app_commands.guilds(discord.Object(id=1329908357812981882))
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def training_vote(self, interaction: discord.Interaction):
-        # Permission check
         if not any(r.id == TRAINING_ROLE_ID for r in getattr(interaction.user, "roles", [])):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
@@ -173,10 +169,8 @@ class Training(commands.Cog):
         if not channel:
             await interaction.response.send_message("Training channel not found.", ephemeral=True)
             return
-        # Calculate timestamps
         now = datetime.datetime.utcnow()
         ten_min = int((now + datetime.timedelta(minutes=10)).timestamp())
-        # Message and embeds
         ping = f"<@&{TRAINING_PING_ROLE}>"
         embed1 = discord.Embed(
             color=TAN,
@@ -204,16 +198,13 @@ class Training(commands.Cog):
         view = TrainingVoteView(interaction.user.id, self.bot)
         msg = await channel.send(content=ping, embeds=[embed1, embed2], view=view)
         view.message = msg
-        view.training_message_id = msg.id
-        view.training_channel_id = channel.id
         await interaction.response.send_message("Training vote started!", ephemeral=True)
         await log_action(self.bot, interaction.user, "Training Vote", "Started training vote.")
-        # Timers
-        await asyncio.sleep(300)  # 5 minutes
+        await asyncio.sleep(300)
         host = interaction.user
         await view.send_voters_dm(host)
         await log_action(self.bot, host, "Training Vote", "Sent 5-min DM to host.")
-        await asyncio.sleep(300)  # 5 more minutes (total 10)
+        await asyncio.sleep(300)
         await view.send_voters_dm(host, extra="10 minutes have passed. Please start or cancel the training.")
         await view.add_end_buttons(self.bot, host, channel)
         await log_action(self.bot, host, "Training Vote", "Sent 10-min DM and end buttons to host.")
