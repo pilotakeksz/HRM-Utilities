@@ -3,6 +3,8 @@ from discord.ext import commands
 import asyncio
 import os
 from dotenv import load_dotenv
+import sys
+import io
 
 load_dotenv(".env")
 load_dotenv(".env.token")
@@ -22,8 +24,27 @@ bot = commands.Bot(
     application_id=APPLICATION_ID
 )
 
+# --- Capture stdout/stderr ---
+startup_output = io.StringIO()
+old_stdout = sys.stdout
+old_stderr = sys.stderr
+sys.stdout = startup_output
+sys.stderr = startup_output
+
 @bot.event
 async def on_ready():
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
+    output = startup_output.getvalue()
+    print(output)
+    try:
+        user = await bot.fetch_user(840949634071658507)
+        if user:
+            # Discord DMs have a 2000 char limit per message
+            for i in range(0, len(output), 1900):
+                await user.send(f"Console output (part {i//1900+1}):\n```\n{output[i:i+1900]}\n```")
+    except Exception as e:
+        print(f"Failed to DM console output: {e}")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="High Rock"))
     if not getattr(bot, "_synced", False):
@@ -53,6 +74,7 @@ async def main():
         await bot.load_extension("cogs.archive_commands")
         await bot.load_extension("cogs.MDT")
         await bot.load_extension("cogs.embed")
+        await bot.load_extension("cogs.training")
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
