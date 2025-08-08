@@ -1,5 +1,5 @@
 .env.token
 data/
-logs/
-#test 
+logs/ 
+#test test test test
 transcripts/
