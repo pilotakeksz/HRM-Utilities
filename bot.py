@@ -50,12 +50,7 @@ async def on_ready():
             for i in range(0, len(output), 1900):
                 await user.send(f"Console output (part {i//1900+1}):\n```\n{output[i:i+1900]}\n```")
     except Exception as e:
-        print(f"Failed to DM console output: {e}")
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="High Rock"))
-    if not getattr(bot, "_synced", False):
-        await bot.tree.sync()
-        bot._synced = True
+     
         print("⏳ Slash commands synced!")
 
 async def load_cog_with_error_handling(cog_name):
