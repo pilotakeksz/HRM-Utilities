@@ -117,7 +117,6 @@ async def main():
             "cogs.archive_commands",
             "cogs.MDT",
             "cogs.embed",
-            "cogs.token_editor",
             "cogs.reviews"
         ]
         
@@ -129,4 +128,4 @@ async def main():
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main()) # eeeeee
