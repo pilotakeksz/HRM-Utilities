@@ -16,7 +16,7 @@ BOTTOM_IMAGE_URL = "https://cdn.discordapp.com/attachments/1376647068092858509/1
 DATA_FOLDER = "data"
 LOG_FOLDER = "logs"
 DB_PATH = os.path.join(DATA_FOLDER, "reviews.db")
-LOG_FILE = os.path.join(LOG_FOLDER, "review_logs.txt")
+LOG_FILE = os.path.join(LOG_FOLDER, "actions.txt")
 
 
 class Review(commands.Cog):
@@ -25,13 +25,7 @@ class Review(commands.Cog):
         os.makedirs(DATA_FOLDER, exist_ok=True)
         os.makedirs(LOG_FOLDER, exist_ok=True)
         self.init_db()
-
-    async def cog_load(self):
-        """Sync commands when the cog loads (guild-only for instant updates)."""
-        guild = discord.Object(id=GUILD_ID)
-        self.bot.tree.copy_global_to(guild=guild)
-        synced = await self.bot.tree.sync(guild=guild)
-        print(f"[Review Cog] Synced {len(synced)} commands to guild {GUILD_ID}")
+        self.synced = False
 
     def init_db(self):
         conn = sqlite3.connect(DB_PATH)
@@ -54,12 +48,19 @@ class Review(commands.Cog):
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         log_entry = f"[{timestamp}] {action}\n"
 
+        # Write to file log
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_entry)
 
+        # Send embed log to Discord log channel (fire and forget)
         log_channel = self.bot.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed = discord.Embed(title="Review System Log", description=action, color=discord.Color.blue(), timestamp=datetime.utcnow())
+            embed = discord.Embed(
+                title="Review System Log",
+                description=action,
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
             self.bot.loop.create_task(log_channel.send(embed=embed))
 
     def get_colour_for_rating(self, rating: int) -> discord.Color:
@@ -75,7 +76,21 @@ class Review(commands.Cog):
     def rating_to_stars(self, rating: int) -> str:
         return "⭐" * rating + "☆" * (5 - rating)
 
+    async def cog_load(self):
+        # We do not sync here to avoid _MissingSentinel error
+        pass
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self.synced:
+            guild = discord.Object(id=GUILD_ID)
+            self.bot.tree.copy_global_to(guild=guild)
+            await self.bot.tree.sync(guild=guild)
+            print(f"[Review Cog] Slash commands synced to guild {GUILD_ID}")
+            self.synced = True
+
     @app_commands.command(name="review", description="Leave a review for someone with the allowed role.")
+    @app_commands.describe(member="Member to review", rating="Rating from 1 to 5 stars", reason="Reason for the review")
     async def review(self, interaction: discord.Interaction, member: discord.Member, rating: int, reason: str):
         if not interaction.guild:
             return await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
@@ -105,8 +120,10 @@ class Review(commands.Cog):
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("INSERT INTO reviews (target_id, reviewer_id, rating, reason, message_id, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                  (member.id, interaction.user.id, rating, reason, msg.id, datetime.utcnow().isoformat()))
+        c.execute(
+            "INSERT INTO reviews (target_id, reviewer_id, rating, reason, message_id, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+            (member.id, interaction.user.id, rating, reason, msg.id, datetime.utcnow().isoformat())
+        )
         conn.commit()
         conn.close()
 
@@ -114,13 +131,17 @@ class Review(commands.Cog):
         await interaction.response.send_message("✅ Review submitted!", ephemeral=True)
 
     @app_commands.command(name="reviews-list", description="List all reviews for a member (admin only).")
+    @app_commands.describe(member="Member whose reviews you want to see")
     async def reviews_list(self, interaction: discord.Interaction, member: discord.Member):
         if not interaction.guild or not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             return await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT id, reviewer_id, rating, reason, message_id, timestamp FROM reviews WHERE target_id = ?", (member.id,))
+        c.execute(
+            "SELECT id, reviewer_id, rating, reason, message_id, timestamp FROM reviews WHERE target_id = ? ORDER BY timestamp DESC",
+            (member.id,)
+        )
         rows = c.fetchall()
         conn.close()
 
@@ -140,6 +161,7 @@ class Review(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="delete-review", description="Delete a review by ID (admin only).")
+    @app_commands.describe(review_id="ID of the review to delete")
     async def delete_review(self, interaction: discord.Interaction, review_id: int):
         if not interaction.guild or not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             return await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
