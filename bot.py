@@ -128,8 +128,7 @@ async def main():
             "cogs.blacklist",
             "cogs.archive_commands",
             "cogs.MDT",
-            "cogs.embed",
-            "cogs.reviews"
+            "cogs.embed"
         ]
         
         for cog in cogs:
