@@ -3,3 +3,4 @@ data/
 logs/ 
 #test test
 transcripts/
+.env
