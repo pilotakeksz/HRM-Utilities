@@ -12,7 +12,7 @@ DB_PATH = os.path.join(DATA_DIR, "reviews.db")
 LOG_PATH = os.path.join(LOG_DIR, "review_actions.txt")
 
 REVIEW_CHANNEL_ID = 1329910477404242083  # Reviews channel
-REVIEWER_ROLE_ID = 1329910329701830686   # Role required to review (anyone with this can review)
+REVIEWER_ROLE_ID = 1329910391840702515   # Role required to review (anyone with this can review)
 ADMIN_ROLE_ID = 1355842403134603275      # Role required to delete reviews
 
 REVIEW_LOG_CHANNEL_ID = 1343686645815181382  # Action logs channel
