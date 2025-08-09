@@ -242,3 +242,4 @@ class Reviews(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Reviews(bot))
+# test tes e
