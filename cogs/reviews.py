@@ -5,11 +5,12 @@ from datetime import datetime
 import sqlite3
 import os
 
-# Constants
+# === CONFIG ===
 ALLOWED_ROLE_ID = 1329910329701830686
 ADMIN_ROLE_ID = 1355842403134603275
 REVIEW_CHANNEL_ID = 1329910477404242083
 LOG_CHANNEL_ID = 1343686645815181382
+GUILD_ID = 1329908357812981882  # Your server ID for instant sync
 BOTTOM_IMAGE_URL = "https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68980791&is=6896b611&hm=2254fc59f1199d20999cd7f212ade2cc77091ee7078d5054312897c78b0148e0&"
 
 DATA_FOLDER = "data"
@@ -25,8 +26,14 @@ class Review(commands.Cog):
         os.makedirs(LOG_FOLDER, exist_ok=True)
         self.init_db()
 
+    async def cog_load(self):
+        """Sync commands when the cog loads (guild-only for instant updates)."""
+        guild = discord.Object(id=GUILD_ID)
+        self.bot.tree.copy_global_to(guild=guild)
+        synced = await self.bot.tree.sync(guild=guild)
+        print(f"[Review Cog] Synced {len(synced)} commands to guild {GUILD_ID}")
+
     def init_db(self):
-        """Initialize the SQLite database."""
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("""
@@ -44,19 +51,16 @@ class Review(commands.Cog):
         conn.close()
 
     def log_action(self, action: str):
-        """Log an action to file and Discord."""
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         log_entry = f"[{timestamp}] {action}\n"
 
-        # Write to file
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_entry)
 
-        # Send to Discord log channel
         log_channel = self.bot.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(title="Review System Log", description=action, color=discord.Color.blue(), timestamp=datetime.utcnow())
-            log_channel.send(embed=embed)
+            self.bot.loop.create_task(log_channel.send(embed=embed))
 
     def get_colour_for_rating(self, rating: int) -> discord.Color:
         if rating <= 2:
@@ -73,6 +77,8 @@ class Review(commands.Cog):
 
     @app_commands.command(name="review", description="Leave a review for someone with the allowed role.")
     async def review(self, interaction: discord.Interaction, member: discord.Member, rating: int, reason: str):
+        if not interaction.guild:
+            return await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         if not any(role.id == ALLOWED_ROLE_ID for role in member.roles):
             return await interaction.response.send_message("That user cannot be reviewed.", ephemeral=True)
         if not (1 <= rating <= 5):
@@ -97,7 +103,6 @@ class Review(commands.Cog):
 
         msg = await review_channel.send(embed=embed)
 
-        # Store in DB
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("INSERT INTO reviews (target_id, reviewer_id, rating, reason, message_id, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
@@ -106,12 +111,11 @@ class Review(commands.Cog):
         conn.close()
 
         self.log_action(f"{interaction.user} reviewed {member} ({rating} stars) - Reason: {reason}")
-
         await interaction.response.send_message("✅ Review submitted!", ephemeral=True)
 
     @app_commands.command(name="reviews-list", description="List all reviews for a member (admin only).")
     async def reviews_list(self, interaction: discord.Interaction, member: discord.Member):
-        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+        if not interaction.guild or not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             return await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
 
         conn = sqlite3.connect(DB_PATH)
@@ -137,7 +141,7 @@ class Review(commands.Cog):
 
     @app_commands.command(name="delete-review", description="Delete a review by ID (admin only).")
     async def delete_review(self, interaction: discord.Interaction, review_id: int):
-        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+        if not interaction.guild or not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             return await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
 
         conn = sqlite3.connect(DB_PATH)
@@ -149,8 +153,6 @@ class Review(commands.Cog):
             return await interaction.response.send_message("No review found with that ID.", ephemeral=True)
 
         message_id, target_id, reviewer_id, rating, reason = row
-
-        # Delete message from channel
         review_channel = self.bot.get_channel(REVIEW_CHANNEL_ID)
         if review_channel:
             try:
@@ -159,13 +161,11 @@ class Review(commands.Cog):
             except discord.NotFound:
                 pass
 
-        # Remove from DB
         c.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
         conn.commit()
         conn.close()
 
         self.log_action(f"{interaction.user} deleted review ID {review_id} (Target: {target_id}, Reviewer: {reviewer_id}, Rating: {rating}, Reason: {reason})")
-
         await interaction.response.send_message("✅ Review deleted.", ephemeral=True)
 
 
