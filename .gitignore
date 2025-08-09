@@ -1,7 +1,7 @@
 .env.token
 data/
 logs/ 
-#test te
+#test test e
 transcripts/
 .env
 suggestion_message_map.pkl
