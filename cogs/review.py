@@ -121,7 +121,7 @@ class Reviews(commands.Cog):
             return
 
         review_channel = self.bot.get_channel(REVIEW_CHANNEL_ID)
-        if not review_channel:
+        if not review_channel: #TEST
             await interaction.followup.send("❌ Review channel not found.", ephemeral=True)
             return
 
