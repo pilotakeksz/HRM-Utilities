@@ -89,8 +89,9 @@ async def main():
             "cogs.blacklist",
             "cogs.archive_commands",
             "cogs.MDT", #test
-            "cogs.embed",        # <-- addetedd comma here
-            "cogs.token_editor"
+            "cogs.embed",
+            "cogs.token_editor",
+            "cogs.reviews"
         ]
         
         for cog in cogs:
