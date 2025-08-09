@@ -8,20 +8,32 @@ import io
 import base64  # <-- built-in module, no install needed
 import traceback
 
+# Load environment variables from multiple files (if needed)
 load_dotenv(".env")
+load_dotenv(".env.token")
 
+# Load and validate application ID
 APPLICATION_ID = os.getenv("APPLICATION_ID")
 if not APPLICATION_ID:
     print("❌ ERROR: APPLICATION_ID not set in environment variables")
 else:
-    APPLICATION_ID = int(APPLICATION_ID)
+    try:
+        APPLICATION_ID = int(APPLICATION_ID)
+    except ValueError:
+        raise ValueError("APPLICATION_ID must be an integer")
 
+# Load the base64-encoded Discord bot token and decode it
 encoded_token = os.getenv("DISCORD_BOT_TOKEN_BASE64")
 if not encoded_token:
     raise ValueError("No DISCORD_BOT_TOKEN_BASE64 found in environment variables")
 
-# Decode the base64-encoded token
-TOKEN = base64.b64decode(encoded_token).decode()
+try:
+    TOKEN = base64.b64decode(encoded_token).decode("utf-8")
+except Exception as e:
+    raise ValueError(f"Failed to decode DISCORD_BOT_TOKEN_BASE64: {e}")
+
+# Now you can use TOKEN to run your bot
+# bot.run(TOKEN)
 
 intents = discord.Intents.default()
 intents.members = True
