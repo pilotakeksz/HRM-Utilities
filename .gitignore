@@ -4,3 +4,5 @@ logs/
 #test test
 transcripts/
 .env
+suggestion_message_map.pkl
+suggestion_votes.pkl
