@@ -91,7 +91,7 @@ class TicketTypeSelect(Select):
         options = [
             discord.SelectOption(label="General Support", value="general", emoji="<:MCNG:1409463907294384169>"),
             discord.SelectOption(label="Management", value="management", emoji="<:HC:1343192841676914712>"),
-            discord.SelectOption(label="MIA", value="mia", emoji="<:MIA:1364309116859715654>"),
+            discord.SelectOption(label="Appeal", value="appeal", emoji="📝"),
         ]
         super().__init__(
             placeholder="Select ticket type...",
@@ -102,8 +102,8 @@ class TicketTypeSelect(Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        if self.values[0] == "mia":
-            await interaction.response.send_message(f"Please head to our MIA server for appeals and reports: {MIA_REDIRECT}", ephemeral=True)
+        if self.values[0] == "appeal":
+            await interaction.response.send_modal(AppealTicketModal())
             return
         elif self.values[0] == "management":
             await interaction.response.send_modal(ManagementTicketModal())
@@ -133,6 +133,15 @@ class GeneralTicketModal(Modal, title="General Support Ticket"):
             f"Your ticket has been created: {channel.mention}", ephemeral=True
         )
 
+class AppealTicketModal(Modal, title="Appeal Ticket"):
+    request = TextInput(label="Appeal Details", style=discord.TextStyle.paragraph, required=True, max_length=1024)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = await create_ticket(interaction, "appeal", self.request.value)
+        await interaction.response.send_message(
+            f"Your appeal ticket has been created: {channel.mention}", ephemeral=True
+        )
+
 async def create_ticket(interaction, ticket_type, request_content):
     guild = interaction.guild
     user = interaction.user
@@ -144,6 +153,10 @@ async def create_ticket(interaction, ticket_type, request_content):
     if ticket_type == "management":
         category_id = CATEGORY_MANAGEMENT
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+    elif ticket_type == "appeal":
+        category_id = CATEGORY_APPEAL
+        overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+        overwrites[guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
     else:
         category_id = CATEGORY_GENERAL
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
@@ -359,12 +372,12 @@ async def ensure_persistent_ticket_embed(bot):
     embed1 = discord.Embed(color=EMBED_COLOUR)
     embed1.set_image(url=EMBED1_IMAGE)
     embed2 = discord.Embed(
-        title="📡 HRMC Assistance Hub",
+        title="📡 MCNG Assistance Hub",
         description="Welcome to the Maplecliff National Guard Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
         color=EMBED_COLOUR
     )
     embed2.add_field(
-        name=" General Support",
+        name="General Support",
         value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
         inline=True
     )
@@ -374,8 +387,8 @@ async def ensure_persistent_ticket_embed(bot):
         inline=True
     )
     embed2.add_field(
-        name="<:MIA:1364309116859715654> MIA",
-        value="Appeals, and reports are now handled by MIA. Please head over there for such concerns.",
+        name="📝 Appeal",
+        value="Need to appeal or report something? Open an appeal ticket here.",
         inline=True
     )
     embed2.set_image(url=EMBED2_IMAGE)
@@ -443,7 +456,7 @@ class TicketSystem(commands.Cog):
         embed1.set_image(url=EMBED1_IMAGE)
 
         embed2 = discord.Embed(
-            title="📡 HRMC Assistance Hub",
+            title="📡 MCNG Assistance Hub",
             description="Welcome to the Maplecliff National Guard Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
             color=EMBED_COLOUR
         )
@@ -457,11 +470,7 @@ class TicketSystem(commands.Cog):
             value="Interested in speaking to a JCO+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
             inline=True
         )
-        embed2.add_field(
-            name="<:MIA:1364309116859715654> MIA",
-            value="Appeals, and reports are now handled by MIA. Please head over there for such concerns.",
-            inline=True
-        )
+        
         embed2.set_image(url=EMBED2_IMAGE)
         embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
