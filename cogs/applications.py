@@ -10,7 +10,7 @@ EMBED_COLOUR = int(os.getenv("EMBED_COLOUR", "0xd0b47b"), 16)
 TRAINER_PING_ROLE_ID = 1329910397544960164
 
 FOOTER_TEXT = "Maplecliff National Guard"
-FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
+FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&"
 
 LOGS_DIR = "logs"

@@ -24,7 +24,7 @@ EMBED_COLOUR = 0xd0b47b
 EMBED1_IMAGE = "https://media.discordapp.net/attachments/1409252771978280973/1409314343178207322/CALLSIGNS.png?ex=68acedc3&is=68ab9c43&hm=91d3756a48e0ac2cb895b757f5b54762e3ace2c382e1f9375709aa7ef267b7f6&=&format=webp&quality=lossless&width=2576&height=862"
 EMBED2_IMAGE = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&"
 EMBED_FOOTER = "High Rock Military Corps"
-EMBED_ICON = "https://cdn.discordapp.com/attachments/1376647403712675991/1376652854391083269/image-141.png?ex=68604b61&is=685ef9e1&hm=bb374c9e0b2f4e1b20ac6f2566d20e4506d35c8733d3012bfb5f0a88c1a12946&"
+EMBED_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 
 LOG_CHANNEL_ID = 1343686645815181382
 COMMAND_ROLE = 774973267089293323

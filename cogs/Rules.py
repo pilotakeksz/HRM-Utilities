@@ -7,7 +7,7 @@ EMBED_COLOR = 0xd0b37b
 REGS_CHANNEL_ID = 1364242592887209984
 OWNER_ID = 840949634071658507
 
-FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
+FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 FOOTER_TEXT = "Maplecliff National Guard"
 
 class RegulationsSelect(Select):
