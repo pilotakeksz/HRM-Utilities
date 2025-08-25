@@ -55,7 +55,7 @@ class Welcome(commands.Cog):
             value="- [Apply here](https://discord.com/channels/1329908357812981882/1329910467698622494)",
             inline=True
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         await ctx.send(content=welcome_text, embed=embed, view=WelcomeView(member_count))
@@ -85,7 +85,7 @@ class Welcome(commands.Cog):
             value="- [Apply here](https://discord.com/channels/1329908357812981882/1329910467698622494)",
             inline=True
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         channel = member.guild.get_channel(WELCOME_CHANNEL_ID) or member.guild.system_channel
