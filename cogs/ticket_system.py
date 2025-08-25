@@ -7,7 +7,6 @@ import asyncio
 import datetime
 import logging
 
-# Load from environment
 CIVILIAN_ROLE = int(os.getenv("CIVILIAN_ROLE"))
 MC_ROLE = int(os.getenv("MC_ROLE"))
 HC_ROLE = int(os.getenv("HC_ROLE"))
@@ -19,8 +18,8 @@ CATEGORY_ARCHIVED = int(os.getenv("CATEGORY_ARCHIVED"))
 CHANNEL_TICKET_LOGS = int(os.getenv("CHANNEL_TICKET_LOGS"))
 CHANNEL_ASSISTANCE = int(os.getenv("CHANNEL_ASSISTANCE"))
 EMBED_COLOUR = int(os.getenv("EMBED_COLOUR"), 16)
-EMBED_FOOTER = os.getenv("EMBED_FOOTER")
-EMBED_ICON = os.getenv("EMBED_ICON")
+EMBED_FOOTER = "Maplecliff National Guard"
+EMBED_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 EMBED1_IMAGE = os.getenv("EMBED1_IMAGE")
 EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
 MIA_REDIRECT = os.getenv("MIA_REDIRECT")
@@ -90,7 +89,7 @@ async def send_transcript_and_logs(channel, opener, guild):
 class TicketTypeSelect(Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="General Support", value="general", emoji="<:HighRockMilitary:1376605942765977800>"),
+            discord.SelectOption(label="General Support", value="general", emoji="<:MCNG:1409463907294384169>"),
             discord.SelectOption(label="Management", value="management", emoji="<:HC:1343192841676914712>"),
             discord.SelectOption(label="MIA", value="mia", emoji="<:MIA:1364309116859715654>"),
         ]
@@ -361,7 +360,7 @@ async def ensure_persistent_ticket_embed(bot):
     embed1.set_image(url=EMBED1_IMAGE)
     embed2 = discord.Embed(
         title="📡 HRMC Assistance Hub",
-        description="Welcome to the High Rock Military Corps Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
+        description="Welcome to the Maplecliff National Guard Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
         color=EMBED_COLOUR
     )
     embed2.add_field(
@@ -371,7 +370,7 @@ async def ensure_persistent_ticket_embed(bot):
     )
     embed2.add_field(
         name="<:HC:1343192841676914712> Management",
-        value="Interested in speaking to a HC+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
+        value="Interested in speaking to a JCO+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
         inline=True
     )
     embed2.add_field(
@@ -445,17 +444,17 @@ class TicketSystem(commands.Cog):
 
         embed2 = discord.Embed(
             title="📡 HRMC Assistance Hub",
-            description="Welcome to the High Rock Military Corps Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
+            description="Welcome to the Maplecliff National Guard Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
             color=EMBED_COLOUR
         )
         embed2.add_field(
-            name="<:HighRockMilitary:1376605942765977800> General Support",
+            name="<:MCNG:1409463907294384169> General Support",
             value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
             inline=True
         )
         embed2.add_field(
             name="<:HC:1343192841676914712> Management",
-            value="Interested in speaking to a HC+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
+            value="Interested in speaking to a JCO+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
             inline=True
         )
         embed2.add_field(
