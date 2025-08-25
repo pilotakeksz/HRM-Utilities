@@ -472,7 +472,7 @@ class TicketSystem(commands.Cog):
             color=EMBED_COLOUR
         )
         embed2.add_field(
-            name="<:MCNG:1409463907294384169> General Support",
+            name="General Support",
             value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
             inline=True
         )
