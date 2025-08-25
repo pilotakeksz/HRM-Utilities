@@ -14,7 +14,7 @@ load_dotenv(".env")
 load_dotenv(".env.token")
 
 # Load and validate application ID
-APPLICATION_ID = 1384323761498488972 #os.getenv("APPLICATION_ID")
+APPLICATION_ID = os.getenv("APPLICATION_ID")
 if not APPLICATION_ID:
     print("❌ ERROR: APPLICATION_ID not set in environment variables")
 else:
