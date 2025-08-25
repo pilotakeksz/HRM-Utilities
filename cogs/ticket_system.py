@@ -399,7 +399,7 @@ async def ensure_persistent_ticket_embed(bot):
     )
     embed2.add_field(
         name="📝 Appeal",
-        value="Need to appeal or report something? Open an appeal ticket here.",
+        value="Want to appeal a punishment or report an unfair action? Open an appeal ticket and our team will review your case.",
         inline=True
     )
     embed2.set_image(url=EMBED2_IMAGE)
