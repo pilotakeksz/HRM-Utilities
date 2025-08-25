@@ -3,8 +3,8 @@ from discord.ext import commands
 import os
 
 EMBED_COLOR = 0xd0b47b
-FOOTER_TEXT = "High Rock Military Corps."
-FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
+FOOTER_TEXT = "Maplecliff National Guard"
+FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 
 VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 
@@ -30,7 +30,7 @@ class Verification(commands.Cog):
         embed2 = discord.Embed(
             title="<:HRMaboutus:1376647782248742993> HRMC Verification",
             description=(
-                "Here at *High Rock Military Corps*, we__ ensure the safety of our community members__ "
+                "Here at *Maplecliff National Guard*, we__ ensure the safety of our community members__ "
                 "by enforcing strict discord verification, you must verify to gain access to the rest "
                 "of our server and to be able to apply."
             ),
