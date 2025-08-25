@@ -388,7 +388,7 @@ async def ensure_persistent_ticket_embed(bot):
         color=EMBED_COLOUR
     )
     embed2.add_field(
-        name="General Support",
+        name="<:MCNG:1409463907294384169> General Support",
         value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
         inline=True
     )
