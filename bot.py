@@ -7,6 +7,7 @@ import sys
 import io
 import base64 
 import traceback
+from aiohttp import web
 
 # Load environment variables from multiple files (if needed)
 load_dotenv(".env")
@@ -32,9 +33,7 @@ try:
 except Exception as e:
     raise ValueError(f"Failed to decode DISCORD_BOT_TOKEN_BASE64: {e}")
 
-# Now you can use TOKEN to run your bot
-# bot.run(TOKEN)
-
+# --- Discord Bot Setup ---
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
@@ -98,6 +97,7 @@ async def on_ready():
             print(f"❌ Failed to sync commands: {e}")
             traceback.print_exc()
 
+# --- Cog Loader ---
 async def load_cog_with_error_handling(cog_name):
     try:
         await bot.load_extension(cog_name)
@@ -106,8 +106,28 @@ async def load_cog_with_error_handling(cog_name):
         print(f"❌ Failed to load {cog_name}: {e}")
         traceback.print_exc()
 
+# --- HTTP Server ---
+async def start_webserver():
+    # Path to "./HTTP" relative to this Python file
+    http_dir = os.path.join(os.path.dirname(__file__), "HTTP")
+    os.makedirs(http_dir, exist_ok=True)
+
+    app = web.Application()
+    app.router.add_static("/", http_dir, show_index=True)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print(f"HTTP server serving {http_dir} at http://0.0.0.0:8080")
+
+# --- Main Entry ---
 async def main():
     async with bot:
+        # Start HTTP server
+        await start_webserver()
+
+        # Load cogs
         cogs = [
             "cogs.welcome",
             "cogs.verification", 
@@ -140,4 +160,4 @@ async def main():
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
-    asyncio.run(main()) # eeeeee
+    asyncio.run(main())
