@@ -14,6 +14,7 @@ TICKET_HANDLER_ROLE = int(os.getenv("TICKET_HANDLER_ROLE"))
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 CATEGORY_GENERAL = int(os.getenv("CATEGORY_GENERAL"))
 CATEGORY_MANAGEMENT = int(os.getenv("CATEGORY_MANAGEMENT"))
+CATEGORY_APPEAL = int(os.getenv("CATEGORY_APPEAL"))
 CATEGORY_ARCHIVED = int(os.getenv("CATEGORY_ARCHIVED"))
 CHANNEL_TICKET_LOGS = int(os.getenv("CHANNEL_TICKET_LOGS"))
 CHANNEL_ASSISTANCE = int(os.getenv("CHANNEL_ASSISTANCE"))
@@ -161,10 +162,20 @@ async def create_ticket(interaction, ticket_type, request_content):
         category_id = CATEGORY_GENERAL
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
         overwrites[guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+
+    # --- FIX: Ensure category exists ---
+    category = guild.get_channel(category_id)
+    if not category or not isinstance(category, discord.CategoryChannel):
+        await interaction.response.send_message(
+            "Ticket category not found or is not a category channel. Please contact an administrator.",
+            ephemeral=True
+        )
+        return None
+
     # Store opener ID in topic for accurate transcript delivery
     channel = await guild.create_text_channel(
         ticket_name,
-        category=guild.get_channel(category_id),
+        category=category,
         overwrites=overwrites,
         reason=f"Ticket opened by {user}",
         topic=f"Ticket opener: {user.id}"
