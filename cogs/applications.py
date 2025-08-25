@@ -4,12 +4,12 @@ from discord.ext import commands
 from discord import app_commands
 from discord.ui import View, Button
 
-APPLICATIONS_ROLE_ID = 1329910397544960164
+APPLICATIONS_ROLE_ID = 1355842403134603275
 APPLICATIONS_CHANNEL_ID = int(os.getenv("APPLICATIONS_CHANNEL_ID", 1329910454059008101))
 EMBED_COLOUR = int(os.getenv("EMBED_COLOUR", "0xd0b47b"), 16)
 TRAINER_PING_ROLE_ID = 1329910397544960164
 
-FOOTER_TEXT = "High Rock Military Corps"
+FOOTER_TEXT = "Maplecliff National Guard"
 FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
 BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&"
 
@@ -87,7 +87,7 @@ class Applications(commands.Cog):
         # Embed 2 (main info)
         embed2 = discord.Embed(
             description=(
-                "Welcome to the High Rock Military Application Hub! Bellow you will find the application, and more info on the Military Personnel position you may apply for here at HRM. We wish you the best of luck, and hope to see you on our team!\n\n"
+                "Welcome to the Maplecliff National Guard Application Hub! Bellow you will find the application, and more info on the Military Personnel position you may apply for here at HRM. We wish you the best of luck, and hope to see you on our team!\n\n"
                 "**Do you have a “blacklisted” role? Run `/verify` with <@426537812993638400> !**\n\n"
                 "-# Bare in mind that any use of AI will result in a blacklist."
             ),
