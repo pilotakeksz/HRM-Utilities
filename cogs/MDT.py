@@ -166,7 +166,7 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
             )
         )
         embed.set_thumbnail(url=avatar_url)
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed.set_footer(text=f"ID: {arrest_id}")
 
         # Log to file
@@ -217,13 +217,13 @@ class MDTView(ui.View):
         can_end = state["active"]
         # Build deployment management embed
         embed1 = discord.Embed(color=TAN)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
             title="<:HighRockMilitary:1376605942765977800> // Deployment Management",
             description="Manage deployments below.",
             color=TAN
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         view = DeploymentView(self.bot, can_start, can_move, can_end)
         await interaction.response.edit_message(embeds=[embed1, embed2], view=view)
         log_action(interaction.user, "Deployment Management", "Opened deployment management")
@@ -281,13 +281,13 @@ class DeploymentView(ui.View):
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
         ping = "<@&1329910276912447608>"
         embed1 = discord.Embed(color=RED)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
             title="<:HighRockMilitary:1376605942765977800> // Deployment Ended",
             description="**The most recent deployment has ended.**",
             color=RED
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed2.set_footer(text=f"Ended by {interaction.user}")
         await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment ended.", ephemeral=True)
@@ -321,7 +321,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
         ping = "<@&1329910394831114281>"
         embed1 = discord.Embed(color=TAN)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
             title="<:HighRockMilitary:1376605942765977800> // Deployment",
             description=f"{interaction.user.mention} has **started a deployment.**\n\n"
@@ -331,7 +331,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
                         f"> - Notes: **{self.notes.value or 'None'}**",
             color=TAN
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         await channel.send(content=ping, embeds=[embed1, embed2], view=DeploymentJoinView())
         await interaction.response.send_message("Deployment started.", ephemeral=True)
         log_action(interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
@@ -356,13 +356,13 @@ class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
         ping = "<@&1329910276912447608>"
         embed1 = discord.Embed(color=YELLOW)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390785009060941824/deploy.png?ex=686984f9&is=68683379&hm=abb319336b914ebee211f33de65e918135ab8cac34a238a69a842530033a46d2&")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
             title="<:HighRockMilitary:1376605942765977800> // Deployment Location Change",
             description=f"> - Location: **{self.location.value}**\n> - Notes: **{self.notes.value or 'None'}**",
             color=YELLOW
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment location updated.", ephemeral=True)
         log_action(interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
@@ -403,13 +403,13 @@ class MDT(commands.Cog):
     async def mdt_slash(self, interaction: discord.Interaction):
         # Embed 1: just image
         embed1 = discord.Embed(color=TAN)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1390783319997939863/MDT.png?ex=68698366&is=686831e6&hm=14150316b5ba33309f0a4a872497146d6da5623c2ebae685c9a297160ba14a69&")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314345267105812/MDT.png?ex=68acedc3&is=68ab9c43&hm=034e65555a01653c020d1fb830abe7982ce495b4a2754621dcb8ad02e2617145&=&format=webp&quality=lossless&width=2576&height=862")
         # Embed 2: main interface
         embed2 = discord.Embed(
             title="<:HighRockMilitary:1376605942765977800> // Mobile Data Terminal",
             color=TAN
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=68693a51&is=6867e8d1&hm=810fff6755830cf2e5c1e72fb8de22632cc1bd9d13698c87c606cf3abb31456b&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed2.add_field(name="Log arrest", value="Log an arrest in the system.", inline=True)
         embed2.add_field(name="Deployment Management", value="Manage deployments and locations.", inline=True)
         await interaction.response.send_message(embeds=[embed1, embed2], view=MDTView(self.bot), ephemeral=True)

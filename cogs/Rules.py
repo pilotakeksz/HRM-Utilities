@@ -8,7 +8,7 @@ REGS_CHANNEL_ID = 1364242592887209984
 OWNER_ID = 840949634071658507
 
 FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
-FOOTER_TEXT = "High Rock Military Corps"
+FOOTER_TEXT = "Maplecliff National Guard"
 
 class RegulationsSelect(Select):
     def __init__(self):
@@ -96,11 +96,11 @@ class Rules(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934059812323439/regulations.png?ex=685d5cc6&is=685c0b46&hm=72203a9ec2f0e85bf1f7d679ae36b145228cdde2630fd0434cf6c3cd491fa228&=&format=webp&quality=lossless&width=1174&height=391")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314376019738664/REGULATIONS.png?ex=68acedcb&is=68ab9c4b&hm=9c0653b7ca7421ec9ff37a6c3f37a86784a44b20e2a6a417d7b5d07772b69272&=&format=webp&quality=lossless&width=2576&height=862")
 
         embed2 = discord.Embed(
-            title="<:HRMaboutus:1376647782248742993> HRMC Regulations",
-            description="<:HRMdot:1376648507859144765>Here at *High Rock Military Corps,* we __ensure the safety of our community members__ by enforcing strict discord regulations to keep members safe from harmful users. Not adhering to the rules posted can result in a warning, kick, or ban based on the rule violated.",
+            title="<:HRMaboutus:1376647782248742993> MCNG Regulations",
+            description="<:HRMdot:1376648507859144765>Here at *Maplecliff National Guard,* we __ensure the safety of our community members__ by enforcing strict discord regulations to keep members safe from harmful users. Not adhering to the rules posted can result in a warning, kick, or ban based on the rule violated.",
             color=EMBED_COLOR
         )
         embed2.add_field(
@@ -113,7 +113,7 @@ class Rules(commands.Cog):
             value="<:HRMdot:1376648507859144765> Discord Regulations\n<:HRMdot:1376648507859144765> In-game Regulations",
             inline=True
         )
-        embed2.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=685d5cd1&is=685c0b51&hm=0566c14b0d954d69f196e494335df276efa559439b55c9f7eac98e59cec0b259&format=webp&quality=lossless&width=1163&height=60&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         view = RegulationsView()
@@ -140,11 +140,11 @@ class Rules(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934059812323439/regulations.png?ex=685d5cc6&is=685c0b46&hm=72203a9ec2f0e85bf1f7d679ae36b145228cdde2630fd0434cf6c3cd491fa228&=&format=webp&quality=lossless&width=1174&height=391")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314376019738664/REGULATIONS.png?ex=68acedcb&is=68ab9c4b&hm=9c0653b7ca7421ec9ff37a6c3f37a86784a44b20e2a6a417d7b5d07772b69272&=&format=webp&quality=lossless&width=2576&height=862")
 
         embed2 = discord.Embed(
-            title="<:HRMaboutus:1376647782248742993> HRMC Regulations",
-            description="<:HRMdot:1376648507859144765>Here at *High Rock Military Corps,* we __ensure the safety of our community members__ by enforcing strict discord regulations to keep members safe from harmful users. Not adhering to the rules posted can result in a warning, kick, or ban based on the rule violated.",
+            title="<:HRMaboutus:1376647782248742993> MCNG Regulations",
+            description="<:HRMdot:1376648507859144765>Here at *Maplecliff National Guard,* we __ensure the safety of our community members__ by enforcing strict discord regulations to keep members safe from harmful users. Not adhering to the rules posted can result in a warning, kick, or ban based on the rule violated.",
             color=EMBED_COLOR
         )
         embed2.add_field(
@@ -157,7 +157,7 @@ class Rules(commands.Cog):
             value="<:HRMdot:1376648507859144765> Discord Regulations\n<:HRMdot:1376648507859144765> In-game Regulations",
             inline=True
         )
-        embed2.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=685d5cd1&is=685c0b51&hm=0566c14b0d954d69f196e494335df276efa559439b55c9f7eac98e59cec0b259&format=webp&quality=lossless&width=1163&height=60&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         view = RegulationsView()

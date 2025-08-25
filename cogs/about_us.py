@@ -7,7 +7,7 @@ ABOUT_US_CHANNEL_ID = 1329910454059008101
 OWNER_ID = 840949634071658507
 
 FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
-FOOTER_TEXT = "High Rock Military Corps"
+FOOTER_TEXT = "Maplecliff National Guard"
 
 class RankInfoSelect(discord.ui.Select):
     def __init__(self):
@@ -130,19 +130,19 @@ class AboutUs(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376933929264742500/about_us.png?ex=685d5ca6&is=685c0b26&hm=04b552a8d85bb04427b330898d4e020a05b7aab029425abd828fcac7e4555e52&format=webp&quality=lossless&width=1630&height=544&")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409314341374656582/ABOUT_US.png?ex=68acedc2&is=68ab9c42&hm=71c262ec46a70395b61bfdf9a44bd51a29058e3399626e021d97a5da4d742721&")
 
         embed2 = discord.Embed(
             title="<:HRMaboutus:1376647782248742993> About Us",
-            description="Welcome to the **High Rock Military Corps!** Our mission is to ensure security, conduct strategic operations, and provide rapid emergency response, protect High Rock's border, and assist the police force.",
+            description="Welcome to the **Maplecliff National Guard!** Our mission is to ensure security, conduct strategic operations, and provide rapid emergency response, protect Maplecliff's borders, and assist the police force.",
             color=EMBED_COLOR
         )
         embed2.add_field(
             name="<:HRMlink:1376648059525791784> Useful Links",
             value=(
                 "> [Server shouts](https://discord.com/channels/1329908357812981882/1329910463307448322)\n"
-                "> [HRMC Application](https://discord.com/channels/1329908357812981882/1329910467698622494)\n"
-                "> [HRMC Internal Affairs](https://discord.gg/CbwwbHgPUr)\n"
+                "> [MCNG Application](https://discord.com/channels/1329908357812981882/1329910467698622494)\n"
+                "> [MCNG Internal Affairs](https://discord.gg/CbwwbHgPUr)\n"
                 "> [Assistance](https://discord.com/channels/1329908357812981882/1329910457409994772)"
             ),
             inline=True
@@ -158,7 +158,7 @@ class AboutUs(commands.Cog):
             inline=True
         )
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
-        embed2.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934109665824828/bottom.png?ex=685d5cd1&is=685c0b51&hm=0566c14b0d954d69f196e494335df276efa559439b55c9f7eac98e59cec0b259&format=webp&quality=lossless&width=1163&height=60&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
 
         view = RankInfoView()
         await channel.send(embed=embed1)
@@ -166,9 +166,5 @@ class AboutUs(commands.Cog):
         await ctx.send("About Us sent.", delete_after=10)
 
 async def setup(bot: commands.Bot):
-    bot.add_view(RankInfoView())  # Register persistent view for rank info select
+    bot.add_view(RankInfoView()) 
     await bot.add_cog(AboutUs(bot))
-
-# To enable persistent views, add this to your main bot.py after creating the bot:
-# from cogs.about_us import RankInfoView
-# bot.add_view(RankInfoView())

@@ -15,7 +15,7 @@ BLACKLIST_LOG_CHANNEL_ID = 1343686645815181382  # Use your logging channel ID he
 BLACKLIST_ROLE_ID = 1355842403134603275
 BLACKLISTED_ROLE_ID = 1329910361347854388
 
-EMOJI_HRMC = "<:HighRockMilitary:1376605942765977800>"
+EMOJI_MCNG = "<:HighRockMilitary:1376605942765977800>"
 EMOJI_MEMBER = "<:Member:1343945679390904330>"
 EMOJI_REASON = "<:regulations:1343313357121392733>"
 EMOJI_ID = "<:id:1343961756124315668>"
@@ -56,7 +56,7 @@ class Blacklist(commands.Cog):
                     proof TEXT,
                     date TEXT,
                     message_id INTEGER,
-                    hrmc_wide INTEGER DEFAULT 0,
+                    MCNG_wide INTEGER DEFAULT 0,
                     ban INTEGER DEFAULT 0,
                     voided INTEGER DEFAULT 0,
                     void_reason TEXT
@@ -64,25 +64,25 @@ class Blacklist(commands.Cog):
             """)
             await db.commit()
 
-    async def add_blacklist(self, blacklist_id, user, issued_by, reason, proof, message_id=None, hrmc_wide=False, ban=False):
+    async def add_blacklist(self, blacklist_id, user, issued_by, reason, proof, message_id=None, MCNG_wide=False, ban=False):
         now = datetime.datetime.utcnow().isoformat()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 INSERT INTO blacklist (
                     blacklist_id, user_id, user_name, moderator_id, moderator_name,
-                    reason, proof, date, message_id, hrmc_wide, ban, voided, void_reason
+                    reason, proof, date, message_id, MCNG_wide, ban, voided, void_reason
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
-            """, (blacklist_id, user.id, str(user), issued_by.id, str(issued_by), reason, proof, now, message_id, int(hrmc_wide), int(ban)))
+            """, (blacklist_id, user.id, str(user), issued_by.id, str(issued_by), reason, proof, now, message_id, int(MCNG_wide), int(ban)))
             await db.commit()
 
     
 
-    @app_commands.command(name="blacklist", description="Blacklist a user from HRMC.")
+    @app_commands.command(name="blacklist", description="Blacklist a user from MCNG.")
     @app_commands.describe(
         user="User to blacklist",
         reason="Reason for blacklist",
         proof="Proof file",
-        hrmc_wide="Is this blacklist HRMC-wide?",
+        MCNG_wide="Is this blacklist MCNG-wide?",
         ban="Ban the user from the server?"
     )
     async def blacklist_command(
@@ -91,7 +91,7 @@ class Blacklist(commands.Cog):
         user: discord.Member,
         reason: str,
         proof: Optional[discord.Attachment] = None,
-        hrmc_wide: bool = False,
+        MCNG_wide: bool = False,
         ban: bool = False
     ):
         if not any(r.id == BLACKLIST_ROLE_ID for r in getattr(interaction.user, "roles", [])):
@@ -105,7 +105,7 @@ class Blacklist(commands.Cog):
             target_user=f"{user} ({user.id})",
             reason=reason,
             proof=proof.url if proof else "None",
-            hrmc_wide=hrmc_wide,
+            MCNG_wide=MCNG_wide,
             ban=ban
         )
 
@@ -113,7 +113,7 @@ class Blacklist(commands.Cog):
         blacklist_id = str(uuid.uuid4())
         channel = interaction.guild.get_channel(BLACKLIST_VIEW_CHANNEL_ID)
         embed = self.get_blacklist_embed(
-            blacklist_id, user, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), hrmc_wide, ban
+            blacklist_id, user, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), MCNG_wide, ban
         )
         # Only send the embed to the log channel, with only the ping in content
         if proof and proof.content_type and proof.content_type.startswith("image/"):
@@ -124,8 +124,8 @@ class Blacklist(commands.Cog):
         else:
             msg = await channel.send(content=user.mention, embed=embed)
 
-        # HRMC-wide: publish announcement
-        if hrmc_wide and channel.is_news():
+        # MCNG-wide: publish announcement
+        if MCNG_wide and channel.is_news():
             try:
                 await msg.publish()
             except Exception:
@@ -134,12 +134,12 @@ class Blacklist(commands.Cog):
         # DM the blacklisted user (simple embed, not the log embed)
         try:
             dm_embed = discord.Embed(
-                title=f"{EMOJI_HRMC} // HRMC Blacklist",
+                title=f"{EMOJI_MCNG} // MCNG Blacklist",
                 description=(
                     f"You have been blacklisted in **{interaction.guild.name}**.\n\n"
                     f"{EMOJI_REASON} **Reason:** {reason}\n"
                     f"{EMOJI_ID} **Blacklist ID:** {blacklist_id}\n"
-                    f"{EMOJI_PERMISSION} **HRMC-wide:** {'Yes' if hrmc_wide else 'No'}\n"
+                    f"{EMOJI_PERMISSION} **MCNG-wide:** {'Yes' if MCNG_wide else 'No'}\n"
                     f"{EMOJI_PERMISSION} **Banned:** {'Yes' if ban else 'No'}"
                 ),
                 color=discord.Color.dark_red()
@@ -161,18 +161,18 @@ class Blacklist(commands.Cog):
         try:
             role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
             if role and role not in user.roles:
-                await user.add_roles(role, reason="HRMC Blacklisted")
+                await user.add_roles(role, reason="MCNG Blacklisted")
         except Exception:
             pass
 
         await self.add_blacklist(
-            blacklist_id, user, interaction.user, reason, proof_url, msg.id, hrmc_wide, ban
+            blacklist_id, user, interaction.user, reason, proof_url, msg.id, MCNG_wide, ban
         )
 
         log_to_file(
             interaction.user.id,
             interaction.channel.id,
-            f"Blacklisted {user.id} | Reason: {reason} | Blacklist ID: {blacklist_id} | HRMC-wide: {hrmc_wide} | Ban: {ban}",
+            f"Blacklisted {user.id} | Reason: {reason} | Blacklist ID: {blacklist_id} | MCNG-wide: {MCNG_wide} | Ban: {ban}",
             embed=True
         )
 
@@ -188,7 +188,7 @@ class Blacklist(commands.Cog):
             log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
             log_embed.add_field(name="Reason", value=reason, inline=False)
             log_embed.add_field(name="Blacklist ID", value=blacklist_id, inline=False)
-            log_embed.add_field(name="HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+            log_embed.add_field(name="MCNG-wide", value="Yes" if MCNG_wide else "No", inline=True)
             log_embed.add_field(name="Banned", value="Yes" if ban else "No", inline=True)
             log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
             await log_channel.send(embed=log_embed)
@@ -206,14 +206,14 @@ class Blacklist(commands.Cog):
 
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT user_id, user_name, moderator_id, moderator_name, reason, proof, date, message_id, hrmc_wide, ban, voided FROM blacklist WHERE blacklist_id = ?",
+                    "SELECT user_id, user_name, moderator_id, moderator_name, reason, proof, date, message_id, MCNG_wide, ban, voided FROM blacklist WHERE blacklist_id = ?",
                     (blacklist_id,)
                 )
                 row = await cursor.fetchone()
                 if not row:
                     await interaction.response.send_message("Blacklist not found.", ephemeral=True)
                     return
-                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, message_id, hrmc_wide, ban, voided = row
+                user_id, user_name, moderator_id, moderator_name, orig_reason, proof, date, message_id, MCNG_wide, ban, voided = row
 
                 if voided:
                     await interaction.response.send_message("This blacklist is already voided.", ephemeral=True)
@@ -240,7 +240,7 @@ class Blacklist(commands.Cog):
                 try:
                     msg = await channel.fetch_message(message_id)
                     voided_embed = self.get_blacklist_embed(
-                        blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
+                        blacklist_id, user_name, moderator_name, orig_reason, proof, date, MCNG_wide, ban, voided=True, void_reason=reason
                     )
                     await msg.edit(
                         embed=voided_embed,
@@ -287,7 +287,7 @@ class Blacklist(commands.Cog):
 
             # Only send the embed to the moderator as confirmation
             embed = self.get_blacklist_embed(
-                blacklist_id, user_name, moderator_name, orig_reason, proof, date, hrmc_wide, ban, voided=True, void_reason=reason
+                blacklist_id, user_name, moderator_name, orig_reason, proof, date, MCNG_wide, ban, voided=True, void_reason=reason
             )
             await interaction.response.send_message(
                 embed=embed,
@@ -305,7 +305,7 @@ class Blacklist(commands.Cog):
     async def blacklist_view(self, interaction: discord.Interaction, blacklist_id: str):
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "SELECT blacklist_id, user_id, user_name, moderator_id, moderator_name, reason, proof, date, hrmc_wide, ban, voided, void_reason FROM blacklist WHERE blacklist_id = ?",
+                "SELECT blacklist_id, user_id, user_name, moderator_id, moderator_name, reason, proof, date, MCNG_wide, ban, voided, void_reason FROM blacklist WHERE blacklist_id = ?",
                 (blacklist_id,)
             )
             row = await cursor.fetchone()
@@ -313,9 +313,9 @@ class Blacklist(commands.Cog):
             await interaction.response.send_message("Blacklist not found.", ephemeral=True)
             return
 
-        (blacklist_id, user_id, user_name, moderator_id, moderator_name, reason, proof, date, hrmc_wide, ban, voided, void_reason) = row
+        (blacklist_id, user_id, user_name, moderator_id, moderator_name, reason, proof, date, MCNG_wide, ban, voided, void_reason) = row
         embed = self.get_blacklist_embed(
-            blacklist_id, user_name, moderator_name, reason, proof, date, hrmc_wide, ban, voided=voided, void_reason=void_reason
+            blacklist_id, user_name, moderator_name, reason, proof, date, MCNG_wide, ban, voided=voided, void_reason=void_reason
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -326,7 +326,7 @@ class Blacklist(commands.Cog):
         offset = (page - 1) * PAGE_SIZE
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "SELECT blacklist_id, reason, date, hrmc_wide, ban, voided, void_reason FROM blacklist WHERE user_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
+                "SELECT blacklist_id, reason, date, MCNG_wide, ban, voided, void_reason FROM blacklist WHERE user_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
                 (user.id, PAGE_SIZE, offset)
             )
             rows = await cursor.fetchall()
@@ -341,16 +341,16 @@ class Blacklist(commands.Cog):
             return
 
         embed = discord.Embed(
-            title=f"{EMOJI_HRMC} // Blacklists for {user} (Page {page}/{(total + PAGE_SIZE - 1)//PAGE_SIZE})",
+            title=f"{EMOJI_MCNG} // Blacklists for {user} (Page {page}/{(total + PAGE_SIZE - 1)//PAGE_SIZE})",
             color=discord.Color.dark_red()
         )
         for row in rows:
-            blacklist_id, reason, date, hrmc_wide, ban, voided, void_reason = row
+            blacklist_id, reason, date, MCNG_wide, ban, voided, void_reason = row
             value = (
                 f"{EMOJI_REASON} **Reason:** {reason}\n"
                 f"**Date:** {date}\n"
                 f"{EMOJI_ID} **ID:** `{blacklist_id}`\n"
-                f"{EMOJI_PERMISSION} **HRMC-wide:** {'Yes' if hrmc_wide else 'No'}\n"
+                f"{EMOJI_PERMISSION} **MCNG-wide:** {'Yes' if MCNG_wide else 'No'}\n"
                 f"{EMOJI_PERMISSION} **Banned:** {'Yes' if ban else 'No'}\n"
             )
             if voided:
@@ -360,12 +360,12 @@ class Blacklist(commands.Cog):
         embed.set_footer(text=f"Generated: {now_utc}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="blacklist-by-id", description="Blacklist a user from HRMC by user ID (useful if they're not in the server).")
+    @app_commands.command(name="blacklist-by-id", description="Blacklist a user from MCNG by user ID (useful if they're not in the server).")
     @app_commands.describe(
         user_id="User ID to blacklist",
         reason="Reason for blacklist",
         proof="Proof file",
-        hrmc_wide="Is this blacklist HRMC-wide?",
+        MCNG_wide="Is this blacklist MCNG-wide?",
         ban="Ban the user from the server?"
     )
     async def blacklist_by_id_command(
@@ -374,7 +374,7 @@ class Blacklist(commands.Cog):
         user_id: str,
         reason: str,
         proof: Optional[discord.Attachment] = None,
-        hrmc_wide: bool = False,
+        MCNG_wide: bool = False,
         ban: bool = False
     ):
         if not any(r.id == BLACKLIST_ROLE_ID for r in getattr(interaction.user, "roles", [])):
@@ -395,7 +395,7 @@ class Blacklist(commands.Cog):
             target_user=user_display,
             reason=reason,
             proof=proof.url if proof else "None",
-            hrmc_wide=hrmc_wide,
+            MCNG_wide=MCNG_wide,
             ban=ban
         )
 
@@ -403,7 +403,7 @@ class Blacklist(commands.Cog):
         blacklist_id = str(uuid.uuid4())
         channel = interaction.guild.get_channel(BLACKLIST_VIEW_CHANNEL_ID)
         embed = self.get_blacklist_embed(
-            blacklist_id, user_display, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), hrmc_wide, ban
+            blacklist_id, user_display, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), MCNG_wide, ban
         )
         # Only send the embed to the log channel, with only the ping in content (no ping if user not in server)
         content = user_obj.mention if user_obj and hasattr(user_obj, "mention") else user_display
@@ -415,8 +415,8 @@ class Blacklist(commands.Cog):
         else:
             msg = await channel.send(content=content, embed=embed)
 
-        # HRMC-wide: publish announcement
-        if hrmc_wide and channel.is_news():
+        # MCNG-wide: publish announcement
+        if MCNG_wide and channel.is_news():
             try:
                 await msg.publish()
             except Exception:
@@ -426,12 +426,12 @@ class Blacklist(commands.Cog):
         if user_obj:
             try:
                 dm_embed = discord.Embed(
-                    title=f"{EMOJI_HRMC} // HRMC Blacklist",
+                    title=f"{EMOJI_MCNG} // MCNG Blacklist",
                     description=(
                         f"You have been blacklisted in **{interaction.guild.name}**.\n\n"
                         f"{EMOJI_REASON} **Reason:** {reason}\n"
                         f"{EMOJI_ID} **Blacklist ID:** {blacklist_id}\n"
-                        f"{EMOJI_PERMISSION} **HRMC-wide:** {'Yes' if hrmc_wide else 'No'}\n"
+                        f"{EMOJI_PERMISSION} **MCNG-wide:** {'Yes' if MCNG_wide else 'No'}\n"
                         f"{EMOJI_PERMISSION} **Banned:** {'Yes' if ban else 'No'}"
                     ),
                     color=discord.Color.dark_red()
@@ -459,18 +459,18 @@ class Blacklist(commands.Cog):
             if member:
                 role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
                 if role and role not in member.roles:
-                    await member.add_roles(role, reason="HRMC Blacklisted")
+                    await member.add_roles(role, reason="MCNG Blacklisted")
         except Exception:
             pass
 
         await self.add_blacklist(
-            blacklist_id, user_display, interaction.user, reason, proof_url, msg.id, hrmc_wide, ban
+            blacklist_id, user_display, interaction.user, reason, proof_url, msg.id, MCNG_wide, ban
         )
 
         log_to_file(
             interaction.user.id,
             interaction.channel.id,
-            f"Blacklisted {user_display} | Reason: {reason} | Blacklist ID: {blacklist_id} | HRMC-wide: {hrmc_wide} | Ban: {ban}",
+            f"Blacklisted {user_display} | Reason: {reason} | Blacklist ID: {blacklist_id} | MCNG-wide: {MCNG_wide} | Ban: {ban}",
             embed=True
         )
 
@@ -486,7 +486,7 @@ class Blacklist(commands.Cog):
             log_embed.add_field(name="By", value=f"{interaction.user} ({interaction.user.id})", inline=False)
             log_embed.add_field(name="Reason", value=reason, inline=False)
             log_embed.add_field(name="Blacklist ID", value=blacklist_id, inline=False)
-            log_embed.add_field(name="HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+            log_embed.add_field(name="MCNG-wide", value="Yes" if MCNG_wide else "No", inline=True)
             log_embed.add_field(name="Banned", value="Yes" if ban else "No", inline=True)
             log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
             await log_channel.send(embed=log_embed)
@@ -530,7 +530,7 @@ class Blacklist(commands.Cog):
             user_id = interaction.user.id
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT blacklist_id, reason, date, hrmc_wide, ban, voided, void_reason FROM blacklist WHERE user_id = ? ORDER BY date DESC",
+                    "SELECT blacklist_id, reason, date, MCNG_wide, ban, voided, void_reason FROM blacklist WHERE user_id = ? ORDER BY date DESC",
                     (user_id,)
                 )
                 rows = await cursor.fetchall()
@@ -545,12 +545,12 @@ class Blacklist(commands.Cog):
                 color=discord.Color.orange()
             )
             for row in rows:
-                blacklist_id, reason, date, hrmc_wide, ban, voided, void_reason = row
+                blacklist_id, reason, date, MCNG_wide, ban, voided, void_reason = row
                 value = (
                     f"{EMOJI_REASON} **Reason:** {reason}\n"
                     f"**Date:** {date}\n"
                     f"{EMOJI_ID} **ID:** `{blacklist_id}`\n"
-                    f"{EMOJI_PERMISSION} **HRMC-wide:** {'Yes' if hrmc_wide else 'No'}\n"
+                    f"{EMOJI_PERMISSION} **MCNG-wide:** {'Yes' if MCNG_wide else 'No'}\n"
                     f"{EMOJI_PERMISSION} **Banned:** {'Yes' if ban else 'No'}\n"
                 )
                 if voided:
@@ -563,7 +563,7 @@ class Blacklist(commands.Cog):
             await interaction.response.send_message(f"Error: {e}", ephemeral=True)
 
     # ...inside the Blacklist class...
-    def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, hrmc_wide, ban, voided=False, void_reason=None):
+    def get_blacklist_embed(self, blacklist_id, user, issued_by, reason, proof, date, MCNG_wide, ban, voided=False, void_reason=None):
         try:
             dt = datetime.datetime.fromisoformat(date)
             date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
@@ -576,7 +576,7 @@ class Blacklist(commands.Cog):
             color=discord.Color.green() if voided else discord.Color.dark_red()
         )
         embed.add_field(
-            name=f"{EMOJI_HRMC} // HRMC Blacklist",
+            name=f"{EMOJI_MCNG} // MCNG Blacklist",
             value=user.mention if hasattr(user, "mention") else str(user),
             inline=False
         )
@@ -586,7 +586,7 @@ class Blacklist(commands.Cog):
         embed.add_field(name=f"{EMOJI_REASON} Reason", value=reason, inline=False)
         embed.add_field(name=f"{EMOJI_ID} Blacklist ID", value=f"`{blacklist_id}`", inline=False)
         embed.add_field(name=separator, value=separator, inline=False)
-        embed.add_field(name=f"{EMOJI_PERMISSION} HRMC-wide", value="Yes" if hrmc_wide else "No", inline=True)
+        embed.add_field(name=f"{EMOJI_PERMISSION} MCNG-wide", value="Yes" if MCNG_wide else "No", inline=True)
         embed.add_field(name=f"{EMOJI_PERMISSION} Banned", value="Yes" if ban else "No", inline=True)
         embed.add_field(name="Proof", value=proof or "None", inline=True)
         if voided:

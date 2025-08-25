@@ -11,7 +11,7 @@ TRAINER_PING_ROLE_ID = 1329910397544960164
 
 FOOTER_TEXT = "High Rock Military Corps"
 FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
-BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376648782359433316/bottom.png?ex=685cfbd6&is=685baa56&hm=8e024541f2cdf6bc41b83e1ab03f3da441b653dc98fa03f5c58aa2ccee0e3ad4&"
+BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&"
 
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -82,7 +82,7 @@ class Applications(commands.Cog):
 
         # Embed 1 (image)
         embed1 = discord.Embed(color=EMBED_COLOUR)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1376647068092858509/1376933967386771546/applications.png?ex=685d5cb0&is=685c0b30&hm=1515149d32a78690a4e91e9d4879a9451c6f9fb0064d6aa651c256240a709ff5&")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314341764861993/APPLICATIONS.png?ex=68acedc2&is=68ab9c42&hm=526afa60758bbd9e8ea32521386df0c0ce0d20f10ce50a78a223dc6aa07f95be&=&format=webp&quality=lossless&width=2576&height=862")
 
         # Embed 2 (main info)
         embed2 = discord.Embed(
