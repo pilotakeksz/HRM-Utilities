@@ -25,10 +25,10 @@ class Verification(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934088841236620/verification.png")
+        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314377718435921/VERIFICATION.png?ex=68acedcb&is=68ab9c4b&hm=012cadf60e26d32d668f8ea57909c1e69171bc86f3965a5013ec083aec580dad&=&format=webp&quality=lossless&width=2576&height=862")
 
         embed2 = discord.Embed(
-            title="<:HRMaboutus:1376647782248742993> HRMC Verification",
+            title="<:HRMaboutus:1376647782248742993> MCNG Verification",
             description=(
                 "Here at *Maplecliff National Guard*, we__ ensure the safety of our community members__ "
                 "by enforcing strict discord verification, you must verify to gain access to the rest "
@@ -36,7 +36,7 @@ class Verification(commands.Cog):
             ),
             color=EMBED_COLOR
         )
-        embed2.set_image(url="https://media.discordapp.net/attachments/1376647068092858509/1376934109665824828/bottom.png")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         await channel.send(embeds=[embed1, embed2])

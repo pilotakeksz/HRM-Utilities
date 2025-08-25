@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands
 import os
 
-FOOTER_TEXT = "High Rock Military Corps."
-FOOTER_ICON = "https://images-ext-1.discordapp.net/external/_d7d0RmGwlFEwwKlYDfachyeC_skH7txYK5GzDan4ZI/https/cdn.discordapp.com/icons/1329908357812981882/fa763c9516fc5a9982b48c69c0a18e18.png"
+FOOTER_TEXT = "Maplecliff National Guard"  
+FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 EMBED_COLOR = 0xd0b47b
 
 ROLE_ID_ON_JOIN = int(os.getenv("ROLE_ID_ON_JOIN"))
@@ -38,7 +38,7 @@ class Welcome(commands.Cog):
 
         embed = discord.Embed(
             color=EMBED_COLOR,
-            description=f"Welcome to the official High Rock Military Corps Discord server!\nYou are member number: **{member_count}**"
+            description=f"Welcome to the official Maplecliff National Guard Discord server!\nYou are member number: **{member_count}**"
         )
         embed.add_field(
             name="Verify <:check:1343223894412365824>",
@@ -68,7 +68,7 @@ class Welcome(commands.Cog):
 
         embed = discord.Embed(
             color=EMBED_COLOR,
-            description=f"Welcome to the official High Rock Military Corps Discord server!\nYou are member number: **{member_count}**"
+            description=f"Welcome to the official Mapplecliff National Guard discord server!\nYou are member number: **{member_count}**"
         )
         embed.add_field(
             name="Verify <:check:1343223894412365824>",
