@@ -6,6 +6,7 @@ import datetime
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_DIR, "misc_command.log")
+NOTIFY_ROLE_ID = 1355842403134603275  # Add this line
 
 def log_misc_command(user_id, command_name):
     timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -31,6 +32,48 @@ class Misc(commands.Cog):
         hours, remainder = divmod(int(delta.total_seconds()), 3600)
         minutes, seconds = divmod(remainder, 60)
         await ctx.send(f"Uptime: {hours}h {minutes}m {seconds}s")
+
+    async def send_notify_dm(self, guild: discord.Guild):
+        # Try to get the inviter (audit log)
+        inviter = None
+        if guild.me.guild_permissions.view_audit_log:
+            try:
+                async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.bot_add):
+                    if entry.target.id == self.bot.user.id:
+                        inviter = entry.user
+                        break
+            except Exception:
+                pass
+
+        invite_link = None
+        try:
+            invites = await guild.invites()
+            if invites:
+                invite_link = invites[0].url
+        except Exception:
+            pass
+
+        # Fallback if no invite found
+        if not invite_link:
+            invite_link = "No invite link found or missing permissions."
+
+        who_added = inviter.mention if inviter else "Unknown"
+
+        # DM everyone with the role
+        for member in guild.members:
+            if any(role.id == NOTIFY_ROLE_ID for role in member.roles):
+                try:
+                    await member.send(
+                        f"Bot was added to **{guild.name}**.\n"
+                        f"Invite link: {invite_link}\n"
+                        f"Added by: {who_added}"
+                    )
+                except Exception:
+                    pass
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        await self.send_notify_dm(guild)
 
 async def setup(bot):
     await bot.add_cog(Misc(bot))
