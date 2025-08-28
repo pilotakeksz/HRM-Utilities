@@ -12,7 +12,7 @@ class PingLoop(commands.Cog):
     def cog_unload(self):
         self.ping_task.cancel()
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=10)
     async def ping_task(self):
         await self.bot.wait_until_ready()
         channel = self.bot.get_channel(PING_CHANNEL_ID)
