@@ -5,3 +5,4 @@ logs/
 transcripts/
 suggestion_message_map.pkl
 suggestion_votes.pkl
+backups/
