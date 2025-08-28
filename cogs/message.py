@@ -38,4 +38,5 @@ class MessageLogger(commands.Cog):
         if channel:
             await channel.send(embed=embed)
 
-async
+async def setup(bot):
+    await bot.add_cog(MessageLogger(bot))
