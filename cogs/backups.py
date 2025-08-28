@@ -8,6 +8,35 @@ OWNER_ID = 840949634071658507
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "../backups")
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+class RestoreMenu(discord.ui.View):
+    def __init__(self, ctx, backup_path, data, cog):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.backup_path = backup_path
+        self.data = data
+        self.cog = cog
+        self.value = None
+
+    @discord.ui.button(label="Restore Roles Only", style=discord.ButtonStyle.primary)
+    async def roles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog._do_restore(self.ctx, self.data, restore_roles=True, restore_channels=False)
+        await interaction.response.edit_message(content="Restored roles only!", view=None)
+
+    @discord.ui.button(label="Restore Channels Only", style=discord.ButtonStyle.primary)
+    async def channels_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog._do_restore(self.ctx, self.data, restore_roles=False, restore_channels=True)
+        await interaction.response.edit_message(content="Restored channels only!", view=None)
+
+    @discord.ui.button(label="Restore Both", style=discord.ButtonStyle.success)
+    async def both_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog._do_restore(self.ctx, self.data, restore_roles=True, restore_channels=True)
+        await interaction.response.edit_message(content="Restored roles and channels!", view=None)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Restore cancelled.", view=None)
+        self.stop()
+
 class BackupCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -117,61 +146,73 @@ class BackupCog(commands.Cog):
         with open(backup_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        view = RestoreMenu(ctx, backup_path, data, self)
+        await ctx.send(
+            "Select what you want to restore from the backup:",
+            view=view
+        )
+
+    async def _do_restore(self, ctx, data, restore_roles=True, restore_channels=True):
         # Restore roles (create new roles)
         role_map = {}
-        roles_sorted = sorted(data["roles"], key=lambda r: r["position"])
-        for role_data in roles_sorted:
-            role = await ctx.guild.create_role(
-                name=role_data["name"],
-                color=discord.Color(role_data["color"]),
-                hoist=role_data["hoist"],
-                mentionable=role_data["mentionable"],
-                permissions=discord.Permissions(role_data["permissions"])
-            )
-            role_map[role_data["name"]] = role
+        if restore_roles:
+            roles_sorted = sorted(data["roles"], key=lambda r: r["position"])
+            for role_data in roles_sorted:
+                role = await ctx.guild.create_role(
+                    name=role_data["name"],
+                    color=discord.Color(role_data["color"]),
+                    hoist=role_data["hoist"],
+                    mentionable=role_data["mentionable"],
+                    permissions=discord.Permissions(role_data["permissions"])
+                )
+                role_map[role_data["name"]] = role
 
-        # Restore categories first
         category_map = {}
-        for ch in data["channels"]:
-            if ch["type"] == "category":
-                cat = await ctx.guild.create_category(
-                    name=ch["name"],
-                    position=ch["position"]
-                )
-                category_map[ch["name"]] = cat
-
-        # Restore text and voice channels
-        for ch in data["channels"]:
-            if ch["type"] == "category":
-                continue
-            overwrites = {}
-            for target_id, perms_value in ch["overwrites"].items():
-                target = ctx.guild.get_role(int(target_id)) or ctx.guild.get_member(int(target_id))
-                if target:
-                    overwrites[target] = discord.PermissionOverwrite.from_pair(
-                        discord.Permissions(perms_value), discord.Permissions(0)
+        if restore_channels:
+            # Restore categories first
+            for ch in data["channels"]:
+                if ch["type"] == "category":
+                    cat = await ctx.guild.create_category(
+                        name=ch["name"],
+                        position=ch["position"]
                     )
-            category = category_map.get(ch["category"])
-            if ch["type"] == "text":
-                await ctx.guild.create_text_channel(
-                    name=ch["name"],
-                    category=category,
-                    position=ch["position"],
-                    topic=ch["topic"],
-                    nsfw=ch["nsfw"],
-                    overwrites=overwrites
-                )
-            elif ch["type"] == "voice":
-                await ctx.guild.create_voice_channel(
-                    name=ch["name"],
-                    category=category,
-                    position=ch["position"],
-                    bitrate=ch["bitrate"],
-                    user_limit=ch["user_limit"],
-                    overwrites=overwrites
-                )
+                    category_map[ch["name"]] = cat
 
-        await ctx.send("Restore complete! (Note: Members and their roles cannot be restored automatically.)")
+            # Restore text and voice channels
+            for ch in data["channels"]:
+                if ch["type"] == "category":
+                    continue
+                overwrites = {}
+                for target_id, perms_value in ch["overwrites"].items():
+                    target = ctx.guild.get_role(int(target_id)) or ctx.guild.get_member(int(target_id))
+                    if target:
+                        overwrites[target] = discord.PermissionOverwrite.from_pair(
+                            discord.Permissions(perms_value), discord.Permissions(0)
+                        )
+                category = category_map.get(ch["category"])
+                if ch["type"] == "text":
+                    await ctx.guild.create_text_channel(
+                        name=ch["name"],
+                        category=category,
+                        position=ch["position"],
+                        topic=ch["topic"],
+                        nsfw=ch["nsfw"],
+                        overwrites=overwrites
+                    )
+                elif ch["type"] == "voice":
+                    await ctx.guild.create_voice_channel(
+                        name=ch["name"],
+                        category=category,
+                        position=ch["position"],
+                        bitrate=ch["bitrate"],
+                        user_limit=ch["user_limit"],
+                        overwrites=overwrites
+                    )
+
+        await ctx.send(
+            f"Restore complete! (Roles: {'Yes' if restore_roles else 'No'}, Channels: {'Yes' if restore_channels else 'No'})"
+            "\nNote: Members and their roles cannot be restored automatically."
+        )
 
 async def setup(bot):
     await bot.add_cog(BackupCog(bot))
