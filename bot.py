@@ -150,7 +150,8 @@ async def main():
             "cogs.MDT",
             "cogs.embed",
             "cogs.review",
-            "cogs.message"
+            "cogs.message",
+            "cogs.backups"
         ]
         
         for cog in cogs:
