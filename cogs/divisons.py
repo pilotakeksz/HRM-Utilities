@@ -8,7 +8,7 @@ load_dotenv()
 EMBED_COLOUR = int(os.getenv("EMBED_COLOUR", "0xd0b47b"), 16)
 EMBED_FOOTER = os.getenv("EMBED_FOOTER", "High Rock Military Corps")
 EMBED_ICON = os.getenv("EMBED_ICON")
-EMBED1_IMAGE = "https://cdn.discordapp.com/attachments/1376647068092858509/1376933999871524975/divisions.png?ex=685e0577&is=685cb3f7&hm=cd64107b3eb66bd6218bddf1cbabe165fcfc217a1ea73922ec49cd6b549b9df4&"
+EMBED1_IMAGE = ""
 EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
 DIVISIONS_CHANNEL = int(os.getenv("DIVISIONS_CHANNEL", "1332065491266834493"))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "840949634071658507"))

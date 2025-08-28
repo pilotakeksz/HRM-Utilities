@@ -9,7 +9,7 @@ class PingLoop(commands.Cog):
         self.bot = bot
         self.ping_task.start()
 
-    def cog_unload(self):
+    def cog_unload(self): #save
         self.ping_task.cancel()
 
     @tasks.loop(seconds=10)

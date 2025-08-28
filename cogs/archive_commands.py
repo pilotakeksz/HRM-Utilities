@@ -109,8 +109,8 @@ class LogMessage(commands.Cog):
     @commands.command(name="archive")
     async def archive(self, ctx):
         embed = discord.Embed(
-            title="HRM ARCHIVE",
-            description="Welcome to the HRM archives."
+            title="MCNG ARCHIVE",
+            description="Welcome to the MCNG archives."
         )
         await ctx.send(embed=embed, view=ArchiveView())
         log_action(ctx.author, "Opened Archive Interface", f"Channel: {ctx.channel}")
@@ -168,11 +168,11 @@ class LogMessage(commands.Cog):
         log_action(ctx.author, "Viewed All Archives", f"Total: {len(rows)}")
         await log_to_discord_channel(self.bot, ctx.author, "Viewed All Archives", f"Total: {len(rows)}")
 
-    @app_commands.command(name="archive", description="Open the HRM archive interface (interactive).")
+    @app_commands.command(name="archive", description="Open the MCNG archive interface (interactive).")
     async def archive_slash(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="HRM ARCHIVE",
-            description="Welcome to the HRM archives."
+            title="MCNG ARCHIVE",
+            description="Welcome to the MCNG archives."
         )
         await interaction.response.send_message(embed=embed, view=ArchiveView(), ephemeral=True)
         log_action(interaction.user, "Opened Archive Interface (slash)", f"Channel: {interaction.channel}")

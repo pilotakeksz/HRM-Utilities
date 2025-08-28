@@ -155,7 +155,7 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
         roblox_username = info["username"] if info else username
 
         embed = discord.Embed(
-            title="<:HighRockMilitary:1376605942765977800> // Arrest Log",
+            title="<:MCNG:1409463907294384169> // Arrest Log",
             color=TAN,
             description=(
                 f"> **Username:** {roblox_username}\n"
@@ -219,7 +219,7 @@ class MDTView(ui.View):
         embed1 = discord.Embed(color=TAN)
         embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
-            title="<:HighRockMilitary:1376605942765977800> // Deployment Management",
+            title="<:MCNG:1409463907294384169> // Deployment Management",
             description="Manage deployments below.",
             color=TAN
         )
@@ -283,7 +283,7 @@ class DeploymentView(ui.View):
         embed1 = discord.Embed(color=RED)
         embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
-            title="<:HighRockMilitary:1376605942765977800> // Deployment Ended",
+            title="<:MCNG:1409463907294384169> // Deployment Ended",
             description="**The most recent deployment has ended.**",
             color=RED
         )
@@ -323,7 +323,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
         embed1 = discord.Embed(color=TAN)
         embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
-            title="<:HighRockMilitary:1376605942765977800> // Deployment",
+            title="<:MCNG:1409463907294384169> // Deployment",
             description=f"{interaction.user.mention} has **started a deployment.**\n\n"
                         f"> - Type: **{self.deployment_type.value}**\n"
                         f"> - Location: **{self.location.value}**\n"
@@ -358,7 +358,7 @@ class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
         embed1 = discord.Embed(color=YELLOW)
         embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
         embed2 = discord.Embed(
-            title="<:HighRockMilitary:1376605942765977800> // Deployment Location Change",
+            title="<:MCNG:1409463907294384169> // Deployment Location Change",
             description=f"> - Location: **{self.location.value}**\n> - Notes: **{self.notes.value or 'None'}**",
             color=YELLOW
         )
@@ -406,7 +406,7 @@ class MDT(commands.Cog):
         embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314345267105812/MDT.png?ex=68acedc3&is=68ab9c43&hm=034e65555a01653c020d1fb830abe7982ce495b4a2754621dcb8ad02e2617145&=&format=webp&quality=lossless&width=2576&height=862")
         # Embed 2: main interface
         embed2 = discord.Embed(
-            title="<:HighRockMilitary:1376605942765977800> // Mobile Data Terminal",
+            title="<:MCNG:1409463907294384169> // Mobile Data Terminal",
             color=TAN
         )
         embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
