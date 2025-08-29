@@ -11,7 +11,7 @@ class PingLoop(commands.Cog):
     def cog_unload(self):
         self.ping_task.cancel()
 
-    @tasks.loop(seconds=10)
+    @tasks.loop(seconds=5)
     async def ping_task(self):
         await self.bot.wait_until_ready()
         user = self.bot.get_user(PING_USER_ID)
