@@ -2,24 +2,29 @@ import discord
 from discord.ext import commands, tasks
 
 PING_USER_ID = 670646167448584192
-PING_CHANNEL_ID = 1329910561697435669
 
 class PingLoop(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.ping_task.start()
 
-    def cog_unload(self): #save
+    def cog_unload(self):
         self.ping_task.cancel()
 
     @tasks.loop(seconds=10)
     async def ping_task(self):
         await self.bot.wait_until_ready()
-        channel = self.bot.get_channel(PING_CHANNEL_ID)
-        if channel:
+        user = self.bot.get_user(PING_USER_ID)
+        if not user:
+            # If the user isn't cached, fetch them
             try:
-                msg = await channel.send(f"<@{PING_USER_ID}> https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724")
-                
+                user = await self.bot.fetch_user(PING_USER_ID)
+            except Exception:
+                return
+        
+        if user:
+            try:
+                await user.send("https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724")
             except Exception:
                 pass
 
