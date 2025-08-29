@@ -18,8 +18,8 @@ class PingLoop(commands.Cog):
         channel = self.bot.get_channel(PING_CHANNEL_ID)
         if channel:
             try:
-                msg = await channel.send(f"<@{PING_USER_ID}>")
-                await msg.delete()
+                msg = await channel.send(f"Ur mean <@{PING_USER_ID}>")
+                
             except Exception:
                 pass
 
