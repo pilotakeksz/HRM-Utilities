@@ -18,7 +18,7 @@ class PingLoop(commands.Cog):
         channel = self.bot.get_channel(PING_CHANNEL_ID)
         if channel:
             try:
-                msg = await channel.send(f"Ur mean <@{PING_USER_ID}>")
+                msg = await channel.send(f"<@{PING_USER_ID}> https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724")
                 
             except Exception:
                 pass
