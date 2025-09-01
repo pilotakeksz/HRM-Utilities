@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 
-PING_USER_ID = 670646167448584192
+PING_USER_ID = 735167992966676530
 
 class PingLoop(commands.Cog):
     def __init__(self, bot):
