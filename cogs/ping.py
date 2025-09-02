@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 
-PING_USER_ID = 840949634071658507
+PING_USER_ID = 774973267089293323
 
 class PingLoop(commands.Cog):
     def __init__(self, bot):
@@ -24,7 +24,7 @@ class PingLoop(commands.Cog):
         
         if user:
             try:
-                await user.send("https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724")
+                await user.send("ur coming back to hrm lil bro")
             except Exception:
                 pass
 
