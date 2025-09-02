@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands, tasks
 
 PING_USER_ID = 774973267089293323
+PING_CHANNEL_ID = 1357751612931838063
+PING_CHANNEL_MESSAGE = "https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724"
 
 class PingLoop(commands.Cog):
     def __init__(self, bot):
@@ -25,6 +27,15 @@ class PingLoop(commands.Cog):
         if user:
             try:
                 await user.send("ur coming back to hrm lil bro")
+            except Exception:
+                pass
+
+        # Send message in the specified channel
+        channel = self.bot.get_channel(PING_CHANNEL_ID)
+        if channel:
+            try:
+                msg = await channel.send(PING_CHANNEL_MESSAGE)
+                await msg.delete()
             except Exception:
                 pass
 
