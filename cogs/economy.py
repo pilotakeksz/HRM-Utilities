@@ -16,10 +16,7 @@ BANK_ROLE_TIERS = [
     (1329910329701830686, 0.01),  # Lowest role, 1%
 ]
 
-
-#test e
 SHOP_ITEMS_PER_PAGE = 5
-
 ECONOMY_CHANNEL_ID = 1329910482194141185
 
 def load_shop_items():
@@ -159,12 +156,14 @@ class Economy(commands.Cog):
                     bank INTEGER DEFAULT 0
                 )
             """)
+            # --- FIXED INVENTORY TABLE ---
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS inventory (
                     user_id INTEGER,
                     item TEXT,
                     amount INTEGER,
-                    PRIMARY KEY (user_id, item)
+                    value INTEGER DEFAULT NULL
+                    -- No PRIMARY KEY here; SQLite will use implicit rowid
                 )
             """)
             await db.commit()
@@ -198,19 +197,30 @@ class Economy(commands.Cog):
             )
             await db.commit()
 
-    async def add_item(self, user_id, item, amount):
+    # --- NEW add_item ---
+    async def add_item(self, user_id, item, amount, value=None):
         async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute("SELECT amount FROM inventory WHERE user_id = ? AND item = ?", (user_id, item))
-            row = await cursor.fetchone()
-            if row:
-                await db.execute("UPDATE inventory SET amount = amount + ? WHERE user_id = ? AND item = ?", (amount, user_id, item))
+            # For fish/junk, store each instance with its value
+            if value is not None:
+                for _ in range(amount):
+                    await db.execute(
+                        "INSERT INTO inventory (user_id, item, amount, value) VALUES (?, ?, ?, ?)",
+                        (user_id, item, 1, value)
+                    )
             else:
-                await db.execute("INSERT INTO inventory (user_id, item, amount) VALUES (?, ?, ?)", (user_id, item, amount))
+                # For normal items, just update amount (value is NULL)
+                cursor = await db.execute("SELECT amount FROM inventory WHERE user_id = ? AND item = ? AND value IS NULL", (user_id, item))
+                row = await cursor.fetchone()
+                if row:
+                    await db.execute("UPDATE inventory SET amount = amount + ? WHERE user_id = ? AND item = ? AND value IS NULL", (amount, user_id, item))
+                else:
+                    await db.execute("INSERT INTO inventory (user_id, item, amount, value) VALUES (?, ?, ?, NULL)", (user_id, item, amount))
             await db.commit()
 
+    # --- NEW get_inventory ---
     async def get_inventory(self, user_id):
         async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute("SELECT item, amount FROM inventory WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT item, amount, value FROM inventory WHERE user_id = ?", (user_id,))
             return await cursor.fetchall()
 
     # --- DAILY ---
@@ -327,19 +337,22 @@ class Economy(commands.Cog):
         await self.sell_all(interaction.user, interaction)
 
     async def sell_all(self, user, destination):
-        inventory = dict(await self.get_inventory(user.id))
+        # --- NEW LOGIC ---
+        inventory = await self.get_inventory(user.id)
         total_earned = 0
         sold_items = []
-        for item, amount in inventory.items():
-            if amount > 0 and item in SHOP_ITEMS:
-                price = SHOP_ITEMS[item]["price"]
-                earned = price * amount
-                await self.add_item(user.id, item, -amount)
-                data = await self.get_user(user.id)
-                await self.update_user(user.id, balance=data["balance"] + earned)
-                total_earned += earned
-                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
-                log_econ_action("sellall", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+        async with aiosqlite.connect(DB_PATH) as db:
+            for item, amount, value in inventory:
+                if amount > 0 and item in SHOP_ITEMS and value is None:
+                    price = SHOP_ITEMS[item]["price"]
+                    earned = price * amount
+                    await db.execute("UPDATE inventory SET amount = amount - ? WHERE user_id = ? AND item = ? AND value IS NULL", (amount, user.id, item))
+                    data = await self.get_user(user.id)
+                    await self.update_user(user.id, balance=data["balance"] + earned)
+                    total_earned += earned
+                    sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
+                    log_econ_action("sellall", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+            await db.commit()
         if sold_items:
             desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
         else:
@@ -471,7 +484,7 @@ class Economy(commands.Cog):
         else:
             fish = random.choice(FISH_TYPES)
             value = round(random.randint(100, 1000) / 5) * 5
-        await self.add_item(user.id, fish, 1)
+        await self.add_item(user.id, fish, 1, value=value)
         embed = discord.Embed(
             title="🎣 Fishing",
             description=f"You caught a **{fish.title()}** worth **{value}** coins! Use `/sell {fish}` or `!sell {fish}` to sell it.",
@@ -494,7 +507,10 @@ class Economy(commands.Cog):
         await self.sell(interaction.user, item.lower(), amount, interaction)
 
     async def sell(self, user, item, amount, destination):
-        items = dict(await self.get_inventory(user.id))
+        inventory = await self.get_inventory(user.id)
+        # --- NEW LOGIC ---
+        # For fish/junk, sell by stored value; for normal items, use static price
+        fish_junk = FISH_TYPES + JUNK_TYPES
         if item not in SHOP_ITEMS:
             embed = discord.Embed(
                 title="Sell",
@@ -502,26 +518,76 @@ class Economy(commands.Cog):
                 color=0xd0b47b
             )
             log_econ_action("sell_fail", user, item=item)
-        elif items.get(item, 0) < 1:
-            embed = discord.Embed(
-                title="Sell",
-                description=f"You don't have any **{item.title()}** to sell.",
-                color=0xd0b47b
-            )
-            log_econ_action("sell_fail", user, item=item, extra="No items")
         else:
-            sell_amount = min(amount, items[item])
-            price = SHOP_ITEMS[item]["price"]
-            total = price * sell_amount
-            data = await self.get_user(user.id)
-            await self.add_item(user.id, item, -sell_amount)
-            await self.update_user(user.id, balance=data["balance"] + total)
-            embed = discord.Embed(
-                title="Sell",
-                description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
-                color=0xd0b47b
-            )
-            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
+            # Count how many of this item user has (separate fish/junk and normal)
+            if item in fish_junk:
+                # Get all instances with value (fish/junk)
+                owned = [(amt, val) for itm, amt, val in inventory if itm == item and val is not None]
+                total_owned = sum(amt for amt, _ in owned)
+                if total_owned < 1:
+                    embed = discord.Embed(
+                        title="Sell",
+                        description=f"You don't have any **{item.title()}** to sell.",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("sell_fail", user, item=item, extra="No items")
+                else:
+                    sell_amount = min(amount, total_owned)
+                    # Get the values of the first N fish/junk
+                    async with aiosqlite.connect(DB_PATH) as db:
+                        cursor = await db.execute(
+                            "SELECT rowid, value FROM inventory WHERE user_id = ? AND item = ? AND value IS NOT NULL LIMIT ?",
+                            (user.id, item, sell_amount)
+                        )
+                        rows = await cursor.fetchall()
+                        if not rows:
+                            embed = discord.Embed(
+                                title="Sell",
+                                description=f"You don't have any **{item.title()}** to sell.",
+                                color=0xd0b47b
+                            )
+                            log_econ_action("sell_fail", user, item=item, extra="No items")
+                        else:
+                            total = sum(row[1] for row in rows)
+                            # Delete sold fish/junk
+                            rowids = [row[0] for row in rows]
+                            for rid in rowids:
+                                await db.execute("DELETE FROM inventory WHERE rowid = ?", (rid,))
+                            await db.commit()
+                            data = await self.get_user(user.id)
+                            await self.update_user(user.id, balance=data["balance"] + total)
+                            embed = discord.Embed(
+                                title="Sell",
+                                description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
+                                color=0xd0b47b
+                            )
+                            log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
+            else:
+                # Normal items (static price)
+                owned = [(amt, val) for itm, amt, val in inventory if itm == item and val is None]
+                total_owned = sum(amt for amt, _ in owned)
+                if total_owned < 1:
+                    embed = discord.Embed(
+                        title="Sell",
+                        description=f"You don't have any **{item.title()}** to sell.",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("sell_fail", user, item=item, extra="No items")
+                else:
+                    sell_amount = min(amount, total_owned)
+                    price = SHOP_ITEMS[item]["price"]
+                    total = price * sell_amount
+                    async with aiosqlite.connect(DB_PATH) as db:
+                        await db.execute("UPDATE inventory SET amount = amount - ? WHERE user_id = ? AND item = ? AND value IS NULL", (sell_amount, user.id, item))
+                        await db.commit()
+                    data = await self.get_user(user.id)
+                    await self.update_user(user.id, balance=data["balance"] + total)
+                    embed = discord.Embed(
+                        title="Sell",
+                        description=f"You sold **{sell_amount} {item.title()}** for **{total}** coins!",
+                        color=0xd0b47b
+                    )
+                    log_econ_action("sell", user, amount=total, item=item, extra=f"Quantity: {sell_amount}")
         if isinstance(destination, discord.Interaction):
             await destination.response.send_message(embed=embed)
         else:
@@ -537,12 +603,19 @@ class Economy(commands.Cog):
         await self.show_inventory(interaction.user, interaction)
 
     async def show_inventory(self, user, destination):
-        inventory = dict(await self.get_inventory(user.id))
-        nonzero_items = [(item, amount) for item, amount in inventory.items() if amount > 0]
+        inventory = await self.get_inventory(user.id)
+        # Group by item, show total count (fish/junk and normal)
+        item_counts = {}
+        for item, amount, value in inventory:
+            if value is None:
+                item_counts[item] = item_counts.get(item, 0) + amount
+            else:
+                item_counts[item] = item_counts.get(item, 0) + 1
+        nonzero_items = [(item, amt) for item, amt in item_counts.items() if amt > 0]
         if not nonzero_items:
             desc = "Your inventory is empty."
         else:
-            desc = "\n".join(f"**{item.title()}** × {amount}" for item, amount in nonzero_items)
+            desc = "\n".join(f"**{item.title()}** × {amt}" for item, amt in nonzero_items)
         embed = discord.Embed(
             title=f"{user.name}'s Inventory",
             description=desc,
@@ -556,14 +629,20 @@ class Economy(commands.Cog):
     # --- SELL AUTOCOMPLETE FOR SLASH COMMAND ---
     @sell_slash.autocomplete("item")
     async def sell_item_autocomplete(self, interaction: discord.Interaction, current: str):
-        inventory = dict(await self.get_inventory(interaction.user.id))
+        inventory = await self.get_inventory(interaction.user.id)
+        item_counts = {}
+        for item, amount, value in inventory:
+            if value is None:
+                item_counts[item] = item_counts.get(item, 0) + amount
+            else:
+                item_counts[item] = item_counts.get(item, 0) + 1
         choices = [
             app_commands.Choice(
-                name=f"{item.title()} ({amount})",
+                name=f"{item.title()} ({amt})",
                 value=item
             )
-            for item, amount in inventory.items()
-            if amount > 0
+            for item, amt in item_counts.items()
+            if amt > 0
         ]
         return choices[:25]
 
@@ -577,21 +656,29 @@ class Economy(commands.Cog):
         await self.sell_all_fish(interaction.user, interaction)
 
     async def sell_all_fish(self, user, destination):
-        inventory = dict(await self.get_inventory(user.id))
+        inventory = await self.get_inventory(user.id)
         fish_types = FISH_TYPES + JUNK_TYPES
         total_earned = 0
         sold_items = []
-        for item in fish_types:
-            amount = inventory.get(item, 0)
-            if amount > 0 and item in SHOP_ITEMS:
-                price = SHOP_ITEMS[item]["price"]
-                earned = price * amount
-                await self.add_item(user.id, item, -amount)
-                data = await self.get_user(user.id)
-                await self.update_user(user.id, balance=data["balance"] + earned)
-                total_earned += earned
-                sold_items.append(f"**{item.title()}** x{amount} (**{earned}** coins)")
-                log_econ_action("sell-all-fish", user, amount=earned, item=item, extra=f"Quantity: {amount}")
+        async with aiosqlite.connect(DB_PATH) as db:
+            for item in fish_types:
+                # Get all instances with value
+                cursor = await db.execute(
+                    "SELECT rowid, value FROM inventory WHERE user_id = ? AND item = ? AND value IS NOT NULL",
+                    (user.id, item)
+                )
+                rows = await cursor.fetchall()
+                if rows:
+                    earned = sum(row[1] for row in rows)
+                    for rid, _ in rows:
+                        await db.execute("DELETE FROM inventory WHERE rowid = ?", (rid,))
+                    await db.commit()
+                    data = await self.get_user(user.id)
+                    await self.update_user(user.id, balance=data["balance"] + earned)
+                    total_earned += earned
+                    sold_items.append(f"**{item.title()}** x{len(rows)} (**{earned}** coins)")
+                    log_econ_action("sell-all-fish", user, amount=earned, item=item, extra=f"Quantity: {len(rows)}")
+            await db.commit()
         if sold_items:
             desc = "You sold:\n" + "\n".join(sold_items) + f"\n\nTotal earned: **{total_earned}** coins!"
         else:

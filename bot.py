@@ -9,11 +9,11 @@ import base64
 import traceback
 from aiohttp import web
 
-# Load environment variables from multiple files (if needed)
+
 load_dotenv(".env")
 load_dotenv(".env.token")
 
-# Load and validate application ID
+
 APPLICATION_ID = os.getenv("APPLICATION_ID")
 if not APPLICATION_ID:
     print("❌ ERROR: APPLICATION_ID not set in environment variables")
