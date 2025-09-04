@@ -399,7 +399,7 @@ async def ensure_persistent_ticket_embed(bot):
     )
     embed2.add_field(
         name="📝 IA",
-        value="Want to appeal a punishment or report a personnel member? Open an IA ticket and our team will review your case.",
+        value="Want to appeal a punishment or report a personnel member? Open an IA ticket and our team will review your case promptly.",
         inline=True
     )
     embed2.set_image(url=EMBED2_IMAGE)
