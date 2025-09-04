@@ -151,7 +151,8 @@ async def main():
             "cogs.embed",
             "cogs.review",
             "cogs.message",
-            "cogs.backups"
+            "cogs.backups",
+            "cogs.shift"
         ]
         
         for cog in cogs:

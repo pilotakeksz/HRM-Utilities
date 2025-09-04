@@ -92,7 +92,7 @@ class TicketTypeSelect(Select):
         options = [
             discord.SelectOption(label="General Support", value="general", emoji="<:MCNG:1409463907294384169>"),
             discord.SelectOption(label="Management", value="management", emoji="<:HC:1343192841676914712>"),
-            discord.SelectOption(label="Appeal", value="appeal", emoji="📝"),
+            discord.SelectOption(label="IA", value="appeal", emoji="📝"),
         ]
         super().__init__(
             placeholder="Select ticket type...",
@@ -140,7 +140,7 @@ class AppealTicketModal(Modal, title="Appeal Ticket"):
     async def on_submit(self, interaction: discord.Interaction):
         channel = await create_ticket(interaction, "appeal", self.request.value)
         await interaction.response.send_message(
-            f"Your appeal ticket has been created: {channel.mention}", ephemeral=True
+            f"Your IA ticket has been created: {channel.mention}", ephemeral=True
         )
 
 async def create_ticket(interaction, ticket_type, request_content):
@@ -398,8 +398,8 @@ async def ensure_persistent_ticket_embed(bot):
         inline=True
     )
     embed2.add_field(
-        name="📝 Appeal",
-        value="Want to appeal a punishment or report an unfair action? Open an appeal ticket and our team will review your case.",
+        name="📝 IA",
+        value="Want to appeal a punishment or report a personnel member? Open an IA ticket and our team will review your case.",
         inline=True
     )
     embed2.set_image(url=EMBED2_IMAGE)
