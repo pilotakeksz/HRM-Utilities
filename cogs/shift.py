@@ -215,6 +215,7 @@ class Store:
         # total time = sum durations
         return len(self.records), sum(r["duration"] for r in self.records)
 
+
 # -------------------- UI VIEWS --------------------
 class ShiftManageView(discord.ui.View):
     def __init__(self, bot: commands.Bot):
@@ -560,19 +561,50 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message(embed=self.embed_info(f"Voided record `{record_id}`."), ephemeral=True)
             return
         elif action.value == "void_all":
-            # require typing random token
             token = uuid.uuid4().hex[:8]
-            if confirmation != token:
-                await interaction.response.send_message(
-                    f"Type this token in `confirmation:` to proceed: **{token}**", ephemeral=True
-                )
+            await interaction.response.send_message(
+                f"To confirm deletion of all ongoing shifts AND all shift records from this week, type this token in chat: **{token}**",
+                ephemeral=True
+            )
+            def check(m):
+                return m.author.id == user.id and m.channel == interaction.channel
+            try:
+                msg = await self.bot.wait_for("message", check=check, timeout=60)
+            except asyncio.TimeoutError:
+                await interaction.channel.send("Confirmation failed (timeout). No shifts voided.")
                 return
-            # void all ongoing shifts
-            count = len(self.store.state)
+            if msg.content.strip() != token:
+                await interaction.channel.send("Confirmation failed. No shifts voided.")
+                return
+
+            # Calculate start of current week (Monday 00:00 UTC)
+            now = utcnow()
+            week_start = now - dt.timedelta(days=now.weekday())
+            week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start_ts = ts_to_int(week_start)
+
+            # Remove all records started this week
+            before_count = len(self.store.records)
+            self.store.records = [r for r in self.store.records if r["start_ts"] < week_start_ts]
+            removed_count = before_count - len(self.store.records)
+
+            # Remove all ongoing shifts
+            ongoing_count = len(self.store.state)
             self.store.state = {}
+
+            # Reset stats since last reset
+            self.store.meta["last_reset_ts"] = ts_to_int(now)
             self.store.save()
-            await self.log_event(guild, f"⚠️ Admin {user.mention} voided **ALL** ongoing shifts ({count}).")
-            await interaction.response.send_message(embed=self.embed_warn(f"Voided all ongoing shifts ({count})."), ephemeral=True)
+
+            await self.log_event(
+                guild,
+                f"⚠️ Admin {user.mention} voided **ALL** ongoing shifts ({ongoing_count}) and **{removed_count}** shift records from this week. Stats since reset restarted."
+            )
+            await interaction.channel.send(
+                embed=self.embed_warn(
+                    f"Voided all ongoing shifts ({ongoing_count}) and {removed_count} shift records from this week.\n**Stats since reset have been restarted.**"
+                )
+            )
             return
         elif action.value == "stats":
             num_records, total_seconds = self.store.get_statistics()
@@ -588,7 +620,7 @@ class ShiftCog(commands.Cog):
             emb.add_field(name="Since reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
             emb.add_field(name="Messages since reset (in target channel)", value=str(msg_count), inline=True)
             emb.add_field(name="Members with personnel role", value=str(role_count), inline=True)
-            await interaction.response.send_message(embed=emb, ephemeral=True)
+            await interaction.response.send_message(embed=emb, ephemeral=False)
             return
         elif action.value in ("leaderboard_txt", "leaderboard_met", "leaderboard_notmet"):
             # build leaderboard lines
