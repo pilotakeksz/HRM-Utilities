@@ -352,6 +352,40 @@ class ShiftManageView(discord.ui.View):
         embed = await cog.build_manage_embed(user)
         await interaction.response.edit_message(embed=embed, view=self)
 
+class ShiftLeaderboardView(discord.ui.View):
+    def __init__(self, cog, guild):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.guild = guild
+
+    @discord.ui.button(label="All", style=discord.ButtonStyle.primary)
+    async def all_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        lines = await self.cog._build_leaderboard_lines(self.guild, filter_mode="all")
+        emb = self.cog.base_embed("Shift Leaderboard", colour_info())
+        emb.description = "\n".join(lines)
+        await interaction.response.edit_message(embed=emb, view=self)
+
+    @discord.ui.button(label="Exempt", style=discord.ButtonStyle.secondary)
+    async def exempt_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        lines = await self.cog._build_leaderboard_lines(self.guild, filter_mode="exempt")
+        emb = self.cog.base_embed("Exempt Leaderboard", discord.Colour.light_grey())
+        emb.description = "\n".join(lines)
+        await interaction.response.edit_message(embed=emb, view=self)
+
+    @discord.ui.button(label="Met", style=discord.ButtonStyle.success)
+    async def met_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        lines = await self.cog._build_leaderboard_lines(self.guild, filter_mode="leaderboard_met")
+        emb = self.cog.base_embed("Met Quota Leaderboard", colour_ok())
+        emb.description = "\n".join(lines)
+        await interaction.response.edit_message(embed=emb, view=self)
+
+    @discord.ui.button(label="Not Met", style=discord.ButtonStyle.danger)
+    async def notmet_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        lines = await self.cog._build_leaderboard_lines(self.guild, filter_mode="leaderboard_notmet")
+        emb = self.cog.base_embed("Not Met Quota Leaderboard", colour_err())
+        emb.description = "\n".join(lines)
+        await interaction.response.edit_message(embed=emb, view=self)
+
 # -------------------- MAIN COG --------------------
 class ShiftCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -633,53 +667,57 @@ class ShiftCog(commands.Cog):
             return
 
     async def _build_leaderboard_lines(self, guild: discord.Guild, filter_mode: str = "all") -> List[str]:
-        # Aggregate by member with manage role (or anyone?) -> use all members with recorded time
+        manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+        if not manage_role:
+            return ["No data."]
+        members = manage_role.members
+
         totals: Dict[int, int] = {}
-        for r in self.store.records:
-            totals[r["user_id"]] = totals.get(r["user_id"], 0) + r["duration"]
-        # include ongoing
-        for uid_str, st in self.store.state.items():
-            uid = int(uid_str)
-            elapsed = st["accum"]
-            if not st["on_break"]:
-                elapsed += max(0, ts_to_int(utcnow()) - st["last_ts"])
-            totals[uid] = totals.get(uid, 0) + elapsed
-        # build rows
-        rows: List[Tuple[int, str, int, bool]] = []  # (seconds, name, id, met_quota)
+        for member in members:
+            total = self.store.total_for_user(member.id)
+            totals[member.id] = total
+
+        rows: List[Tuple[int, str, int, bool, int]] = []
         for uid, secs in totals.items():
             member = guild.get_member(uid)
             name = member.display_name if member else f"User {uid}"
-            met = await self._met_quota(member, secs) if member else False
-            rows.append((secs, name, uid, met))
+            quota = await self._get_quota(member)
+            met = secs >= quota * 60 if member else False
+            rows.append((secs, name, uid, met, quota))
         rows.sort(key=lambda x: x[0], reverse=True)
         # filter
         if filter_mode == "leaderboard_met":
-            rows = [r for r in rows if r[3]]
+            rows = [r for r in rows if r[3] and not (r[0] == 0 and r[4] == 0)]
         elif filter_mode == "leaderboard_notmet":
-            rows = [r for r in rows if not r[3]]
+            rows = [r for r in rows if not r[3] and not (r[0] == 0 and r[4] == 0)]
+        elif filter_mode == "exempt":
+            rows = [r for r in rows if r[0] == 0 and r[4] == 0]
         # format
         out = []
         rank = 1
-        for secs, name, uid, met in rows:
-            out.append(f"#{rank} <@{uid}> — {human_td(secs)} — {'✅ Met' if met else '❌ Not met'}")
+        for secs, name, uid, met, quota in rows:
+            if secs == 0 and quota == 0:
+                status = "<:maybe:1358812794585354391> Exempt"
+            else:
+                status = "✅ Met" if met else "❌ Not met"
+            out.append(f"#{rank} <@{uid}> — {human_td(secs)} — {status}")
             rank += 1
         if not out:
             out = ["No data."]
         return out
 
-    async def _met_quota(self, member: Optional[discord.Member], seconds: int) -> bool:
+    async def _get_quota(self, member: Optional[discord.Member]) -> int:
         if member is None:
-            return False
+            return DEFAULT_QUOTA
         mids = {r.id for r in member.roles}
         if QUOTA_ROLE_0 in mids or QUOTA_ROLE_ADMIN_0 in mids:
-            quota = 0
+            return 0
         elif QUOTA_ROLE_15 in mids:
-            quota = 15
+            return 15
         elif QUOTA_ROLE_35 in mids:
-            quota = 35
+            return 35
         else:
-            quota = DEFAULT_QUOTA
-        return seconds >= quota * 60
+            return DEFAULT_QUOTA
 
     async def count_messages_since(self, guild: discord.Guild, since: dt.datetime) -> int:
         ch = guild.get_channel(MSG_COUNT_CHANNEL_ID)
@@ -702,7 +740,8 @@ class ShiftCog(commands.Cog):
         lines = await self._build_leaderboard_lines(guild, filter_mode="all")
         emb = self.base_embed("Shift Leaderboard", colour_info())
         emb.description = "\n".join(lines)
-        await interaction.response.send_message(embed=emb)
+        view = ShiftLeaderboardView(self, guild)
+        await interaction.response.send_message(embed=emb, view=view)
 
     @app_commands.command(name="shift_online", description="Show who is currently on shift and for how long.")
     async def shift_online(self, interaction: discord.Interaction):
