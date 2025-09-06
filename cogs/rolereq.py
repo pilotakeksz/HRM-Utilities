@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import os
 
-STAFF_CHANNEL_ID = 1343686645815181382  # Channel for embed logs
+STAFF_CHANNEL_ID = 1329910558954098701  # Channel for embed logs
 LOGS_DIR = "logs"
 
 class RoleRequestView(discord.ui.View):
