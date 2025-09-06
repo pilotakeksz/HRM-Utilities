@@ -732,15 +732,17 @@ class ShiftCog(commands.Cog):
     admin_group = app_commands.Group(name="shift_admin", description="Administrative shift controls.")
 
     @admin_group.command(name="user", description="Admin actions for a specific user (optional user to target).")
-    @app_commands.describe(personnel="User to target (optional)", action="Choose an action")
+    @app_commands.describe(personnel="User to target (optional)", action="Choose an action", time_minutes="Time in minutes (for add/subtract time actions)", record_id="Record ID (for void by ID action)")
     @app_commands.choices(action=[
         app_commands.Choice(name="Stop shift", value="stop"),
         app_commands.Choice(name="Toggle break", value="toggle_break"),
         app_commands.Choice(name="Void ongoing shift", value="void"),
         app_commands.Choice(name="Show shift records", value="records"),
         app_commands.Choice(name="Void shift by ID", value="void_id"),
+        app_commands.Choice(name="Add shift time", value="add_time"),
+        app_commands.Choice(name="Subtract shift time", value="subtract_time"),
     ])
-    async def shift_admin_user(self, interaction: discord.Interaction, action: app_commands.Choice[str], personnel: Optional[discord.Member] = None, record_id: Optional[str] = None):
+    async def shift_admin_user(self, interaction: discord.Interaction, action: app_commands.Choice[str], personnel: Optional[discord.Member] = None, record_id: Optional[str] = None, time_minutes: Optional[int] = None):
         user = interaction.user
         guild = interaction.guild
         if guild is None:
@@ -816,6 +818,46 @@ class ShiftCog(commands.Cog):
             ok = self.store.void_record_by_id(record_id)
             await self.log_event(guild, f"🧹 Admin {user.mention} voided record `{record_id}` for {target.mention}.")
             await interaction.response.send_message(embed=self.embed_info(f"Voided record `{record_id}`."), ephemeral=True)
+        elif action.value == "add_time":
+            if not time_minutes:
+                await interaction.response.send_message("Provide `time_minutes:` as additional option in the command.", ephemeral=True)
+                return
+            if time_minutes <= 0:
+                await interaction.response.send_message("Time must be positive.", ephemeral=True)
+                return
+            # Add time to user's total by creating a fake record
+            fake_record = {
+                "id": f"admin_add_{uuid.uuid4().hex[:8]}",
+                "user_id": target.id,
+                "start_ts": ts_to_int(utcnow()) - (time_minutes * 60),
+                "end_ts": ts_to_int(utcnow()),
+                "duration": time_minutes * 60,
+                "breaks": 0,
+            }
+            self.store.records.append(fake_record)
+            self.store.save()
+            await self.log_event(guild, f"➕ Admin {user.mention} added {time_minutes} minutes to {target.mention}'s total shift time.")
+            await interaction.response.send_message(embed=self.embed_info(f"Added {time_minutes} minutes to {target.mention}'s total shift time."), ephemeral=True)
+        elif action.value == "subtract_time":
+            if not time_minutes:
+                await interaction.response.send_message("Provide `time_minutes:` as additional option in the command.", ephemeral=True)
+                return
+            if time_minutes <= 0:
+                await interaction.response.send_message("Time must be positive.", ephemeral=True)
+                return
+            # Subtract time by creating a negative duration record
+            fake_record = {
+                "id": f"admin_sub_{uuid.uuid4().hex[:8]}",
+                "user_id": target.id,
+                "start_ts": ts_to_int(utcnow()),
+                "end_ts": ts_to_int(utcnow()),
+                "duration": -(time_minutes * 60),  # Negative duration
+                "breaks": 0,
+            }
+            self.store.records.append(fake_record)
+            self.store.save()
+            await self.log_event(guild, f"➖ Admin {user.mention} subtracted {time_minutes} minutes from {target.mention}'s total shift time.")
+            await interaction.response.send_message(embed=self.embed_info(f"Subtracted {time_minutes} minutes from {target.mention}'s total shift time."), ephemeral=True)
 
     @admin_group.command(name="global", description="Global admin actions when no personnel is specified.")
     @app_commands.describe(action="Choose an action")
@@ -931,6 +973,13 @@ class ShiftCog(commands.Cog):
             view = ShiftListsView(self, guild, promo_candidates, infractions)
             view.current_embed_type = "infractions"
             await interaction.response.send_message(embed=embed, view=view)
+            return
+        elif action.value == "set_wipe":
+            # Set current time as wipe timestamp
+            self.store.meta["last_wipe_ts"] = ts_to_int(utcnow())
+            self.store.save()
+            await self.log_event(guild, f"🔄 Admin {user.mention} set wipe timestamp to now.")
+            await interaction.response.send_message(embed=self.embed_info("Wipe timestamp set to current time. Message counting will now start from this point."), ephemeral=True)
             return
 
     async def _build_leaderboard_lines(self, guild: discord.Guild, filter_mode: str = "all") -> List[str]:
