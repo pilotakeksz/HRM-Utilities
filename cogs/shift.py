@@ -973,14 +973,15 @@ class ShiftCog(commands.Cog):
             view = ShiftListsView(self, guild, promo_candidates, infractions)
             view.current_embed_type = "promotion"
             await interaction.response.send_message(embed=embed, view=view)
-            return
+            return  # <-- Make sure to return after responding
+
         elif action.value == "infractions_list":
             promo_candidates, infractions = await self._build_lists(guild)
             embed = await self._build_infractions_embed(infractions)
             view = ShiftListsView(self, guild, promo_candidates, infractions)
             view.current_embed_type = "infractions"
             await interaction.response.send_message(embed=embed, view=view)
-            return
+            return  # <-- Make sure to return after responding
         elif action.value == "set_wipe":
             # Set current time as wipe timestamp
             self.store.meta["last_wipe_ts"] = ts_to_int(utcnow())
