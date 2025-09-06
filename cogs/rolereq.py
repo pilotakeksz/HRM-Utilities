@@ -28,47 +28,70 @@ class RoleRequestModal(discord.ui.Modal, title="Role Request"):
             color=discord.Color.blue()
         )
         embed.set_image(url=self.proof_link.value)
+        # Store requester ID in footer for persistent view
+        embed.set_footer(text=f"requester_id:{interaction.user.id}")
         if staff_channel and isinstance(staff_channel, discord.TextChannel):
-            view = RoleReviewView(interaction.user.id)
-            await staff_channel.send(embed=embed, view=view)
+            await staff_channel.send(embed=embed, view=RoleReviewView())
             await interaction.response.send_message("Your role request has been submitted to staff.", ephemeral=True)
         else:
             await interaction.response.send_message("Staff channel not found. Please contact an admin.", ephemeral=True)
 
 class RoleReviewView(discord.ui.View):
-    def __init__(self, requester_id):
-        super().__init__(timeout=360)
-        self.requester_id = requester_id
+    def __init__(self):
+        super().__init__(timeout=None)  # Persistent view
 
-    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success, custom_id="role_review_approve")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Reviewer check
         if not any(r.id == REVIEWER_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to review requests.", ephemeral=True)
             return
 
+        # Get requester_id from embed footer
+        requester_id = self._get_requester_id_from_embed(interaction)
+        if requester_id is None:
+            await interaction.response.send_message("Could not find requester ID.", ephemeral=True)
+            return
+
         # Get decorative roles (no admin/permissions)
         guild = interaction.guild
         decorative_roles = [
             r for r in guild.roles
-            if not r.permissions.administrator and not r.permissions.manage_roles and not r.permissions.kick_members and not r.permissions.ban_members and not r.managed and r < guild.me.top_role
+            if not r.permissions.administrator and not r.permissions.manage_roles and not r.permissions.kick_members and not r.permissions.ban_members and not r.managed and r < guild.me.top_role and r.name != "@everyone"
         ]
-        options = [discord.SelectOption(label=role.name, value=str(role.id)) for role in decorative_roles if role.name != "@everyone"]
+        options = [discord.SelectOption(label=role.name, value=str(role.id)) for role in decorative_roles]
 
         if not options:
             await interaction.response.send_message("No decorative roles available.", ephemeral=True)
             return
 
-        select = RoleSelect(options, self.requester_id)
+        select = RoleSelect(options, requester_id)
         await interaction.response.send_message("Select a role to approve:", view=select, ephemeral=True)
 
-    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger, custom_id="role_review_deny")
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Reviewer check
         if not any(r.id == REVIEWER_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to review requests.", ephemeral=True)
             return
-        await interaction.response.send_modal(DenyReasonModal(self.requester_id))
+
+        requester_id = self._get_requester_id_from_embed(interaction)
+        if requester_id is None:
+            await interaction.response.send_message("Could not find requester ID.", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(DenyReasonModal(requester_id))
+
+    def _get_requester_id_from_embed(self, interaction: discord.Interaction):
+        # Try to get the embed from the message
+        if interaction.message and interaction.message.embeds:
+            embed = interaction.message.embeds[0]
+            if embed.footer and embed.footer.text and embed.footer.text.startswith("requester_id:"):
+                try:
+                    return int(embed.footer.text.split("requester_id:")[1])
+                except Exception:
+                    return None
+        return None
 
 class RoleSelect(discord.ui.View):
     def __init__(self, options, requester_id):
@@ -120,6 +143,8 @@ class DenyReasonModal(discord.ui.Modal, title="Deny Role Request"):
 class RoleRequestCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Register persistent view for review buttons
+        self.bot.add_view(RoleReviewView())
 
     @discord.app_commands.command(name="role_request", description="Request a role from staff.")
     async def role_request(self, interaction: discord.Interaction):
