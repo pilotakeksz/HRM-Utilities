@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 
 STAFF_CHANNEL_ID = 1329910558954098701  # Replace with your staff channel ID
-REVIEWER_ROLE_ID = 1329910389437104220  # Only reviewers with this role can act
+REVIEWER_ROLE_ID = 1329910265264869387  # Only reviewers with this role can act
 
 class RoleRequestModal(discord.ui.Modal, title="Role Request"):
     role_name = discord.ui.TextInput(
