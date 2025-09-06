@@ -6,6 +6,7 @@ import json
 import uuid
 import os
 import datetime as dt
+import asyncio
 from typing import Dict, Any, Optional, List, Tuple
 
 # -------------------- CONFIG CONSTANTS --------------------
@@ -359,6 +360,13 @@ class ShiftCog(commands.Cog):
         self.store = Store()
         # re-add persistent view on startup
         self.bot.add_view(ShiftManageView(bot))
+        # Add the admin command group to the tree
+        self.bot.tree.add_command(self.admin_group)
+    
+    async def cog_unload(self):
+        """Clean up when the cog is unloaded"""
+        # Remove the admin command group from the tree
+        self.bot.tree.remove_command(self.admin_group.name)
 
     # ---------- EMBED HELPERS ----------
     def base_embed(self, title: str, colour: discord.Colour) -> discord.Embed:
@@ -447,7 +455,7 @@ class ShiftCog(commands.Cog):
     admin_group = app_commands.Group(name="shift_admin", description="Administrative shift controls.")
 
     @admin_group.command(name="user", description="Admin actions for a specific user (optional user to target).")
-    @app_commands.describe(personnel="User to target (optional)", action="Choose an action")
+    @app_commands.describe(personnel="User to target (optional)", action="Choose an action", record_id="Record ID for void_id action")
     @app_commands.choices(action=[
         app_commands.Choice(name="Stop shift", value="stop"),
         app_commands.Choice(name="Toggle break", value="toggle_break"),
@@ -533,7 +541,7 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message(embed=self.embed_info(f"Voided record `{record_id}`."), ephemeral=True)
 
     @admin_group.command(name="global", description="Global admin actions when no personnel is specified.")
-    @app_commands.describe(action="Choose an action")
+    @app_commands.describe(action="Choose an action", record_id="Record ID for void_id action", confirmation="Confirmation token for void_all action")
     @app_commands.choices(action=[
         app_commands.Choice(name="Void shift by ID", value="void_id"),
         app_commands.Choice(name="Void ALL shifts (requires confirmation)", value="void_all"),
