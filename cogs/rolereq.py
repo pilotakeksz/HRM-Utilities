@@ -2,7 +2,9 @@ import discord
 from discord.ext import commands
 import os
 
-STAFF_CHANNEL_ID = 1329910558954098701  # Channel for embed logs
+REVIEW_CHANNEL_ID = 1329910558954098701
+LOG_CHANNEL_ID = 1343686645815181382
+REVIEWER_ROLE_ID = 1329910265264869387
 LOGS_DIR = "logs"
 
 class RoleRequestView(discord.ui.View):
@@ -14,21 +16,39 @@ class RoleRequestView(discord.ui.View):
 
     @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only reviewers can approve
+        if not any(r.id == REVIEWER_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("You do not have permission to review requests.", ephemeral=True)
+            return
         member = interaction.guild.get_member(self.member_id)
         role = interaction.guild.get_role(self.role_id)
         if member and role:
             await member.add_roles(role, reason="Role request approved")
             await interaction.response.send_message(f"✅ Approved and added {role.name} to {member.mention}.", ephemeral=True)
             await log_action(interaction.guild, f"APPROVED: {member} ({member.id}) for role {role.name} ({role.id}) by {interaction.user} ({interaction.user.id})", self.proof_url)
+            # DM notify
+            try:
+                await member.send(f"✅ Your role request for **{role.name}** was approved!")
+            except Exception:
+                pass
         else:
             await interaction.response.send_message("Failed to add role.", ephemeral=True)
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only reviewers can deny
+        if not any(r.id == REVIEWER_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("You do not have permission to review requests.", ephemeral=True)
+            return
         member = interaction.guild.get_member(self.member_id)
         role = interaction.guild.get_role(self.role_id)
         await interaction.response.send_message(f"❌ Denied request for {member.mention} ({role.name}).", ephemeral=True)
         await log_action(interaction.guild, f"DENIED: {member} ({member.id}) for role {role.name} ({role.id}) by {interaction.user} ({interaction.user.id})", self.proof_url)
+        # DM notify
+        try:
+            await member.send(f"❌ Your role request for **{role.name}** was denied.")
+        except Exception:
+            pass
 
 async def log_action(guild, message, proof_url):
     # Log to .txt
@@ -36,8 +56,8 @@ async def log_action(guild, message, proof_url):
     logline = f"[{discord.utils.utcnow().isoformat()}] {message}\nProof: {proof_url}\n"
     with open(os.path.join(LOGS_DIR, f"{discord.utils.utcnow().date()}.txt"), "a", encoding="utf-8") as f:
         f.write(logline)
-    # Log as embed
-    ch = guild.get_channel(STAFF_CHANNEL_ID)
+    # Log as embed in LOG_CHANNEL_ID
+    ch = guild.get_channel(LOG_CHANNEL_ID)
     if isinstance(ch, discord.TextChannel):
         emb = discord.Embed(title="Role Request Log", description=message, color=discord.Color.purple())
         if proof_url:
@@ -63,9 +83,9 @@ class RoleRequestCog(commands.Cog):
         )
         if proof_url:
             embed.set_image(url=proof_url)
-        staff_channel = interaction.guild.get_channel(STAFF_CHANNEL_ID)
-        if staff_channel and isinstance(staff_channel, discord.TextChannel):
-            await staff_channel.send(embed=embed, view=RoleRequestView(interaction.user.id, role.id, proof_url))
+        review_channel = interaction.guild.get_channel(REVIEW_CHANNEL_ID)
+        if review_channel and isinstance(review_channel, discord.TextChannel):
+            await review_channel.send(embed=embed, view=RoleRequestView(interaction.user.id, role.id, proof_url))
             await interaction.response.send_message("Your role request has been submitted to staff.", ephemeral=True)
             await log_action(interaction.guild, f"REQUESTED: {interaction.user} ({interaction.user.id}) for role {role.name} ({role.id})", proof_url)
         else:
