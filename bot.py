@@ -162,5 +162,18 @@ async def main():
         print("All cogs loaded. Starting bot...")
         await bot.start(TOKEN)
 
+@bot.tree.command(name="sync", description="Sync slash commands (admin only).")
+async def sync_commands(interaction: discord.Interaction):
+    # Only allow admins
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("You lack permission.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        synced = await interaction.client.tree.sync()
+        await interaction.followup.send(f"✅ Synced {len(synced)} commands globally.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Sync failed: {e}", ephemeral=True)
+
 if __name__ == "__main__":
     asyncio.run(main())

@@ -6,6 +6,7 @@ import json
 import uuid
 import os
 import datetime as dt
+import asyncio
 from typing import Dict, Any, Optional, List, Tuple
 
 # -------------------- CONFIG CONSTANTS --------------------
@@ -25,6 +26,18 @@ QUOTA_ROLE_0 = 1329910253814550608  # quota 0
 QUOTA_ROLE_15 = 1329910255584546950 # quota 15
 QUOTA_ROLE_35 = 1329910389437104220 # quota 35
 QUOTA_ROLE_ADMIN_0 = 1355842403134603275 # quota 0 (admins)
+
+# Promotion cooldowns (days)
+PROMO_COOLDOWN_14 = 1355842403134603275  # 14 days
+PROMO_COOLDOWN_10 = [1394667511374680105, 1329910280834252903]  # JCO/SCO: 10 days
+PROMO_COOLDOWN_8 = 1329910281903673344   # 8 days
+PROMO_COOLDOWN_6 = [1329910295703064577, 1355842399338889288]  # 6 days
+PROMO_COOLDOWN_4 = 1329910298525696041   # 4 days
+
+# Infraction thresholds (minutes)
+WARN_THRESHOLD = 45  # under 45s is a warning
+STRIKE_THRESHOLD = 30  # under 30 minutes is a strike
+DEMOTION_THRESHOLD = 15  # under 15 minutes is a demotion
 
 # -------------------- STORAGE PATHS --------------------
 DATA_DIR = "data"
@@ -93,7 +106,9 @@ class Store:
     meta: {
         "logging_enabled": bool,
         "last_reset_ts": int,
-        "manage_message_ids": {str(user_id): int}  # optional: last manage message id to edit
+        "manage_message_ids": {str(user_id): int},  # optional: last manage message id to edit
+        "last_promotions": {str(user_id): int},  # last promotion timestamp
+        "infractions": {str(user_id): {"demotions": int, "strikes": int, "warns": int}}  # infraction counts
     }
     """
 
@@ -120,6 +135,10 @@ class Store:
             self.meta["last_reset_ts"] = ts_to_int(utcnow())
         if "manage_message_ids" not in self.meta:
             self.meta["manage_message_ids"] = {}
+        if "last_promotions" not in self.meta:
+            self.meta["last_promotions"] = {}
+        if "infractions" not in self.meta:
+            self.meta["infractions"] = {}
 
     def save(self):
         with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -214,6 +233,51 @@ class Store:
         # number of unique shifts = number of records
         # total time = sum durations
         return len(self.records), sum(r["duration"] for r in self.records)
+
+    def get_promotion_cooldown(self, user_id: int) -> int:
+        """Get promotion cooldown in days for a user based on their highest role."""
+        # This would need to be called with member roles, but for now return default
+        return 4  # default cooldown
+
+    def can_be_promoted(self, user_id: int, member_roles: List[discord.Role]) -> bool:
+        """Check if user can be promoted based on cooldown."""
+        role_ids = {r.id for r in member_roles}
+        last_promo = self.meta["last_promotions"].get(str(user_id), 0)
+        if last_promo == 0:
+            return True  # never promoted before
+        
+        # Determine cooldown based on highest role
+        cooldown_days = 4  # default
+        if PROMO_COOLDOWN_14 in role_ids:
+            cooldown_days = 14
+        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
+            cooldown_days = 10
+        elif PROMO_COOLDOWN_8 in role_ids:
+            cooldown_days = 8
+        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
+            cooldown_days = 6
+        elif PROMO_COOLDOWN_4 in role_ids:
+            cooldown_days = 4
+        
+        # Check if enough time has passed
+        days_since_promo = (ts_to_int(utcnow()) - last_promo) / (24 * 60 * 60)
+        return days_since_promo >= cooldown_days
+
+    def record_promotion(self, user_id: int):
+        """Record that a user was promoted."""
+        self.meta["last_promotions"][str(user_id)] = ts_to_int(utcnow())
+        self.save()
+
+    def get_infractions(self, user_id: int) -> Dict[str, int]:
+        """Get infraction counts for a user."""
+        return self.meta["infractions"].get(str(user_id), {"demotions": 0, "strikes": 0, "warns": 0})
+
+    def add_infraction(self, user_id: int, infraction_type: str):
+        """Add an infraction for a user."""
+        if str(user_id) not in self.meta["infractions"]:
+            self.meta["infractions"][str(user_id)] = {"demotions": 0, "strikes": 0, "warns": 0}
+        self.meta["infractions"][str(user_id)][infraction_type] += 1
+        self.save()
 
 
 # -------------------- UI VIEWS --------------------
@@ -386,6 +450,193 @@ class ShiftLeaderboardView(discord.ui.View):
         emb.description = "\n".join(lines)
         await interaction.response.edit_message(embed=emb, view=self)
 
+class ShiftListsView(discord.ui.View):
+    def __init__(self, cog, guild, promo_candidates, infractions):
+        super().__init__(timeout=180)
+        self.cog = cog
+        self.guild = guild
+        self.promo_candidates = promo_candidates
+        self.infractions = infractions
+        self.current_embed_type = "promotion"  # Track which embed is currently shown
+
+    @discord.ui.button(label="Remove from Promotion List", style=discord.ButtonStyle.danger, row=0)
+    async def remove_promo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Type the number of the user to remove from the promotion list.", ephemeral=True)
+        def check(m):
+            return m.author.id == interaction.user.id and m.channel == interaction.channel
+        try:
+            msg = await self.cog.bot.wait_for("message", check=check, timeout=60)
+            idx = int(msg.content.strip())
+            if 1 <= idx <= len(self.promo_candidates):
+                member, _ = self.promo_candidates[idx-1]
+                del self.promo_candidates[idx-1]
+                await interaction.channel.send(f"Removed {member.mention} from promotion list.")
+                # Refresh the embed
+                await self.refresh_embed(interaction)
+            else:
+                await interaction.channel.send("Invalid number.")
+        except Exception:
+            await interaction.channel.send("Failed to remove user.")
+
+    @discord.ui.button(label="Add to Promotion List by User ID", style=discord.ButtonStyle.success, row=0)
+    async def add_promo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Type the user ID to add to the promotion list.", ephemeral=True)
+        def check(m):
+            return m.author.id == interaction.user.id and m.channel == interaction.channel
+        try:
+            msg = await self.cog.bot.wait_for("message", check=check, timeout=60)
+            user_id = int(msg.content.strip())
+            member = self.guild.get_member(user_id)
+            if member:
+                # Get user's total shift time
+                total_seconds = self.cog.store.total_for_user(member.id)
+                self.promo_candidates.append((member, total_seconds))
+                # Sort by shift time (highest first)
+                self.promo_candidates.sort(key=lambda x: x[1], reverse=True)
+                await interaction.channel.send(f"Added {member.mention} to promotion list.")
+                # Refresh the embed
+                await self.refresh_embed(interaction)
+            else:
+                await interaction.channel.send("User not found.")
+        except Exception:
+            await interaction.channel.send("Failed to add user.")
+
+    @discord.ui.button(label="Remove from Infractions List", style=discord.ButtonStyle.danger, row=1)
+    async def remove_infraction(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Type the number of the user to remove from the infractions list.", ephemeral=True)
+        all_infractions = self.infractions["demotions"] + self.infractions["strikes"] + self.infractions["warns"]
+        def check(m):
+            return m.author.id == interaction.user.id and m.channel == interaction.channel
+        try:
+            msg = await self.cog.bot.wait_for("message", check=check, timeout=60)
+            idx = int(msg.content.strip())
+            if 1 <= idx <= len(all_infractions):
+                member, _ = all_infractions[idx-1]
+                # Remove from appropriate category
+                for category in ["demotions", "strikes", "warns"]:
+                    for i, (m, _) in enumerate(self.infractions[category]):
+                        if m.id == member.id:
+                            del self.infractions[category][i]
+                            break
+                await interaction.channel.send(f"Removed {member.mention} from infractions list.")
+                # Refresh the embed
+                await self.refresh_embed(interaction)
+            else:
+                await interaction.channel.send("Invalid number.")
+        except Exception:
+            await interaction.channel.send("Failed to remove user.")
+
+    @discord.ui.button(label="Add to Infractions List by User ID", style=discord.ButtonStyle.success, row=1)
+    async def add_infraction(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Type the user ID to add to the infractions list.", ephemeral=True)
+        def check(m):
+            return m.author.id == interaction.user.id and m.channel == interaction.channel
+        try:
+            msg = await self.cog.bot.wait_for("message", check=check, timeout=60)
+            user_id = int(msg.content.strip())
+            member = self.guild.get_member(user_id)
+            if member:
+                # Get user's total shift time and quota to determine infraction type
+                total_seconds = self.cog.store.total_for_user(member.id)
+                quota_minutes = await self.cog._get_quota(member)
+                
+                if total_seconds < quota_minutes * 60:
+                    minutes_short = quota_minutes - (total_seconds / 60)
+                    if minutes_short >= 15:  # DEMOTION_THRESHOLD
+                        self.infractions["demotions"].append((member, total_seconds))
+                    elif minutes_short >= 30:  # STRIKE_THRESHOLD
+                        self.infractions["strikes"].append((member, total_seconds))
+                    else:
+                        self.infractions["warns"].append((member, total_seconds))
+                    
+                    # Sort the category by shift time
+                    if minutes_short >= 15:
+                        self.infractions["demotions"].sort(key=lambda x: x[1])
+                    elif minutes_short >= 30:
+                        self.infractions["strikes"].sort(key=lambda x: x[1])
+                    else:
+                        self.infractions["warns"].sort(key=lambda x: x[1])
+                    
+                    await interaction.channel.send(f"Added {member.mention} to infractions list.")
+                    # Refresh the embed
+                    await self.refresh_embed(interaction)
+                else:
+                    await interaction.channel.send(f"{member.mention} meets their quota, no infraction needed.")
+            else:
+                await interaction.channel.send("User not found.")
+        except Exception:
+            await interaction.channel.send("Failed to add user.")
+
+    @discord.ui.button(label="Get Copy-Pastable Text", style=discord.ButtonStyle.primary, row=2)
+    async def copy_text(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_embed_type == "promotion":
+            text = self._generate_promotion_text()
+        else:
+            text = self._generate_infractions_text()
+        
+        await interaction.response.send_message(f"```\n{text}\n```", ephemeral=True)
+
+    async def refresh_embed(self, interaction: discord.Interaction):
+        """Refresh the current embed with updated data."""
+        if self.current_embed_type == "promotion":
+            embed = await self.cog._build_promotion_embed(self.promo_candidates)
+        else:
+            embed = await self.cog._build_infractions_embed(self.infractions)
+        
+        await interaction.edit_original_response(embed=embed, view=self)
+
+    def _generate_promotion_text(self) -> str:
+        """Generate copy-pastable text for promotion list."""
+        lines = [f"## <:MaplecliffNationalGaurd:1409463907294384169>  Promotions {utcnow().strftime('%Y-%m-%d')} <:MaplecliffNationalGaurd:1409463907294384169>"]
+        lines.append("-#      ")
+        lines.append("")
+        
+        if not self.promo_candidates:
+            lines.append("No eligible candidates for promotion.")
+        else:
+            for i, (member, total_seconds) in enumerate(self.promo_candidates, 1):
+                time_str = self.cog._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            
+            lines.append("")
+            lines.append("Congratulations to all 🎉")
+        
+        return "\n".join(lines)
+
+    def _generate_infractions_text(self) -> str:
+        """Generate copy-pastable text for infractions list."""
+        lines = [f"## <:MaplecliffNationalGaurd:1409463907294384169>  Infractions {utcnow().strftime('%Y-%m-%d')} <:MaplecliffNationalGaurd:1409463907294384169>"]
+        lines.append("-#      ")
+        lines.append("")
+        
+        # Demotions
+        if self.infractions["demotions"]:
+            lines.append("***__Demotions__***")
+            for i, (member, total_seconds) in enumerate(self.infractions["demotions"], 1):
+                time_str = self.cog._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            lines.append("")
+        
+        # Strikes
+        if self.infractions["strikes"]:
+            lines.append("***__Strikes__***")
+            for i, (member, total_seconds) in enumerate(self.infractions["strikes"], 1):
+                time_str = self.cog._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            lines.append("")
+        
+        # Warns
+        if self.infractions["warns"]:
+            lines.append("***__Warns__***")
+            for i, (member, total_seconds) in enumerate(self.infractions["warns"], 1):
+                time_str = self.cog._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+        
+        if not any(self.infractions.values()):
+            lines.append("No infractions found.")
+        
+        return "\n".join(lines)
+
 # -------------------- MAIN COG --------------------
 class ShiftCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -463,7 +714,7 @@ class ShiftCog(commands.Cog):
         e.add_field(name="Logging", value="Enabled" if logging_enabled else "Disabled", inline=True)
         e.add_field(name="Status", value=status, inline=True)
         if st:
-            e.add_field(name="Started", value=f"<t:{st['start_ts']}:F> (\u200b<t:{st['start_ts']}:R>\u200b)", inline=True)
+            e.add_field(name="Started", value=f"<t:{st['start_ts']}:T> (\u200b<t:{st['start_ts']}:R>\u200b)", inline=True)
             elapsed = st["accum"]
             if not st["on_break"]:
                 elapsed += max(0, ts_to_int(utcnow()) - st["last_ts"])
@@ -481,15 +732,17 @@ class ShiftCog(commands.Cog):
     admin_group = app_commands.Group(name="shift_admin", description="Administrative shift controls.")
 
     @admin_group.command(name="user", description="Admin actions for a specific user (optional user to target).")
-    @app_commands.describe(personnel="User to target (optional)", action="Choose an action")
+    @app_commands.describe(personnel="User to target (optional)", action="Choose an action", time_minutes="Time in minutes (for add/subtract time actions)", record_id="Record ID (for void by ID action)")
     @app_commands.choices(action=[
         app_commands.Choice(name="Stop shift", value="stop"),
         app_commands.Choice(name="Toggle break", value="toggle_break"),
         app_commands.Choice(name="Void ongoing shift", value="void"),
         app_commands.Choice(name="Show shift records", value="records"),
         app_commands.Choice(name="Void shift by ID", value="void_id"),
+        app_commands.Choice(name="Add shift time", value="add_time"),
+        app_commands.Choice(name="Subtract shift time", value="subtract_time"),
     ])
-    async def shift_admin_user(self, interaction: discord.Interaction, action: app_commands.Choice[str], personnel: Optional[discord.Member] = None, record_id: Optional[str] = None):
+    async def shift_admin_user(self, interaction: discord.Interaction, action: app_commands.Choice[str], personnel: Optional[discord.Member] = None, record_id: Optional[str] = None, time_minutes: Optional[int] = None):
         user = interaction.user
         guild = interaction.guild
         if guild is None:
@@ -565,6 +818,46 @@ class ShiftCog(commands.Cog):
             ok = self.store.void_record_by_id(record_id)
             await self.log_event(guild, f"🧹 Admin {user.mention} voided record `{record_id}` for {target.mention}.")
             await interaction.response.send_message(embed=self.embed_info(f"Voided record `{record_id}`."), ephemeral=True)
+        elif action.value == "add_time":
+            if not time_minutes:
+                await interaction.response.send_message("Provide `time_minutes:` as additional option in the command.", ephemeral=True)
+                return
+            if time_minutes <= 0:
+                await interaction.response.send_message("Time must be positive.", ephemeral=True)
+                return
+            # Add time to user's total by creating a fake record
+            fake_record = {
+                "id": f"admin_add_{uuid.uuid4().hex[:8]}",
+                "user_id": target.id,
+                "start_ts": ts_to_int(utcnow()) - (time_minutes * 60),
+                "end_ts": ts_to_int(utcnow()),
+                "duration": time_minutes * 60,
+                "breaks": 0,
+            }
+            self.store.records.append(fake_record)
+            self.store.save()
+            await self.log_event(guild, f"➕ Admin {user.mention} added {time_minutes} minutes to {target.mention}'s total shift time.")
+            await interaction.response.send_message(embed=self.embed_info(f"Added {time_minutes} minutes to {target.mention}'s total shift time."), ephemeral=True)
+        elif action.value == "subtract_time":
+            if not time_minutes:
+                await interaction.response.send_message("Provide `time_minutes:` as additional option in the command.", ephemeral=True)
+                return
+            if time_minutes <= 0:
+                await interaction.response.send_message("Time must be positive.", ephemeral=True)
+                return
+            # Subtract time by creating a negative duration record
+            fake_record = {
+                "id": f"admin_sub_{uuid.uuid4().hex[:8]}",
+                "user_id": target.id,
+                "start_ts": ts_to_int(utcnow()),
+                "end_ts": ts_to_int(utcnow()),
+                "duration": -(time_minutes * 60),  # Negative duration
+                "breaks": 0,
+            }
+            self.store.records.append(fake_record)
+            self.store.save()
+            await self.log_event(guild, f"➖ Admin {user.mention} subtracted {time_minutes} minutes from {target.mention}'s total shift time.")
+            await interaction.response.send_message(embed=self.embed_info(f"Subtracted {time_minutes} minutes from {target.mention}'s total shift time."), ephemeral=True)
 
     @admin_group.command(name="global", description="Global admin actions when no personnel is specified.")
     @app_commands.describe(action="Choose an action")
@@ -575,6 +868,9 @@ class ShiftCog(commands.Cog):
         app_commands.Choice(name="Get shift leaderboard (txt)", value="leaderboard_txt"),
         app_commands.Choice(name="Get shift leaderboard: met quota", value="leaderboard_met"),
         app_commands.Choice(name="Get shift leaderboard: not met quota", value="leaderboard_notmet"),
+        app_commands.Choice(name="Get promotion list", value="promotion_list"),
+        app_commands.Choice(name="Get infractions list", value="infractions_list"),
+        app_commands.Choice(name="Set wipe timestamp (for message counting)", value="set_wipe"),
     ])
     async def shift_admin_global(self, interaction: discord.Interaction, action: app_commands.Choice[str], record_id: Optional[str] = None, confirmation: Optional[str] = None):
         user = interaction.user
@@ -648,11 +944,17 @@ class ShiftCog(commands.Cog):
             # messages since last reset
             last_reset = int_to_ts(self.store.meta.get("last_reset_ts", ts_to_int(utcnow())))
             msg_count = await self.count_messages_since(guild, last_reset)
+            # total server members
+            total_members = guild.member_count
+            # all messages since last wipe (if we have a wipe timestamp stored)
+            all_messages_count = await self.count_all_messages_since_wipe(guild)
             emb = self.base_embed("Shift Stats (Global)", colour_info())
             emb.add_field(name="Total unique shifts", value=str(num_records), inline=True)
             emb.add_field(name="Total shift time", value=human_td(total_seconds), inline=True)
-            emb.add_field(name="Since reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
-            emb.add_field(name="Messages since reset (in target channel)", value=str(msg_count), inline=True)
+            emb.add_field(name="Last reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
+            emb.add_field(name="Messages since reset (in personnel-chat channel)", value=str(msg_count), inline=True)
+            emb.add_field(name="All messages since last wipe", value=str(all_messages_count), inline=True)
+            emb.add_field(name="Total server members", value=str(total_members), inline=True)
             emb.add_field(name="Members with personnel role", value=str(role_count), inline=True)
             await interaction.response.send_message(embed=emb, ephemeral=False)
             return
@@ -664,6 +966,27 @@ class ShiftCog(commands.Cog):
             with open(path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))
             await interaction.response.send_message(file=discord.File(path), ephemeral=True)
+            return
+        elif action.value == "promotion_list":
+            promo_candidates, infractions = await self._build_lists(guild)
+            embed = await self._build_promotion_embed(promo_candidates)
+            view = ShiftListsView(self, guild, promo_candidates, infractions)
+            view.current_embed_type = "promotion"
+            await interaction.response.send_message(embed=embed, view=view)
+            return
+        elif action.value == "infractions_list":
+            promo_candidates, infractions = await self._build_lists(guild)
+            embed = await self._build_infractions_embed(infractions)
+            view = ShiftListsView(self, guild, promo_candidates, infractions)
+            view.current_embed_type = "infractions"
+            await interaction.response.send_message(embed=embed, view=view)
+            return
+        elif action.value == "set_wipe":
+            # Set current time as wipe timestamp
+            self.store.meta["last_wipe_ts"] = ts_to_int(utcnow())
+            self.store.save()
+            await self.log_event(guild, f"🔄 Admin {user.mention} set wipe timestamp to now.")
+            await interaction.response.send_message(embed=self.embed_info("Wipe timestamp set to current time. Message counting will now start from this point."), ephemeral=True)
             return
 
     async def _build_leaderboard_lines(self, guild: discord.Guild, filter_mode: str = "all") -> List[str]:
@@ -716,6 +1039,8 @@ class ShiftCog(commands.Cog):
             return 15
         elif QUOTA_ROLE_35 in mids:
             return 35
+        elif ROLE_MANAGE_REQUIRED in mids:  # Include 1329910329701830686 role in quota logic
+            return DEFAULT_QUOTA
         else:
             return DEFAULT_QUOTA
 
@@ -727,6 +1052,137 @@ class ShiftCog(commands.Cog):
         async for msg in ch.history(after=since, limit=None, oldest_first=True):
             count += 1
         return count
+
+    async def count_all_messages_since_wipe(self, guild: discord.Guild) -> int:
+        """Count all messages in the server since the last wipe (stored in meta)."""
+        last_wipe = self.store.meta.get("last_wipe_ts", 0)
+        if last_wipe == 0:
+            # If no wipe timestamp, count all messages in the target channel
+            ch = guild.get_channel(MSG_COUNT_CHANNEL_ID)
+            if not isinstance(ch, discord.TextChannel):
+                return 0
+            count = 0
+            async for msg in ch.history(limit=None, oldest_first=True):
+                count += 1
+            return count
+        
+        # Count messages since last wipe
+        since = int_to_ts(last_wipe)
+        ch = guild.get_channel(MSG_COUNT_CHANNEL_ID)
+        if not isinstance(ch, discord.TextChannel):
+            return 0
+        count = 0
+        async for msg in ch.history(after=since, limit=None, oldest_first=True):
+            count += 1
+        return count
+
+    async def _build_lists(self, guild: discord.Guild) -> Tuple[List[Tuple[discord.Member, int]], Dict[str, List[Tuple[discord.Member, int]]]]:
+        """Build promotion candidates and infractions lists."""
+        manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+        if not manage_role:
+            return [], {"demotions": [], "strikes": [], "warns": []}
+        
+        members = manage_role.members
+        promo_candidates = []
+        infractions = {"demotions": [], "strikes": [], "warns": []}
+        
+        for member in members:
+            total_seconds = self.store.total_for_user(member.id)
+            quota_minutes = await self._get_quota(member)
+            
+            # Check if eligible for promotion (more than 1hr 30mins and not on cooldown)
+            if total_seconds >= 90 * 60 and self.store.can_be_promoted(member.id, member.roles):
+                promo_candidates.append((member, total_seconds))
+            
+            # Check for infractions based on quota (include 1329910329701830686 role)
+            if total_seconds < quota_minutes * 60:
+                minutes_short = quota_minutes - (total_seconds / 60)
+                if minutes_short >= DEMOTION_THRESHOLD:
+                    infractions["demotions"].append((member, total_seconds))
+                elif minutes_short >= STRIKE_THRESHOLD:
+                    infractions["strikes"].append((member, total_seconds))
+                elif minutes_short >= WARN_THRESHOLD / 60:  # Convert seconds to minutes
+                    infractions["warns"].append((member, total_seconds))
+        
+        # Sort promotion candidates by most shift time
+        promo_candidates.sort(key=lambda x: x[1], reverse=True)
+        
+        # Sort infractions by most shift time (least time = worst)
+        for infraction_type in infractions:
+            infractions[infraction_type].sort(key=lambda x: x[1])
+        
+        return promo_candidates, infractions
+
+    async def _build_promotion_embed(self, promo_candidates: List[Tuple[discord.Member, int]]) -> discord.Embed:
+        """Build the promotion list embed."""
+        embed = self.base_embed("", colour_info())
+        embed.title = f"<:MaplecliffNationalGaurd:1409463907294384169>  Promotions {utcnow().strftime('%Y-%m-%d')} <:MaplecliffNationalGaurd:1409463907294384169>"
+        
+        if not promo_candidates:
+            embed.description = "No eligible candidates for promotion."
+            return embed
+        
+        lines = []
+        for i, (member, total_seconds) in enumerate(promo_candidates, 1):
+            time_str = self._format_duration(total_seconds)
+            lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+        
+        embed.description = "\n".join(lines) + "\n\nCongratulations to all 🎉"
+        return embed
+
+    async def _build_infractions_embed(self, infractions: Dict[str, List[Tuple[discord.Member, int]]]) -> discord.Embed:
+        """Build the infractions list embed."""
+        embed = self.base_embed("", colour_err())
+        embed.title = f"<:MaplecliffNationalGaurd:1409463907294384169>  Infractions {utcnow().strftime('%Y-%m-%d')} <:MaplecliffNationalGaurd:1409463907294384169>"
+        
+        sections = []
+        
+        # Demotions
+        if infractions["demotions"]:
+            lines = []
+            for i, (member, total_seconds) in enumerate(infractions["demotions"], 1):
+                time_str = self._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            sections.append("***__Demotions__***\n" + "\n".join(lines))
+        
+        # Strikes
+        if infractions["strikes"]:
+            lines = []
+            for i, (member, total_seconds) in enumerate(infractions["strikes"], 1):
+                time_str = self._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            sections.append("***__Strikes__***\n" + "\n".join(lines))
+        
+        # Warns
+        if infractions["warns"]:
+            lines = []
+            for i, (member, total_seconds) in enumerate(infractions["warns"], 1):
+                time_str = self._format_duration(total_seconds)
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            sections.append("***__Warns__***\n" + "\n".join(lines))
+        
+        if not any(infractions.values()):
+            sections.append("No infractions found.")
+        
+        embed.description = "\n\n".join(sections)
+        return embed
+
+    def _format_duration(self, seconds: int) -> str:
+        """Format duration in a more readable way for the lists."""
+        m, s = divmod(int(seconds), 60)
+        h, m = divmod(m, 60)
+        d, h = divmod(h, 24)
+        
+        parts = []
+        if d: parts.append(f"{d} day{'s' if d != 1 else ''}")
+        if h: parts.append(f"{h} hour{'s' if h != 1 else ''}")
+        if m: parts.append(f"{m} minute{'s' if m != 1 else ''}")
+        if s: parts.append(f"{s} second{'s' if s != 1 else ''}")
+        
+        if not parts:
+            return "0 seconds"
+        
+        return ", ".join(parts)
 
     # ---------------- OTHER COMMANDS ----------------
 
@@ -772,6 +1228,35 @@ class ShiftCog(commands.Cog):
         await interaction.response.send_message(embed=emb)
 
     # ---------------- LOGGING TOGGLE ----------------
+    @app_commands.command(name="shift_lists", description="Show promotion and infractions lists (admin only).")
+    @app_commands.describe(list_type="Choose which list to show")
+    @app_commands.choices(list_type=[
+        app_commands.Choice(name="Promotion List", value="promotion"),
+        app_commands.Choice(name="Infractions List", value="infractions"),
+    ])
+    async def shift_lists(self, interaction: discord.Interaction, list_type: app_commands.Choice[str]):
+        user = interaction.user
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        if not any(r.id == ROLE_ADMIN for r in user.roles):  # type: ignore
+            await interaction.response.send_message("You lack admin role.", ephemeral=True)
+            return
+        
+        promo_candidates, infractions = await self._build_lists(guild)
+        
+        if list_type.value == "promotion":
+            embed = await self._build_promotion_embed(promo_candidates)
+            view = ShiftListsView(self, guild, promo_candidates, infractions)
+            view.current_embed_type = "promotion"
+        else:  # infractions
+            embed = await self._build_infractions_embed(infractions)
+            view = ShiftListsView(self, guild, promo_candidates, infractions)
+            view.current_embed_type = "infractions"
+        
+        await interaction.response.send_message(embed=embed, view=view)
+
     @app_commands.command(name="shift_logging", description="Enable or disable shift logging (admin only).")
     @app_commands.describe(enabled="true/false")
     async def shift_logging(self, interaction: discord.Interaction, enabled: Optional[bool] = None):
@@ -806,5 +1291,6 @@ class ShiftCog(commands.Cog):
 
     # --------------- LEADERBOARD (PING USERS) ---------------
     # already mentions users via <@id> in lines
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(ShiftCog(bot))
