@@ -221,7 +221,11 @@ class ClaimButton(Button):
             return
         await interaction.channel.set_permissions(hc_role, send_messages=False)
         await interaction.channel.set_permissions(ticket_handler_role, send_messages=False)
-        await interaction.channel.set_permissions(interaction.user, send_messages=True)
+        await interaction.channel.set_permissions(
+            interaction.user,
+            view_channel=True,  # <-- Add this line
+            send_messages=True
+        )
         await interaction.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
         await interaction.response.edit_message(view=TicketActionView())  # Re-render view
 
