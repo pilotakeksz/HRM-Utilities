@@ -216,18 +216,35 @@ class ClaimButton(Button):
     async def callback(self, interaction: discord.Interaction):
         hc_role = interaction.guild.get_role(HC_ROLE)
         ticket_handler_role = interaction.guild.get_role(TICKET_HANDLER_ROLE)
+        general_role = interaction.guild.get_role(1329910281903673344)
+        opener_id = None
+        if interaction.channel.topic and "Ticket opener:" in interaction.channel.topic:
+            try:
+                opener_id = int(interaction.channel.topic.split("Ticket opener:")[1].strip().split()[0])
+            except Exception:
+                opener_id = None
+        opener = interaction.guild.get_member(opener_id) if opener_id else None
+
+        # Only allow claim by HC or Ticket Handler
         if hc_role not in interaction.user.roles and ticket_handler_role not in interaction.user.roles:
             await interaction.response.send_message("Only HC or Ticket Handlers can claim this ticket.", ephemeral=True)
             return
-        await interaction.channel.set_permissions(hc_role, send_messages=False)
-        await interaction.channel.set_permissions(ticket_handler_role, send_messages=False)
-        await interaction.channel.set_permissions(
-            interaction.user,
-            view_channel=True,  # <-- Add this line
-            send_messages=True
-        )
-        await interaction.channel.send(f"This ticket has been claimed by {interaction.user.mention}.")
-        await interaction.response.edit_message(view=TicketActionView())  # Re-render view
+
+        # Set permissions: only claimer and opener can send messages, staff can view
+        overwrites = {
+            interaction.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True),
+        }
+        if opener:
+            overwrites[opener] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
+        # General tickets: both roles can view
+        overwrites[general_role] = discord.PermissionOverwrite(view_channel=True, send_messages=False)
+        overwrites[ticket_handler_role] = discord.PermissionOverwrite(view_channel=True, send_messages=False)
+        overwrites[hc_role] = discord.PermissionOverwrite(view_channel=True, send_messages=False)
+
+        await interaction.channel.edit(overwrites=overwrites)
+        await interaction.channel.send(f"This ticket has been claimed by {interaction.user.mention}. Only you and the ticket opener can reply.")
+        await interaction.response.edit_message(view=TicketActionView())
 
 class CloseButton(Button):
     def __init__(self):
@@ -476,7 +493,7 @@ class TicketSystem(commands.Cog):
             color=EMBED_COLOUR
         )
         embed2.add_field(
-            name="General Support",
+            name="<:MCNG:1409463907294384169> General Support",
             value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
             inline=True
         )
@@ -485,7 +502,11 @@ class TicketSystem(commands.Cog):
             value="Interested in speaking to a JCO+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
             inline=True
         )
-        
+        embed2.add_field(
+            name="📝 IA",
+            value="Want to appeal a punishment or report a personnel member? Open an IA ticket and our team will review your case promptly.",
+            inline=True
+        )
         embed2.set_image(url=EMBED2_IMAGE)
         embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
