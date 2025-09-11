@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import json
 import os
 from datetime import datetime, timedelta
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 LOA_REQUEST_ROLE = 1329910329701830686
 LOA_REVIEW_CHANNEL = 1329910558954098701
 LOA_REVIEWER_ROLE = 1329910265264869387
+LOA_ACTIVE_ROLE = 1329910253814550608  # Role to add/remove for LOA
 DATA_DIR = "data"
 LOGS_DIR = "logs"
 LOA_DATA_FILE = os.path.join(DATA_DIR, "loa_requests.json")
@@ -35,6 +36,19 @@ def save_loa_request(request):
     with open(LOA_DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
+def update_loa_status(user_id, status):
+    ensure_dirs()
+    try:
+        with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = []
+    for req in data:
+        if req["user_id"] == user_id and req["status"] == "Pending":
+            req["status"] = status
+    with open(LOA_DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
 class LOARequestModal(discord.ui.Modal, title="LOA Request"):
     reason = discord.ui.TextInput(
         label="Reason for LOA",
@@ -44,7 +58,7 @@ class LOARequestModal(discord.ui.Modal, title="LOA Request"):
         max_length=300
     )
     duration = discord.ui.TextInput(
-        label="Duration (days)",
+        label="Duration (days, max 28)",
         placeholder="Enter number of days (e.g. 7)",
         required=True,
         max_length=3
@@ -57,10 +71,10 @@ class LOARequestModal(discord.ui.Modal, title="LOA Request"):
             return
         try:
             days = int(self.duration.value)
-            if days < 1 or days > 60:
+            if days < 1 or days > 28:
                 raise ValueError
         except ValueError:
-            await interaction.response.send_message("Please enter a valid duration (1-60 days).", ephemeral=True)
+            await interaction.response.send_message("Please enter a valid duration (1-28 days).", ephemeral=True)
             return
 
         end_date = datetime.utcnow() + timedelta(days=days)
@@ -106,11 +120,14 @@ class LOAReviewView(discord.ui.View):
             await interaction.response.send_message("You do not have permission to review LOA requests.", ephemeral=True)
             return
         member = interaction.guild.get_member(self.user_id)
+        loa_role = interaction.guild.get_role(LOA_ACTIVE_ROLE)
         await interaction.response.send_message(f"✅ LOA approved for {member.mention if member else self.user_id}.", ephemeral=True)
         log_loa_action(f"APPROVED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
+        update_loa_status(self.user_id, "Approved")
         try:
-            if member:
-                await member.send("✅ Your LOA request has been approved!")
+            if member and loa_role:
+                await member.add_roles(loa_role, reason="LOA approved")
+                await member.send("✅ Your LOA request has been approved! You have been given the LOA role.")
         except Exception:
             pass
         await self.update_embed(interaction, "✅ Approved", interaction.user)
@@ -121,6 +138,7 @@ class LOAReviewView(discord.ui.View):
             await interaction.response.send_message("You do not have permission to review LOA requests.", ephemeral=True)
             return
         member = interaction.guild.get_member(self.user_id)
+        update_loa_status(self.user_id, "Denied")
         await interaction.response.send_message(f"❌ LOA denied for {member.mention if member else self.user_id}.", ephemeral=True)
         log_loa_action(f"DENIED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
         try:
@@ -135,10 +153,39 @@ class LOACog(commands.Cog):
         self.bot = bot
         ensure_dirs()
         self.bot.add_view(LOAReviewView(user_id=0))  # Persistent view
+        self.loa_expiry_check.start()
 
     @discord.app_commands.command(name="loa_request", description="Request a Leave of Absence (LOA).")
     async def loa_request(self, interaction: discord.Interaction):
         await interaction.response.send_modal(LOARequestModal())
+
+    @tasks.loop(minutes=10)
+    async def loa_expiry_check(self):
+        ensure_dirs()
+        try:
+            with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = []
+        now = datetime.utcnow()
+        for req in data:
+            if req["status"] == "Approved":
+                end = datetime.fromisoformat(req["end_date"])
+                if now >= end:
+                    guild = self.bot.get_guild(LOA_REVIEW_CHANNEL // 10000000000 * 10000000000)  # Replace with your guild ID if needed
+                    if guild:
+                        member = guild.get_member(req["user_id"])
+                        loa_role = guild.get_role(LOA_ACTIVE_ROLE)
+                        if member and loa_role and loa_role in member.roles:
+                            try:
+                                await member.remove_roles(loa_role, reason="LOA expired")
+                                log_loa_action(f"EXPIRED: {member} ({req['user_id']}) LOA expired and role removed.")
+                                await member.send("Your LOA has expired and the LOA role has been removed.")
+                            except Exception:
+                                pass
+                    req["status"] = "Expired"
+        with open(LOA_DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
 async def setup(bot):
     await bot.add_cog(LOACog(bot))
