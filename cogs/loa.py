@@ -100,7 +100,7 @@ class LOAReviewView(discord.ui.View):
         embed.add_field(name="Reviewed by", value=reviewer.mention, inline=False)
         await interaction.message.edit(embed=embed, view=None)
 
-    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success, custom_id="loa_approve")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not any(r.id == LOA_REVIEWER_ROLE for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to review LOA requests.", ephemeral=True)
@@ -115,7 +115,7 @@ class LOAReviewView(discord.ui.View):
             pass
         await self.update_embed(interaction, "✅ Approved", interaction.user)
 
-    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger, custom_id="loa_deny")
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not any(r.id == LOA_REVIEWER_ROLE for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to review LOA requests.", ephemeral=True)
