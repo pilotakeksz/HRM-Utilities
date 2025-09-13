@@ -924,6 +924,14 @@ class ShiftCog(commands.Cog):
 
             # Reset stats since last reset
             self.store.meta["last_reset_ts"] = ts_to_int(now)
+
+            # --- NEW: Reset all infractions and promotions ---
+            self.store.meta["infractions"] = {}
+            self.store.meta["last_promotions"] = {}
+
+            # --- NEW: Set all users' total shift time to 0 by clearing all records ---
+            self.store.records = []
+
             self.store.save()
 
             # Remove leaderboard files in data/
@@ -942,11 +950,11 @@ class ShiftCog(commands.Cog):
 
             await self.log_event(
                 guild,
-                f"⚠️ Admin {user.mention} voided **ALL** ongoing shifts ({ongoing_count}) and **{removed_count}** shift records from this week. Stats since reset restarted."
+                f"⚠️ Admin {user.mention} voided **ALL** ongoing shifts ({ongoing_count}) and **{removed_count}** shift records from this week. Stats since reset restarted. **All shift times set to 0.**"
             )
             await interaction.channel.send(
                 embed=self.embed_warn(
-                    f"Voided all ongoing shifts ({ongoing_count}) and {removed_count} shift records from this week.\n**Stats since reset have been restarted.**"
+                    f"Voided all ongoing shifts ({ongoing_count}) and {removed_count} shift records from this week.\n**Stats since reset have been restarted. All shift times set to 0.**"
                 )
             )
             return
@@ -1142,7 +1150,7 @@ class ShiftCog(commands.Cog):
         if infractions["warns"]:
             lines = []
             for i, (member, total_seconds) in enumerate(infractions["warns"], 1):
-                time_str = self._format_duration(total_seconds)
+                time_str = self.cog._format_duration(total_seconds)
                 lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
             sections.append("***__Warns__***\n" + "\n".join(lines))
         
