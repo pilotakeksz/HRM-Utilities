@@ -12,6 +12,7 @@ DATA_DIR = "data"
 LOGS_DIR = "logs"
 LOA_DATA_FILE = os.path.join(DATA_DIR, "loa_requests.json")
 LOA_LOG_FILE = os.path.join(LOGS_DIR, "loa.log")
+ACTIVE_LOAS_FILE = os.path.join(DATA_DIR, "active_loas.json")
 
 def ensure_dirs():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -47,6 +48,35 @@ def update_loa_status(user_id, status):
         if req["user_id"] == user_id and req["status"] == "Pending":
             req["status"] = status
     with open(LOA_DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+def add_active_loa(user_id, end_date):
+    ensure_dirs()
+    try:
+        if os.path.exists(ACTIVE_LOAS_FILE):
+            with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+    except Exception:
+        data = {}
+    data[str(user_id)] = end_date
+    with open(ACTIVE_LOAS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+def remove_active_loa(user_id):
+    ensure_dirs()
+    try:
+        if os.path.exists(ACTIVE_LOAS_FILE):
+            with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+    except Exception:
+        data = {}
+    if str(user_id) in data:
+        del data[str(user_id)]
+    with open(ACTIVE_LOAS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 class LOARequestModal(discord.ui.Modal, title="LOA Request"):
@@ -124,6 +154,21 @@ class LOAReviewView(discord.ui.View):
         await interaction.response.send_message(f"✅ LOA approved for {member.mention if member else self.user_id}.", ephemeral=True)
         log_loa_action(f"APPROVED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
         update_loa_status(self.user_id, "Approved")
+
+        # Find end_date for this user
+        req_end_date = None
+        try:
+            with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for req in data:
+                if req["user_id"] == self.user_id and req["status"] == "Approved":
+                    req_end_date = req["end_date"]
+                    break
+        except Exception:
+            pass
+        if req_end_date:
+            add_active_loa(self.user_id, req_end_date)
+
         try:
             if member and loa_role:
                 await member.add_roles(loa_role, reason="LOA approved")
@@ -139,6 +184,7 @@ class LOAReviewView(discord.ui.View):
             return
         member = interaction.guild.get_member(self.user_id)
         update_loa_status(self.user_id, "Denied")
+        remove_active_loa(self.user_id)
         await interaction.response.send_message(f"❌ LOA denied for {member.mention if member else self.user_id}.", ephemeral=True)
         log_loa_action(f"DENIED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
         try:
@@ -162,30 +208,34 @@ class LOACog(commands.Cog):
     @tasks.loop(minutes=10)
     async def loa_expiry_check(self):
         ensure_dirs()
-        try:
-            with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = []
         now = datetime.utcnow()
-        for req in data:
-            if req["status"] == "Approved":
-                end = datetime.fromisoformat(req["end_date"])
-                if now >= end:
-                    guild = self.bot.get_guild(LOA_REVIEW_CHANNEL // 10000000000 * 10000000000)  # Replace with your guild ID if needed
-                    if guild:
-                        member = guild.get_member(req["user_id"])
-                        loa_role = guild.get_role(LOA_ACTIVE_ROLE)
-                        if member and loa_role and loa_role in member.roles:
-                            try:
-                                await member.remove_roles(loa_role, reason="LOA expired")
-                                log_loa_action(f"EXPIRED: {member} ({req['user_id']}) LOA expired and role removed.")
-                                await member.send("Your LOA has expired and the LOA role has been removed.")
-                            except Exception:
-                                pass
-                    req["status"] = "Expired"
-        with open(LOA_DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        # Check active LOAs
+        try:
+            with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
+                active_loas = json.load(f)
+        except Exception:
+            active_loas = {}
+        guild = self.bot.get_guild(LOA_REVIEW_CHANNEL // 10000000000 * 10000000000)  # Replace with your guild ID if needed
+        loa_role = guild.get_role(LOA_ACTIVE_ROLE) if guild else None
+        expired_users = []
+        for user_id, end_date_str in active_loas.items():
+            try:
+                end_date = datetime.fromisoformat(end_date_str)
+            except Exception:
+                continue
+            if now >= end_date:
+                member = guild.get_member(int(user_id)) if guild else None
+                if member and loa_role and loa_role in member.roles:
+                    try:
+                        await member.remove_roles(loa_role, reason="LOA expired")
+                        log_loa_action(f"EXPIRED: {member} ({user_id}) LOA expired and role removed.")
+                        await member.send("Your LOA has expired and the LOA role has been removed.")
+                    except Exception:
+                        pass
+                expired_users.append(user_id)
+        # Remove expired users from active_loas.json
+        for user_id in expired_users:
+            remove_active_loa(user_id)
 
 async def setup(bot):
     await bot.add_cog(LOACog(bot))
