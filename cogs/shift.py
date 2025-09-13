@@ -1070,7 +1070,6 @@ class ShiftCog(commands.Cog):
         return count
 
     async def _build_lists(self, guild: discord.Guild) -> Tuple[List[Tuple[discord.Member, int]], Dict[str, List[Tuple[discord.Member, int]]]]:
-        """Build promotion candidates and infractions lists."""
         manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
         if not manage_role:
             return [], {"demotions": [], "strikes": [], "warns": []}
@@ -1082,25 +1081,29 @@ class ShiftCog(commands.Cog):
         for member in members:
             total_seconds = self.store.total_for_user(member.id)
             quota_minutes = await self._get_quota(member)
-            
-            # Check if eligible for promotion (more than 1hr 30mins and not on cooldown)
+            mids = {r.id for r in member.roles}
+
+            # Exemption logic
+            if QUOTA_ROLE_0 in mids or QUOTA_ROLE_ADMIN_0 in mids:
+                continue  # Fully exempt
+            if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
+                continue  # Exempt above 15 minutes
+
+            # Promotion eligibility
             if total_seconds >= 90 * 60 and self.store.can_be_promoted(member.id, member.roles):
                 promo_candidates.append((member, total_seconds))
             
-            # Check for infractions based on quota (include 1329910329701830686 role)
+            # Infractions
             if total_seconds < quota_minutes * 60:
                 minutes_short = quota_minutes - (total_seconds / 60)
                 if minutes_short >= DEMOTION_THRESHOLD:
                     infractions["demotions"].append((member, total_seconds))
                 elif minutes_short >= STRIKE_THRESHOLD:
                     infractions["strikes"].append((member, total_seconds))
-                elif minutes_short >= WARN_THRESHOLD / 60:  # Convert seconds to minutes
+                elif minutes_short >= WARN_THRESHOLD / 60:
                     infractions["warns"].append((member, total_seconds))
         
-        # Sort promotion candidates by most shift time
         promo_candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        # Sort infractions by most shift time (least time = worst)
         for infraction_type in infractions:
             infractions[infraction_type].sort(key=lambda x: x[1])
         
