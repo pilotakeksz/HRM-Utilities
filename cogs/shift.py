@@ -8,6 +8,7 @@ import os
 import datetime as dt
 import asyncio
 from typing import Dict, Any, Optional, List, Tuple
+import glob
 
 # -------------------- CONFIG CONSTANTS --------------------
 IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68bac05c&is=68b96edc&hm=b48ce53b741b93847d34dc04a79709fa47badfd867e95afc68a6712de4d86856&"
@@ -924,6 +925,20 @@ class ShiftCog(commands.Cog):
             # Reset stats since last reset
             self.store.meta["last_reset_ts"] = ts_to_int(now)
             self.store.save()
+
+            # Remove leaderboard files in data/
+            for path in glob.glob(os.path.join(DATA_DIR, "leaderboard_*.txt")):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+
+            # Remove shift log files in data/logs/
+            for path in glob.glob(os.path.join(LOGS_DIR, "*.log")):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
 
             await self.log_event(
                 guild,
