@@ -190,6 +190,11 @@ class Misc(commands.Cog):
             member = ctx.message.mentions[0] if ctx.message.mentions else None
             if not member and target.isdigit():
                 member = ctx.guild.get_member(int(target))
+                if not member:
+                    try:
+                        member = await ctx.guild.fetch_member(int(target))
+                    except Exception:
+                        member = None
 
             if member:
                 try:
