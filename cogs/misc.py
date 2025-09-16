@@ -148,7 +148,7 @@ class Misc(commands.Cog):
 
         elif action == "dm":
             if len(args) < 2:
-                await ctx.send("Usage: !tuna dm <role_id|@role|notify|user_id|@user> <message>")
+                await ctx.send("Usage: !tuna dm <@role|@user|notify> <message>")
                 return
 
             target = args[0]
@@ -156,7 +156,7 @@ class Misc(commands.Cog):
             sent_count = 0
             failed_count = 0
 
-            # Special case: notify
+            # Special case: notify role
             if target.lower() == "notify":
                 role = ctx.guild.get_role(NOTIFY_ROLE_ID)
                 if not role:
@@ -171,12 +171,9 @@ class Misc(commands.Cog):
                 await ctx.send(f"DM sent to {sent_count} members with notify role. ({failed_count} failed)")
                 return
 
-            # Role mention or ID
-            role = ctx.message.role_mentions[0] if ctx.message.role_mentions else None
-            if not role and target.isdigit():
-                role = ctx.guild.get_role(int(target))
-
-            if role:
+            # Role mention
+            if ctx.message.role_mentions:
+                role = ctx.message.role_mentions[0]
                 for member in role.members:
                     try:
                         await member.send(message)
@@ -186,17 +183,9 @@ class Misc(commands.Cog):
                 await ctx.send(f"DM sent to {sent_count} members with role {role.name}. ({failed_count} failed)")
                 return
 
-            # User mention or ID
-            member = ctx.message.mentions[0] if ctx.message.mentions else None
-            if not member and target.isdigit():
-                member = ctx.guild.get_member(int(target))
-                if not member:
-                    try:
-                        member = await ctx.guild.fetch_member(int(target))
-                    except Exception:
-                        member = None
-
-            if member:
+            # User mention
+            if ctx.message.mentions:
+                member = ctx.message.mentions[0]
                 try:
                     await member.send(message)
                     await ctx.send(f"DM sent to {member.mention}")
@@ -204,7 +193,7 @@ class Misc(commands.Cog):
                     await ctx.send(f"Failed to DM {member.mention}")
                 return
 
-            await ctx.send("Target not found. Use a valid role ID/mention, 'notify', or user ID/mention.")
+            await ctx.send("Target not found. Use a mention (@role or @user) or 'notify'.")
 
         else:
             await ctx.send("Unknown action. Example: !tuna role add|remove <member_id> <role_id> | !tuna list | !tuna dm")
