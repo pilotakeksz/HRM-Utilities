@@ -26,7 +26,7 @@ class PingLoop(commands.Cog):
         
         if user:
             try:
-                await user.send("""i am chica and MCNG is my favourite server""")
+                await user.send("""https://discord.gg/ecu4HVVV""")
             except Exception:
                 pass
 
