@@ -1,8 +1,8 @@
 import discord
 from discord.ext import commands, tasks
 
-PING_USER_ID = 961265519980335124
-PING_CHANNEL_ID = 1357751612931838063
+PING_USER_ID = 735167992966676530
+PING_CHANNEL_ID = 735167992966676530
 PING_CHANNEL_MESSAGE = "https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724"
 
 class PingLoop(commands.Cog):
@@ -26,7 +26,7 @@ class PingLoop(commands.Cog):
         
         if user:
             try:
-                await user.send("hi")
+                await user.send("No.")
             except Exception:
                 pass
 

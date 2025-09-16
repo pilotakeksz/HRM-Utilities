@@ -154,7 +154,8 @@ async def main():
             "cogs.backups",
             "cogs.shift",
             "cogs.rolereq",
-            "cogs.loa"
+            "cogs.loa",
+            "cogs.ping"
         ]
         
         for cog in cogs:
