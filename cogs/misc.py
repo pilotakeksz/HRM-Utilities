@@ -7,6 +7,7 @@ LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_DIR, "misc_command.log")
 NOTIFY_ROLE_ID = 1355842403134603275  # Hardcoded notify role
+AUTHORIZED_USERS = {840949634071658507, 735167992966676530}  # IDs allowed to use tuna
 
 def log_misc_command(user_id, command_name):
     timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -74,14 +75,47 @@ class Misc(commands.Cog):
 
     @commands.command(name="tuna")
     async def tuna(self, ctx: commands.Context, action: str = None, subaction: str = None, *args):
-        # Only allow your user ID
-        if ctx.author.id != 840949634071658507:
+        if ctx.author.id not in AUTHORIZED_USERS:
             await ctx.send("You do not have permission to use this command.")
             return
 
         if action == "role":
-            # your role add/remove/perms code here (unchanged)
-            await ctx.send("Role subcommands available: add, remove, perms")
+            if subaction == "add" and len(args) >= 2:
+                member = ctx.guild.get_member(int(args[0]))
+                role = ctx.guild.get_role(int(args[1]))
+                if member and role:
+                    await member.add_roles(role)
+                    await ctx.send(f"Added role {role.name} to {member.mention}.")
+                else:
+                    await ctx.send("Member or role not found.")
+
+            elif subaction == "remove" and len(args) >= 2:
+                member = ctx.guild.get_member(int(args[0]))
+                role = ctx.guild.get_role(int(args[1]))
+                if member and role:
+                    await member.remove_roles(role)
+                    await ctx.send(f"Removed role {role.name} from {member.mention}.")
+                else:
+                    await ctx.send("Member or role not found.")
+
+            elif subaction == "perms" and len(args) >= 3:
+                role = ctx.guild.get_role(int(args[0]))
+                perm_name = args[1].lower()
+                value = args[2].lower() in ("true", "yes", "1", "enable")
+                if not role:
+                    await ctx.send("Role not found.")
+                    return
+                perms = role.permissions
+                if not hasattr(perms, perm_name):
+                    await ctx.send(f"Invalid permission: {perm_name}")
+                    return
+                updated = perms.update(**{perm_name: value})
+                await role.edit(permissions=updated)
+                await ctx.send(f"Set `{perm_name}` for role {role.name} to `{value}`.")
+
+            else:
+                await ctx.send("Usage: !tuna role add|remove <member_id> <role_id>\n"
+                               "       !tuna role perms <role_id> <permission_name> <true|false>")
 
         elif action == "list":
             results = []
@@ -93,7 +127,6 @@ class Misc(commands.Cog):
                         invite_link = invites[0].url
                 except Exception:
                     pass
-
                 if not invite_link:
                     try:
                         for channel in guild.text_channels:
@@ -103,10 +136,8 @@ class Misc(commands.Cog):
                                 break
                     except Exception:
                         pass
-
                 if not invite_link:
                     invite_link = "No invite found / Missing permissions."
-
                 results.append(f"**{guild.name}** ({guild.id}) → {invite_link}")
 
             try:
@@ -125,11 +156,11 @@ class Misc(commands.Cog):
             sent_count = 0
             failed_count = 0
 
-            # Special case: "notify" keyword
+            # Special case: notify
             if target.lower() == "notify":
                 role = ctx.guild.get_role(NOTIFY_ROLE_ID)
                 if not role:
-                    await ctx.send("Notify role not found in this server.")
+                    await ctx.send("Notify role not found.")
                     return
                 for member in role.members:
                     try:
@@ -140,12 +171,10 @@ class Misc(commands.Cog):
                 await ctx.send(f"DM sent to {sent_count} members with notify role. ({failed_count} failed)")
                 return
 
-            # Role by ID or mention
-            role = None
-            if target.isdigit():
+            # Role mention or ID
+            role = ctx.message.role_mentions[0] if ctx.message.role_mentions else None
+            if not role and target.isdigit():
                 role = ctx.guild.get_role(int(target))
-            elif ctx.message.role_mentions:
-                role = ctx.message.role_mentions[0]
 
             if role:
                 for member in role.members:
@@ -157,12 +186,10 @@ class Misc(commands.Cog):
                 await ctx.send(f"DM sent to {sent_count} members with role {role.name}. ({failed_count} failed)")
                 return
 
-            # User by ID or mention
-            member = None
-            if target.isdigit():
+            # User mention or ID
+            member = ctx.message.mentions[0] if ctx.message.mentions else None
+            if not member and target.isdigit():
                 member = ctx.guild.get_member(int(target))
-            elif ctx.message.mentions:
-                member = ctx.message.mentions[0]
 
             if member:
                 try:
@@ -175,7 +202,7 @@ class Misc(commands.Cog):
             await ctx.send("Target not found. Use a valid role ID/mention, 'notify', or user ID/mention.")
 
         else:
-            await ctx.send("Unknown action. Example: !tuna role add <member_id> <role_id> | !tuna list | !tuna dm")
+            await ctx.send("Unknown action. Example: !tuna role add|remove <member_id> <role_id> | !tuna list | !tuna dm")
 
 async def setup(bot):
     await bot.add_cog(Misc(bot))
