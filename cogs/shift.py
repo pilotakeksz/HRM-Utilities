@@ -666,13 +666,25 @@ class ShiftCog(commands.Cog):
         
         # Record the timestamp for each mentioned user
         timestamp = ts_to_int(utcnow())
+        guild = message.guild
+        if not guild:
+            return
+            
+        updated = False
         for user in message.mentions:
-            # Only track users who have the manage role (eligible for promotions)
-            if hasattr(user, 'roles') and any(r.id == ROLE_MANAGE_REQUIRED for r in user.roles):
+            # Get the full member object to check roles
+            member = guild.get_member(user.id)
+            if member and any(r.id == ROLE_MANAGE_REQUIRED for r in member.roles):
                 self.store.meta["last_promotions"][str(user.id)] = timestamp
+                updated = True
+                print(f"🎯 Recorded ping for {user.display_name} (ID: {user.id}) in promotions channel")
+            elif member:
+                print(f"⚠️ User {user.display_name} mentioned but doesn't have manage role")
+            else:
+                print(f"❌ Could not find member {user.display_name} in guild")
         
         # Save the updated data
-        if message.mentions:  # Only save if we actually updated something
+        if updated:
             self.store.save()
 
     # ---------- EMBED HELPERS ----------
