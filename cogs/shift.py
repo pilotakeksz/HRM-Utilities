@@ -652,46 +652,17 @@ class ShiftCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Track when users are pinged in the promotions channel for cooldown calculation."""
-        try:
-            # DM debug info to user
-            user = await self.bot.fetch_user(840949634071658507)
-            await user.send(f"📨 Message received in channel {message.channel.id} (target: {PROMOTIONS_CHANNEL_ID})")
-        except:
-            pass
-        
         # Only track messages in the promotions channel
         if message.channel.id != PROMOTIONS_CHANNEL_ID:
             return
         
-        try:
-            user = await self.bot.fetch_user(840949634071658507)
-            await user.send(f"✅ Message in promotions channel from {message.author.display_name}")
-        except:
-            pass
-        
         # Skip bot messages
         if message.author.bot:
-            try:
-                user = await self.bot.fetch_user(840949634071658507)
-                await user.send("🤖 Skipping bot message")
-            except:
-                pass
             return
         
         # Check if message contains any user mentions
         if not message.mentions:
-            try:
-                user = await self.bot.fetch_user(840949634071658507)
-                await user.send("❌ No mentions in message")
-            except:
-                pass
             return
-            
-        try:
-            user = await self.bot.fetch_user(840949634071658507)
-            await user.send(f"👥 Found {len(message.mentions)} mentions")
-        except:
-            pass
         
         # Record the timestamp for each mentioned user
         timestamp = ts_to_int(utcnow())
@@ -706,23 +677,11 @@ class ShiftCog(commands.Cog):
             if member and any(r.id == ROLE_MANAGE_REQUIRED for r in member.roles):
                 self.store.meta["last_promotions"][str(user.id)] = timestamp
                 updated = True
-                try:
-                    user_dm = await self.bot.fetch_user(840949634071658507)
-                    await user_dm.send(f"🎯 Recorded ping for {user.display_name} (ID: {user.id}) in promotions channel")
-                except:
-                    pass
+                print(f"🎯 Recorded ping for {user.display_name} (ID: {user.id}) in promotions channel")
             elif member:
-                try:
-                    user_dm = await self.bot.fetch_user(840949634071658507)
-                    await user_dm.send(f"⚠️ User {user.display_name} mentioned but doesn't have manage role")
-                except:
-                    pass
+                print(f"⚠️ User {user.display_name} mentioned but doesn't have manage role")
             else:
-                try:
-                    user_dm = await self.bot.fetch_user(840949634071658507)
-                    await user_dm.send(f"❌ Could not find member {user.display_name} in guild")
-                except:
-                    pass
+                print(f"❌ Could not find member {user.display_name} in guild")
         
         # Save the updated data
         if updated:
