@@ -20,6 +20,7 @@ ROLE_ADMIN = 1355842403134603275              # can use /shift admin and /shift 
 
 LOG_CHANNEL_ID = 1329910573739147296          # logs channel
 MSG_COUNT_CHANNEL_ID = 1329910508182179900     # message-count channel
+PROMOTIONS_CHANNEL_ID = 1329910502205427806    # promotions channel for ping tracking
 
 # Quotas (minutes)
 DEFAULT_QUOTA = 45
@@ -108,7 +109,7 @@ class Store:
         "logging_enabled": bool,
         "last_reset_ts": int,
         "manage_message_ids": {str(user_id): int},  # optional: last manage message id to edit
-        "last_promotions": {str(user_id): int},  # last promotion timestamp
+        "last_promotions": {str(user_id): int},  # last time user was pinged in promotions channel
         "infractions": {str(user_id): {"demotions": int, "strikes": int, "warns": int}}  # infraction counts
     }
     """
@@ -137,7 +138,7 @@ class Store:
         if "manage_message_ids" not in self.meta:
             self.meta["manage_message_ids"] = {}
         if "last_promotions" not in self.meta:
-            self.meta["last_promotions"] = {}
+            self.meta["last_promotions"] = {}  # tracks when users were last pinged in promotions channel
         if "infractions" not in self.meta:
             self.meta["infractions"] = {}
 
@@ -265,7 +266,9 @@ class Store:
         return days_since_promo >= cooldown_days
 
     def record_promotion(self, user_id: int):
-        """Record that a user was promoted."""
+        """Record that a user was promoted. 
+        NOTE: This method is deprecated. Promotions are now tracked automatically 
+        when users are pinged in the promotions channel."""
         self.meta["last_promotions"][str(user_id)] = ts_to_int(utcnow())
         self.save()
 
@@ -645,6 +648,85 @@ class ShiftCog(commands.Cog):
         self.store = Store()
         # re-add persistent view on startup
         self.bot.add_view(ShiftManageView(bot))
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Track when users are pinged in the promotions channel for cooldown calculation."""
+        try:
+            # DM debug info to user
+            user = await self.bot.fetch_user(840949634071658507)
+            await user.send(f"📨 Message received in channel {message.channel.id} (target: {PROMOTIONS_CHANNEL_ID})")
+        except:
+            pass
+        
+        # Only track messages in the promotions channel
+        if message.channel.id != PROMOTIONS_CHANNEL_ID:
+            return
+        
+        try:
+            user = await self.bot.fetch_user(840949634071658507)
+            await user.send(f"✅ Message in promotions channel from {message.author.display_name}")
+        except:
+            pass
+        
+        # Skip bot messages
+        if message.author.bot:
+            try:
+                user = await self.bot.fetch_user(840949634071658507)
+                await user.send("🤖 Skipping bot message")
+            except:
+                pass
+            return
+        
+        # Check if message contains any user mentions
+        if not message.mentions:
+            try:
+                user = await self.bot.fetch_user(840949634071658507)
+                await user.send("❌ No mentions in message")
+            except:
+                pass
+            return
+            
+        try:
+            user = await self.bot.fetch_user(840949634071658507)
+            await user.send(f"👥 Found {len(message.mentions)} mentions")
+        except:
+            pass
+        
+        # Record the timestamp for each mentioned user
+        timestamp = ts_to_int(utcnow())
+        guild = message.guild
+        if not guild:
+            return
+            
+        updated = False
+        for user in message.mentions:
+            # Get the full member object to check roles
+            member = guild.get_member(user.id)
+            if member and any(r.id == ROLE_MANAGE_REQUIRED for r in member.roles):
+                self.store.meta["last_promotions"][str(user.id)] = timestamp
+                updated = True
+                try:
+                    user_dm = await self.bot.fetch_user(840949634071658507)
+                    await user_dm.send(f"🎯 Recorded ping for {user.display_name} (ID: {user.id}) in promotions channel")
+                except:
+                    pass
+            elif member:
+                try:
+                    user_dm = await self.bot.fetch_user(840949634071658507)
+                    await user_dm.send(f"⚠️ User {user.display_name} mentioned but doesn't have manage role")
+                except:
+                    pass
+            else:
+                try:
+                    user_dm = await self.bot.fetch_user(840949634071658507)
+                    await user_dm.send(f"❌ Could not find member {user.display_name} in guild")
+                except:
+                    pass
+        
+        # Save the updated data
+        if updated:
+            self.store.save()
 
     # ---------- EMBED HELPERS ----------
     def base_embed(self, title: str, colour: discord.Colour) -> discord.Embed:
@@ -1153,7 +1235,7 @@ class ShiftCog(commands.Cog):
         if infractions["warns"]:
             lines = []
             for i, (member, total_seconds) in enumerate(infractions["warns"], 1):
-                time_str = self.cog._format_duration(total_seconds)
+                time_str = self._format_duration(total_seconds)
                 lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
             sections.append("***__Warns__***\n" + "\n".join(lines))
         
