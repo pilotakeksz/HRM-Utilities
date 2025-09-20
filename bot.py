@@ -187,17 +187,42 @@ async def reload_cog(interaction: discord.Interaction, cog_name: str):
     await interaction.response.defer(ephemeral=True)
     
     try:
-        # Always try to unload first (will fail silently if not loaded)
+        # Try to unload first
         try:
             await bot.unload_extension(cog_name)
-        except Exception:
-            pass  # Extension wasn't loaded, that's fine
+            print(f"✅ Unloaded {cog_name}")
+        except Exception as e:
+            print(f"⚠️ Failed to unload {cog_name} (might not be loaded): {e}")
+        
+        # Force reload by removing the cog from the internal registry if it exists
+        cog_name_clean = cog_name.replace("cogs.", "").replace("cog", "").title() + "Cog"
+        if cog_name_clean in bot.cogs:
+            print(f"🔧 Manually removing {cog_name_clean} from bot.cogs")
+            del bot.cogs[cog_name_clean]
         
         # Load the cog
         await bot.load_extension(cog_name)
         await interaction.followup.send(f"✅ Successfully reloaded {cog_name}", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to reload {cog_name}: {e}", ephemeral=True)
+        print(f"❌ Reload error details: {e}")
+        traceback.print_exc()
+
+@bot.tree.command(name="cogs", description="List currently loaded cogs (admin only).")
+async def list_cogs(interaction: discord.Interaction):
+    # Only allow admins
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("You lack permission.", ephemeral=True)
+        return
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    loaded_cogs = list(bot.cogs.keys())
+    if loaded_cogs:
+        cog_list = "\n".join(f"• {cog}" for cog in loaded_cogs)
+        await interaction.followup.send(f"**Loaded Cogs ({len(loaded_cogs)}):**\n{cog_list}", ephemeral=True)
+    else:
+        await interaction.followup.send("No cogs currently loaded.", ephemeral=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
