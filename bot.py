@@ -177,5 +177,27 @@ async def sync_commands(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ Sync failed: {e}", ephemeral=True)
 
+@bot.tree.command(name="reload", description="Reload a cog (admin only).")
+async def reload_cog(interaction: discord.Interaction, cog_name: str):
+    # Only allow admins
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("You lack permission.", ephemeral=True)
+        return
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        # Try to unload first (in case it's already loaded)
+        try:
+            await bot.unload_extension(cog_name)
+        except:
+            pass  # Ignore if not loaded
+        
+        # Load the cog
+        await bot.load_extension(cog_name)
+        await interaction.followup.send(f"✅ Successfully reloaded {cog_name}", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to reload {cog_name}: {e}", ephemeral=True)
+
 if __name__ == "__main__":
     asyncio.run(main())
