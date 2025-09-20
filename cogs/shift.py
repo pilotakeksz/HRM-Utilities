@@ -600,7 +600,17 @@ class ShiftListsView(discord.ui.View):
         else:
             for i, (member, total_seconds) in enumerate(self.promo_candidates, 1):
                 time_str = self.cog._format_duration(total_seconds)
-                lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+                
+                # Add cooldown information
+                last_promo_ts = self.cog.store.meta["last_promotions"].get(str(member.id), 0)
+                if last_promo_ts == 0:
+                    cooldown_info = "🆕 First promotion"
+                else:
+                    from datetime import datetime, timezone
+                    days_since = (int(datetime.now(timezone.utc).timestamp()) - last_promo_ts) / (24 * 60 * 60)
+                    cooldown_info = f"⏰ {days_since:.0f}d since last"
+                
+                lines.append(f"> `{i}.` <@{member.id}> • {time_str} • {cooldown_info}")
             
             lines.append("")
             lines.append("Congratulations to all 🎉")
@@ -1162,7 +1172,16 @@ class ShiftCog(commands.Cog):
         lines = []
         for i, (member, total_seconds) in enumerate(promo_candidates, 1):
             time_str = self._format_duration(total_seconds)
-            lines.append(f"> `{i}.` <@{member.id}> • {time_str}")
+            
+            # Add cooldown information
+            last_promo_ts = self.store.meta["last_promotions"].get(str(member.id), 0)
+            if last_promo_ts == 0:
+                cooldown_info = "🆕 First promotion"
+            else:
+                days_since = (ts_to_int(utcnow()) - last_promo_ts) / (24 * 60 * 60)
+                cooldown_info = f"⏰ {days_since:.0f}d since last"
+            
+            lines.append(f"> `{i}.` <@{member.id}> • {time_str} • {cooldown_info}")
         
         embed.description = "\n".join(lines) + "\n\nCongratulations to all 🎉"
         return embed
@@ -1325,6 +1344,60 @@ class ShiftCog(commands.Cog):
         else:
             await self.log_event(guild, f"✅ Logging enabled by {user.mention}.")
         await interaction.response.send_message(embed=self.embed_info(f"Set logging to **{enabled}**."), ephemeral=True)
+
+    @app_commands.command(name="promotion_cooldown", description="Check promotion cooldown status for a user.")
+    @app_commands.describe(user="User to check cooldown for (optional, defaults to yourself)")
+    async def promotion_cooldown(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        """Check if a user can be promoted based on their cooldown status."""
+        target_user = user or interaction.user
+        guild = interaction.guild
+        
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        # Check if user has manage role
+        if not any(r.id == ROLE_MANAGE_REQUIRED for r in target_user.roles):  # type: ignore
+            await interaction.response.send_message(f"{target_user.mention} does not have the required role for promotions.", ephemeral=True)
+            return
+        
+        # Get cooldown information
+        last_promo_ts = self.store.meta["last_promotions"].get(str(target_user.id), 0)
+        can_be_promoted = self.store.can_be_promoted(target_user.id, target_user.roles)
+        
+        # Determine cooldown period
+        role_ids = {r.id for r in target_user.roles}
+        cooldown_days = 4  # default
+        if PROMO_COOLDOWN_14 in role_ids:
+            cooldown_days = 14
+        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
+            cooldown_days = 10
+        elif PROMO_COOLDOWN_8 in role_ids:
+            cooldown_days = 8
+        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
+            cooldown_days = 6
+        elif PROMO_COOLDOWN_4 in role_ids:
+            cooldown_days = 4
+        
+        # Build embed
+        embed = self.base_embed("Promotion Cooldown Status", colour_info() if can_be_promoted else colour_warn())
+        embed.add_field(name="User", value=target_user.mention, inline=True)
+        embed.add_field(name="Cooldown Period", value=f"{cooldown_days} days", inline=True)
+        embed.add_field(name="Status", value="✅ Eligible" if can_be_promoted else "⏳ On Cooldown", inline=True)
+        
+        if last_promo_ts == 0:
+            embed.add_field(name="Last Promotion", value="Never promoted", inline=True)
+        else:
+            last_promo_date = int_to_ts(last_promo_ts)
+            days_since = (ts_to_int(utcnow()) - last_promo_ts) / (24 * 60 * 60)
+            embed.add_field(name="Last Promotion", value=f"<t:{last_promo_ts}:F>", inline=True)
+            embed.add_field(name="Days Since", value=f"{days_since:.1f} days", inline=True)
+            
+            if not can_be_promoted:
+                days_remaining = cooldown_days - days_since
+                embed.add_field(name="Cooldown Remaining", value=f"{days_remaining:.1f} days", inline=True)
+        
+        await interaction.response.send_message(embed=embed)
 
     # --------------- LEADERBOARD (PING USERS) ---------------
     # already mentions users via <@id> in lines
