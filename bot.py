@@ -187,11 +187,11 @@ async def reload_cog(interaction: discord.Interaction, cog_name: str):
     await interaction.response.defer(ephemeral=True)
     
     try:
-        # Try to unload first (in case it's already loaded)
+        # Always try to unload first (will fail silently if not loaded)
         try:
             await bot.unload_extension(cog_name)
-        except:
-            pass  # Ignore if not loaded
+        except Exception:
+            pass  # Extension wasn't loaded, that's fine
         
         # Load the cog
         await bot.load_extension(cog_name)
