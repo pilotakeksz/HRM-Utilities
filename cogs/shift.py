@@ -1435,6 +1435,6 @@ class ShiftCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     # --------------- LEADERBOARD (PING USERS) ---------------
-    # already mentions users via <@igitd> in lines
+    # already mentions users via <@igitd> in lines eee
 async def setup(bot: commands.Bot):
     await bot.add_cog(ShiftCog(bot))
