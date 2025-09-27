@@ -63,8 +63,16 @@ async def on_ready():
     print(output)
     
     # Get and increment version
-    version_num, version_string = get_version()
+    version_num, version_string, version_info = get_version()
     print(f"Bot version: {version_string}")
+    
+    # Print additional info
+    if version_info.get("commit_hash"):
+        print(f"Git commit: {version_info['commit_hash']}")
+    if version_info.get("commit_message"):
+        print(f"Commit message: {version_info['commit_message']}")
+    if version_info.get("updated_cogs"):
+        print(f"Updated cogs: {', '.join(version_info['updated_cogs'])}")
     
     # DM yourself logs on startup
     try:
@@ -89,6 +97,24 @@ async def on_ready():
                 color=discord.Color.green()
             )
             embed.add_field(name="Version Number", value=str(version_num), inline=True)
+            
+            # Add git information if available
+            if version_info.get("commit_hash"):
+                embed.add_field(name="Git Commit", value=f"`{version_info['commit_hash']}`", inline=True)
+            
+            if version_info.get("commit_message"):
+                commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
+                embed.add_field(name="Commit Message", value=commit_msg, inline=False)
+            
+            # Add updated cogs if any
+            if version_info.get("updated_cogs"):
+                cogs_list = ", ".join(version_info['updated_cogs'])
+                if len(cogs_list) > 100:
+                    cogs_list = cogs_list[:100] + "..."
+                embed.add_field(name="Updated Cogs", value=cogs_list, inline=False)
+            else:
+                embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
+            
             embed.set_footer(text="Version increments on each restart")
             await version_channel.send(embed=embed)
             print(f"Version {version_string} sent to channel {version_channel_id}")
