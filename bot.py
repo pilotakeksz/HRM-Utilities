@@ -67,8 +67,6 @@ async def on_ready():
     print(f"Bot version: {version_string}")
     
     # Print additional info
-    if version_info.get("commit_hash"):
-        print(f"Git commit: {version_info['commit_hash']}")
     if version_info.get("commit_message"):
         print(f"Commit message: {version_info['commit_message']}")
     if version_info.get("updated_cogs"):
@@ -98,10 +96,7 @@ async def on_ready():
             )
             embed.add_field(name="Version Number", value=str(version_num), inline=True)
             
-            # Add git information if available
-            if version_info.get("commit_hash"):
-                embed.add_field(name="Git Commit", value=f"`{version_info['commit_hash']}`", inline=True)
-            
+            # Add git information if available (commit message only, no hash)
             if version_info.get("commit_message"):
                 commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
                 embed.add_field(name="Commit Message", value=commit_msg, inline=False)

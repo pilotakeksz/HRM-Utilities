@@ -30,10 +30,7 @@ class VersionCog(commands.Cog):
         )
         embed.add_field(name="Version Number", value=str(version_num), inline=True)
         
-        # Add git information if available
-        if version_info.get("commit_hash"):
-            embed.add_field(name="Git Commit", value=f"`{version_info['commit_hash']}`", inline=True)
-        
+        # Add git information if available (commit message only, no hash)
         if version_info.get("commit_message"):
             commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
             embed.add_field(name="Last Commit", value=commit_msg, inline=False)
