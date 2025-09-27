@@ -1010,21 +1010,39 @@ class ShiftCog(commands.Cog):
             )
             return
         elif action.value == "stats":
-            num_records, total_seconds = self.store.get_statistics()
-            # extra: number of people with manage role
-            manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
-            role_count = len(manage_role.members) if manage_role else 0
-            # messages since last reset
-            last_reset = int_to_ts(self.store.meta.get("last_reset_ts", ts_to_int(utcnow())))
-            msg_count = await self.count_messages_since(guild, last_reset)
-            emb = self.base_embed("Shift Stats (Global)", colour_info())
-            emb.add_field(name="Total unique shifts", value=str(num_records), inline=True)
-            emb.add_field(name="Total shift time", value=human_td(total_seconds), inline=True)
-            emb.add_field(name="Since reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
-            emb.add_field(name="Messages since reset (in personnel-chat channel)", value=str(msg_count), inline=True)
-            emb.add_field(name="Members with personnel role", value=str(role_count), inline=True)
-            await interaction.response.send_message(embed=emb, ephemeral=False)
-            return
+            try:
+                num_records, total_seconds = self.store.get_statistics()
+                # extra: number of people with manage role
+                manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+                role_count = len(manage_role.members) if manage_role else 0
+                # messages since last reset - with timeout protection
+                last_reset = int_to_ts(self.store.meta.get("last_reset_ts", ts_to_int(utcnow())))
+                
+                # Use asyncio.wait_for to add a timeout to message counting
+                try:
+                    msg_count = await asyncio.wait_for(
+                        self.count_messages_since(guild, last_reset), 
+                        timeout=10.0  # 10 second timeout
+                    )
+                except asyncio.TimeoutError:
+                    msg_count = 0  # Default to 0 if timeout occurs
+                    print("Message counting timed out, using 0 as default")
+                
+                emb = self.base_embed("Shift Stats (Global)", colour_info())
+                emb.add_field(name="Total unique shifts", value=str(num_records), inline=True)
+                emb.add_field(name="Total shift time", value=human_td(total_seconds), inline=True)
+                emb.add_field(name="Since reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
+                emb.add_field(name="Messages since reset (in personnel-chat channel)", value=str(msg_count), inline=True)
+                emb.add_field(name="Members with personnel role", value=str(role_count), inline=True)
+                await interaction.response.send_message(embed=emb, ephemeral=False)
+                return
+            except Exception as e:
+                # Fallback response if anything goes wrong
+                print(f"Error in stats command: {e}")
+                emb = self.base_embed("Shift Stats (Global)", colour_err())
+                emb.description = f"Error retrieving statistics: {str(e)}"
+                await interaction.response.send_message(embed=emb, ephemeral=True)
+                return
         elif action.value in ("leaderboard_txt", "leaderboard_met", "leaderboard_notmet"):
             # build leaderboard lines
             lines = await self._build_leaderboard_lines(guild, filter_mode=action.value)
@@ -1115,10 +1133,27 @@ class ShiftCog(commands.Cog):
         ch = guild.get_channel(MSG_COUNT_CHANNEL_ID)
         if not isinstance(ch, discord.TextChannel):
             return 0
-        count = 0
-        async for msg in ch.history(after=since, limit=None, oldest_first=True):
-            count += 1
-        return count
+        
+        try:
+            # Use a more efficient approach with reasonable limits
+            # Count messages in reverse order (newest first) for better performance
+            count = 0
+            max_messages = 1000  # Reasonable limit to prevent timeout
+            message_count = 0
+            
+            async for msg in ch.history(after=since, limit=max_messages, oldest_first=False):
+                message_count += 1
+                count += 1
+                
+                # Stop if we've reached our limit
+                if message_count >= max_messages:
+                    break
+                    
+            return count
+        except Exception as e:
+            # If there's any error (timeout, permission, etc.), return 0
+            print(f"Error counting messages: {e}")
+            return 0
 
     async def _build_lists(self, guild: discord.Guild) -> Tuple[List[Tuple[discord.Member, int]], Dict[str, List[Tuple[discord.Member, int]]]]:
         manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
@@ -1400,6 +1435,6 @@ class ShiftCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     # --------------- LEADERBOARD (PING USERS) ---------------
-    # already mentions users via <@id> in lines
+    # already mentions users via <@igitd> in lines
 async def setup(bot: commands.Bot):
     await bot.add_cog(ShiftCog(bot))
