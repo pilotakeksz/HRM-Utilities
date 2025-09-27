@@ -8,6 +8,7 @@ import io
 import base64 
 import traceback
 from aiohttp import web
+from version_manager import get_version
 
 
 load_dotenv(".env")
@@ -61,6 +62,10 @@ async def on_ready():
     output = startup_output.getvalue()
     print(output)
     
+    # Get and increment version
+    version_num, version_string = get_version()
+    print(f"Bot version: {version_string}")
+    
     # DM yourself logs on startup
     try:
         user = await bot.fetch_user(840949634071658507)  # Your user ID here
@@ -72,6 +77,25 @@ async def on_ready():
     
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="High Rock"))
+    
+    # Send version to specified channel
+    try:
+        version_channel_id = 1329910508182179900
+        version_channel = bot.get_channel(version_channel_id)
+        if version_channel:
+            embed = discord.Embed(
+                title="Bot Restart",
+                description=f"Bot has restarted with version **{version_string}**",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Version Number", value=str(version_num), inline=True)
+            embed.set_footer(text="Version increments on each restart")
+            await version_channel.send(embed=embed)
+            print(f"Version {version_string} sent to channel {version_channel_id}")
+        else:
+            print(f"Could not find channel {version_channel_id} to send version")
+    except Exception as e:
+        print(f"Failed to send version to channel: {e}")
     
     if not getattr(bot, "_synced", False):
         try:
@@ -154,7 +178,8 @@ async def main():
             "cogs.backups",
             "cogs.shift",
             "cogs.rolereq",
-            "cogs.loa"
+            "cogs.loa",
+            "cogs.version"
         ]
         
         for cog in cogs:
