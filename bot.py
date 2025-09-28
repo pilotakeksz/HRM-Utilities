@@ -110,7 +110,7 @@ async def on_ready():
             else:
                 embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
             
-            embed.set_footer(text="Version increments on each restart")
+            embed.set_footer(text="Developed with love by Tuna 🐟")
             await version_channel.send(embed=embed)
             print(f"Version {version_string} sent to channel {version_channel_id}")
         else:
