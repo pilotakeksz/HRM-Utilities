@@ -2,10 +2,12 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 from discord import app_commands
+import time
 
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.start_time = time.time()
 
     @app_commands.command(name="ping", description="Check bot latency")
     async def ping(self, interaction: discord.Interaction):
@@ -36,6 +38,180 @@ class MiscCog(commands.Cog):
         embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
         
         await interaction.response.send_message(embed=embed)
+
+    @commands.command(name="ping")
+    async def ping_prefix(self, ctx):
+        """Simple ping command to check bot responsiveness."""
+        latency = round(self.bot.latency * 1000)
+        embed = discord.Embed(
+            title="🏓 Pong!",
+            description=f"Latency: {latency}ms",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(name="uptime")
+    async def uptime(self, ctx):
+        """Shows how long the bot has been running."""
+        uptime_seconds = int(time.time() - self.start_time)
+        days = uptime_seconds // 86400
+        hours = (uptime_seconds % 86400) // 3600
+        minutes = (uptime_seconds % 3600) // 60
+        seconds = uptime_seconds % 60
+        
+        uptime_str = ""
+        if days > 0:
+            uptime_str += f"{days}d "
+        if hours > 0:
+            uptime_str += f"{hours}h "
+        if minutes > 0:
+            uptime_str += f"{minutes}m "
+        uptime_str += f"{seconds}s"
+        
+        embed = discord.Embed(
+            title="⏰ Bot Uptime",
+            description=f"I've been running for **{uptime_str}**",
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+
+    @commands.group(name="tuna")
+    async def tuna(self, ctx):
+        """Tuna utility commands."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `!tuna role` or `!tuna dm` for available commands.")
+
+    @tuna.group(name="role")
+    async def tuna_role(self, ctx):
+        """Role management commands."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `!tuna role add`, `!tuna role list`, or `!tuna role remove`")
+
+    @tuna_role.command(name="add")
+    async def tuna_role_add(self, ctx, user: discord.Member, *, role_name: str):
+        """Add a role to a user."""
+        try:
+            # Find the role by name (case insensitive)
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            if not role:
+                await ctx.send(f"❌ Role '{role_name}' not found.")
+                return
+            
+            # Check if user already has the role
+            if role in user.roles:
+                await ctx.send(f"❌ {user.mention} already has the role {role.mention}")
+                return
+            
+            # Add the role
+            await user.add_roles(role)
+            embed = discord.Embed(
+                title="✅ Role Added",
+                description=f"Successfully added {role.mention} to {user.mention}",
+                color=discord.Color.green()
+            )
+            await ctx.send(embed=embed)
+            
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to manage roles.")
+        except Exception as e:
+            await ctx.send(f"❌ An error occurred: {str(e)}")
+
+    @tuna_role.command(name="list")
+    async def tuna_role_list(self, ctx, user: discord.Member):
+        """List all roles for a user."""
+        roles = [role.mention for role in user.roles if role.name != "@everyone"]
+        
+        if not roles:
+            await ctx.send(f"{user.mention} has no roles.")
+            return
+        
+        embed = discord.Embed(
+            title=f"Roles for {user.display_name}",
+            description="\n".join(roles),
+            color=discord.Color.blue()
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        await ctx.send(embed=embed)
+
+    @tuna_role.command(name="remove")
+    async def tuna_role_remove(self, ctx, user: discord.Member, *, role_name: str):
+        """Remove a role from a user."""
+        try:
+            # Find the role by name (case insensitive)
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            if not role:
+                await ctx.send(f"❌ Role '{role_name}' not found.")
+                return
+            
+            # Check if user has the role
+            if role not in user.roles:
+                await ctx.send(f"❌ {user.mention} doesn't have the role {role.mention}")
+                return
+            
+            # Remove the role
+            await user.remove_roles(role)
+            embed = discord.Embed(
+                title="✅ Role Removed",
+                description=f"Successfully removed {role.mention} from {user.mention}",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed)
+            
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to manage roles.")
+        except Exception as e:
+            await ctx.send(f"❌ An error occurred: {str(e)}")
+
+    @tuna.command(name="dm")
+    async def tuna_dm(self, ctx, target, *, message: str):
+        """Send a DM to a user or all members with a specific role."""
+        try:
+            # Try to parse as user mention/ID first
+            try:
+                if target.startswith('<@') and target.endswith('>'):
+                    # User mention
+                    user_id = int(target[2:-1].replace('!', ''))
+                    user = await self.bot.fetch_user(user_id)
+                    await user.send(f"**Message from {ctx.guild.name}:**\n{message}")
+                    await ctx.send(f"✅ DM sent to {user.mention}")
+                    return
+                else:
+                    # Try as user ID
+                    user_id = int(target)
+                    user = await self.bot.fetch_user(user_id)
+                    await user.send(f"**Message from {ctx.guild.name}:**\n{message}")
+                    await ctx.send(f"✅ DM sent to {user.mention}")
+                    return
+            except (ValueError, discord.NotFound):
+                pass
+            
+            # Try to find role by name
+            role = discord.utils.get(ctx.guild.roles, name=target)
+            if role:
+                sent_count = 0
+                failed_count = 0
+                
+                for member in role.members:
+                    try:
+                        await member.send(f"**Message from {ctx.guild.name} (via {role.name}):**\n{message}")
+                        sent_count += 1
+                    except:
+                        failed_count += 1
+                
+                embed = discord.Embed(
+                    title="✅ DMs Sent",
+                    description=f"Sent to {sent_count} members with role {role.mention}",
+                    color=discord.Color.green()
+                )
+                if failed_count > 0:
+                    embed.add_field(name="Failed", value=f"{failed_count} members couldn't receive DMs", inline=False)
+                await ctx.send(embed=embed)
+                return
+            
+            await ctx.send("❌ Could not find user or role. Use @user, user ID, or role name.")
+            
+        except Exception as e:
+            await ctx.send(f"❌ An error occurred: {str(e)}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
