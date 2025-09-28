@@ -141,6 +141,10 @@ class Store:
             self.meta["last_promotions"] = {}  # tracks when users were last pinged in promotions channel
         if "infractions" not in self.meta:
             self.meta["infractions"] = {}
+        if "cooldown_extensions" not in self.meta:
+            self.meta["cooldown_extensions"] = {}  # {user_id: extension_seconds}
+        if "admin_cooldowns" not in self.meta:
+            self.meta["admin_cooldowns"] = {}  # {user_id: admin_specified_days}
 
     def save(self):
         with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -1454,24 +1458,51 @@ class ShiftCog(commands.Cog):
     # ---------- COOLDOWN HELPERS AND COMMANDS ----------
     def _calculate_member_cooldown(self, member: discord.Member) -> Tuple[int, int]:
         """Return (cooldown_days, seconds_remaining) for promotion cooldown based on roles and last ping."""
-        role_ids = {r.id for r in member.roles}
-        cooldown_days = 4
-        if PROMO_COOLDOWN_14 in role_ids:
-            cooldown_days = 14
-        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
-            cooldown_days = 10
-        elif PROMO_COOLDOWN_8 in role_ids:
-            cooldown_days = 8
-        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
-            cooldown_days = 6
-        elif PROMO_COOLDOWN_4 in role_ids:
-            cooldown_days = 4
         last_ts = self.store.meta.get("last_promotions", {}).get(str(member.id), 0)
         if last_ts == 0:
+            # Return default cooldown period based on roles
+            role_ids = {r.id for r in member.roles}
+            cooldown_days = 4
+            if PROMO_COOLDOWN_14 in role_ids:
+                cooldown_days = 14
+            elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
+                cooldown_days = 10
+            elif PROMO_COOLDOWN_8 in role_ids:
+                cooldown_days = 8
+            elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
+                cooldown_days = 6
+            elif PROMO_COOLDOWN_4 in role_ids:
+                cooldown_days = 4
             return cooldown_days, 0
+        
         seconds_since = ts_to_int(utcnow()) - last_ts
-        cooldown_seconds = cooldown_days * 24 * 60 * 60
-        remaining = max(0, cooldown_seconds - seconds_since)
+        
+        # Check if this is an admin-specified cooldown
+        admin_cooldown_days = self.store.meta.get("admin_cooldowns", {}).get(str(member.id))
+        if admin_cooldown_days is not None:
+            cooldown_days = admin_cooldown_days
+            cooldown_seconds = cooldown_days * 24 * 60 * 60
+        else:
+            # Use role-based cooldown
+            role_ids = {r.id for r in member.roles}
+            cooldown_days = 4
+            if PROMO_COOLDOWN_14 in role_ids:
+                cooldown_days = 14
+            elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
+                cooldown_days = 10
+            elif PROMO_COOLDOWN_8 in role_ids:
+                cooldown_days = 8
+            elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
+                cooldown_days = 6
+            elif PROMO_COOLDOWN_4 in role_ids:
+                cooldown_days = 4
+            cooldown_seconds = cooldown_days * 24 * 60 * 60
+        
+        # Add any admin extensions
+        extension_seconds = self.store.meta.get("cooldown_extensions", {}).get(str(member.id), 0)
+        total_cooldown_seconds = cooldown_seconds + extension_seconds
+        
+        remaining = max(0, total_cooldown_seconds - seconds_since)
         return cooldown_days, remaining
 
     async def _schedule_cooldown_end_dm(self, user_id: int, end_ts: int):
@@ -1577,10 +1608,18 @@ class ShiftCog(commands.Cog):
                 await interaction.response.send_message("Please provide a positive number of days.", ephemeral=True)
                 return
             
-            # Set cooldown to current time + specified days
-            cooldown_ts = ts_to_int(utcnow()) + (days * 24 * 60 * 60)
-            self.store.meta["last_promotions"][str(user.id)] = cooldown_ts - (days * 24 * 60 * 60)  # Set to start of cooldown
+            # Set cooldown by setting last_promotions to current time (start of cooldown)
+            current_time = ts_to_int(utcnow())
+            self.store.meta["last_promotions"][str(user.id)] = current_time
+            # Store admin-specified cooldown period
+            self.store.meta["admin_cooldowns"][str(user.id)] = days
+            # Clear any existing extensions when adding new cooldown
+            if str(user.id) in self.store.meta.get("cooldown_extensions", {}):
+                del self.store.meta["cooldown_extensions"][str(user.id)]
             self.store.save()
+            
+            # Calculate when cooldown ends using admin-specified days
+            cooldown_ts = current_time + (days * 24 * 60 * 60)
             
             # DM the user
             try:
@@ -1600,8 +1639,12 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message(embed=self.embed_info(f"Added {days}-day cooldown for {user.mention}. Ends <t:{cooldown_ts}:R>."), ephemeral=True)
             
         elif action.value == "remove":
-            # Remove cooldown by setting last promotion to 0
+            # Remove cooldown by setting last promotion to 0 and clearing extensions/admin cooldowns
             self.store.meta["last_promotions"][str(user.id)] = 0
+            if str(user.id) in self.store.meta.get("cooldown_extensions", {}):
+                del self.store.meta["cooldown_extensions"][str(user.id)]
+            if str(user.id) in self.store.meta.get("admin_cooldowns", {}):
+                del self.store.meta["admin_cooldowns"][str(user.id)]
             self.store.save()
             
             # DM the user
@@ -1628,17 +1671,21 @@ class ShiftCog(commands.Cog):
                 await interaction.response.send_message(f"{user.mention} is not currently on cooldown. Use 'add' instead.", ephemeral=True)
                 return
             
-            # Extend by adding days to current cooldown
+            # Check if currently on cooldown
             cooldown_days, remaining = self._calculate_member_cooldown(user)
             if remaining == 0:
                 await interaction.response.send_message(f"{user.mention} is not currently on cooldown. Use 'add' instead.", ephemeral=True)
                 return
             
-            # Extend the cooldown
+            # Add extension to the extensions tracking
             extension_seconds = days * 24 * 60 * 60
-            new_end_ts = ts_to_int(utcnow()) + remaining + extension_seconds
-            self.store.meta["last_promotions"][str(user.id)] = new_end_ts - (cooldown_days * 24 * 60 * 60)
+            current_extension = self.store.meta.get("cooldown_extensions", {}).get(str(user.id), 0)
+            self.store.meta["cooldown_extensions"][str(user.id)] = current_extension + extension_seconds
             self.store.save()
+            
+            # Calculate new end time
+            new_remaining = remaining + extension_seconds
+            new_end_ts = ts_to_int(utcnow()) + new_remaining
             
             # DM the user
             try:
