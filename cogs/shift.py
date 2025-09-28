@@ -688,6 +688,18 @@ class ShiftCog(commands.Cog):
                 self.store.meta["last_promotions"][str(user.id)] = timestamp
                 updated = True
                 print(f"🎯 Recorded ping for {user.display_name} (ID: {user.id}) in promotions channel")
+                # DM notifications for cooldown start and schedule end notification
+                try:
+                    cooldown_days, seconds_remaining = self._calculate_member_cooldown(member)
+                    if cooldown_days > 0:
+                        try:
+                            await member.send(f"You have been placed on a promotion cooldown for {cooldown_days} day(s). It will end <t:{timestamp + seconds_remaining}:R>.")
+                        except Exception:
+                            pass
+                        # schedule end DM (best-effort; not persistent across restarts)
+                        asyncio.create_task(self._schedule_cooldown_end_dm(member.id, timestamp + seconds_remaining))
+                except Exception as e:
+                    print(f"Failed to DM cooldown info to {user.display_name}: {e}")
             elif member:
                 print(f"⚠️ User {user.display_name} mentioned but doesn't have manage role")
             else:
@@ -1433,6 +1445,86 @@ class ShiftCog(commands.Cog):
                 embed.add_field(name="Cooldown Remaining", value=f"{days_remaining:.1f} days", inline=True)
         
         await interaction.response.send_message(embed=embed)
+
+    # ---------- COOLDOWN HELPERS AND COMMANDS ----------
+    def _calculate_member_cooldown(self, member: discord.Member) -> Tuple[int, int]:
+        """Return (cooldown_days, seconds_remaining) for promotion cooldown based on roles and last ping."""
+        role_ids = {r.id for r in member.roles}
+        cooldown_days = 4
+        if PROMO_COOLDOWN_14 in role_ids:
+            cooldown_days = 14
+        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
+            cooldown_days = 10
+        elif PROMO_COOLDOWN_8 in role_ids:
+            cooldown_days = 8
+        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
+            cooldown_days = 6
+        elif PROMO_COOLDOWN_4 in role_ids:
+            cooldown_days = 4
+        last_ts = self.store.meta.get("last_promotions", {}).get(str(member.id), 0)
+        if last_ts == 0:
+            return cooldown_days, 0
+        seconds_since = ts_to_int(utcnow()) - last_ts
+        cooldown_seconds = cooldown_days * 24 * 60 * 60
+        remaining = max(0, cooldown_seconds - seconds_since)
+        return cooldown_days, remaining
+
+    async def _schedule_cooldown_end_dm(self, user_id: int, end_ts: int):
+        """Sleep until `end_ts` and DM the user that cooldown is over."""
+        try:
+            now = ts_to_int(utcnow())
+            to_sleep = max(0, end_ts - now)
+            await asyncio.sleep(to_sleep)
+            # fetch user and DM
+            user = self.bot.get_user(user_id)
+            if user is None:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                except Exception:
+                    user = None
+            if user:
+                try:
+                    await user.send("Your promotion cooldown is over. You are now eligible again, subject to current criteria.")
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Cooldown end DM scheduler error for {user_id}: {e}")
+
+    @commands.command(name="cooldown")
+    async def cooldown_text(self, ctx: commands.Context, user: Optional[discord.Member] = None):
+        """Show promotion cooldown for yourself or another user."""
+        target = user or ctx.author
+        cooldown_days, remaining = self._calculate_member_cooldown(target)
+        last_ts = self.store.meta.get("last_promotions", {}).get(str(target.id), 0)
+        if last_ts == 0:
+            msg = f"{target.mention} has never been promoted; no cooldown recorded. Default period: {cooldown_days} day(s)."
+            await ctx.send(msg)
+            return
+        if remaining == 0:
+            await ctx.send(f"{target.mention} is not on cooldown. Last promotion: <t:{last_ts}:R>.")
+            return
+        await ctx.send(f"{target.mention} is on a {cooldown_days}-day cooldown. Ends <t:{last_ts + remaining}:R> ({human_td(remaining)} remaining).")
+
+    @app_commands.command(name="cooldown", description="Show promotion cooldown for you or another user.")
+    @app_commands.describe(user="User to check (optional)")
+    async def cooldown_slash(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        member = user or interaction.user
+        cooldown_days, remaining = self._calculate_member_cooldown(member)
+        last_ts = self.store.meta.get("last_promotions", {}).get(str(member.id), 0)
+        embed = self.base_embed("Promotion Cooldown", colour_info() if remaining == 0 else colour_warn())
+        embed.add_field(name="User", value=member.mention, inline=True)
+        embed.add_field(name="Cooldown Period", value=f"{cooldown_days} days", inline=True)
+        if last_ts == 0:
+            embed.add_field(name="Status", value="No cooldown recorded (never promoted)", inline=False)
+        else:
+            embed.add_field(name="Last Promotion", value=f"<t:{last_ts}:F>", inline=True)
+            if remaining == 0:
+                embed.add_field(name="Status", value="✅ Not on cooldown", inline=True)
+            else:
+                embed.add_field(name="Status", value="⏳ On cooldown", inline=True)
+                embed.add_field(name="Ends", value=f"<t:{last_ts + remaining}:R>", inline=True)
+                embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # --------------- LEADERBOARD (PING USERS) ---------------
     # already mentions users via <@igitd> in lines eee
