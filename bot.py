@@ -125,7 +125,7 @@ async def on_ready():
             synced_global = await bot.tree.sync()
             print(f"✅ Synced {len(synced_global)} global commands")
             
-            # Also sync guild commands for your main guild for instant update
+            # Also sync guild commands for your main guild for instant update EEEEEEEEEE
             if APPLICATION_ID:
                 guild_obj = discord.Object(id=int(os.getenv("GUILD_ID", "0")))
                 if guild_obj.id != 0:
