@@ -42,7 +42,7 @@ class VersionCog(commands.Cog):
                 cogs_list = cogs_list[:100] + "..."
             embed.add_field(name="Last Updated Cogs", value=cogs_list, inline=False)
         
-        embed.set_footer(text="Version increments on each bot restart")
+        embed.set_footer(text="Made with love by Tuna 🐟")
         
         await ctx.send(embed=embed)
 
