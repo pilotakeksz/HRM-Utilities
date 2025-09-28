@@ -693,7 +693,12 @@ class ShiftCog(commands.Cog):
                     cooldown_days, seconds_remaining = self._calculate_member_cooldown(member)
                     if cooldown_days > 0:
                         try:
-                            await member.send(f"You have been placed on a promotion cooldown for {cooldown_days} day(s). It will end <t:{timestamp + seconds_remaining}:R>.")
+                            embed = self.base_embed("Promotion Cooldown Started", colour_warn())
+                            embed.description = f"You have been placed on a promotion cooldown for **{cooldown_days} day(s)**."
+                            embed.add_field(name="Cooldown Ends", value=f"<t:{timestamp + seconds_remaining}:R>", inline=True)
+                            embed.add_field(name="Duration", value=human_td(seconds_remaining), inline=True)
+                            embed.set_footer(text="You will be notified when your cooldown expires.")
+                            await member.send(embed=embed)
                         except Exception:
                             pass
                         # schedule end DM (best-effort; not persistent across restarts)
@@ -1484,7 +1489,12 @@ class ShiftCog(commands.Cog):
                     user = None
             if user:
                 try:
-                    await user.send("Your promotion cooldown is over. You are now eligible again, subject to current criteria.")
+                    embed = self.base_embed("Promotion Cooldown Expired", colour_ok())
+                    embed.description = "🎉 **You're eligible for a promotion!**"
+                    embed.add_field(name="Status", value="✅ Cooldown period has ended", inline=True)
+                    embed.add_field(name="Next Steps", value="You can now be considered for promotion again, subject to current criteria.", inline=False)
+                    embed.set_footer(text="Congratulations on completing your cooldown period!")
+                    await user.send(embed=embed)
                 except Exception:
                     pass
         except Exception as e:
@@ -1496,14 +1506,24 @@ class ShiftCog(commands.Cog):
         target = user or ctx.author
         cooldown_days, remaining = self._calculate_member_cooldown(target)
         last_ts = self.store.meta.get("last_promotions", {}).get(str(target.id), 0)
+        
+        embed = self.base_embed("Promotion Cooldown Status", colour_info() if remaining == 0 else colour_warn())
+        embed.add_field(name="User", value=target.mention, inline=True)
+        embed.add_field(name="Cooldown Period", value=f"{cooldown_days} days", inline=True)
+        
         if last_ts == 0:
-            msg = f"{target.mention} has never been promoted; no cooldown recorded. Default period: {cooldown_days} day(s)."
-            await ctx.send(msg)
-            return
-        if remaining == 0:
-            await ctx.send(f"{target.mention} is not on cooldown. Last promotion: <t:{last_ts}:R>.")
-            return
-        await ctx.send(f"{target.mention} is on a {cooldown_days}-day cooldown. Ends <t:{last_ts + remaining}:R> ({human_td(remaining)} remaining).")
+            embed.add_field(name="Status", value="No cooldown recorded (never promoted)", inline=False)
+            embed.add_field(name="Default Period", value=f"{cooldown_days} days", inline=True)
+        else:
+            embed.add_field(name="Last Promotion", value=f"<t:{last_ts}:F>", inline=True)
+            if remaining == 0:
+                embed.add_field(name="Status", value="✅ Not on cooldown", inline=True)
+            else:
+                embed.add_field(name="Status", value="⏳ On cooldown", inline=True)
+                embed.add_field(name="Ends", value=f"<t:{last_ts + remaining}:R>", inline=True)
+                embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
+        
+        await ctx.send(embed=embed)
 
     @app_commands.command(name="cooldown", description="Show promotion cooldown for you or another user.")
     @app_commands.describe(user="User to check (optional)")
@@ -1525,6 +1545,139 @@ class ShiftCog(commands.Cog):
                 embed.add_field(name="Ends", value=f"<t:{last_ts + remaining}:R>", inline=True)
                 embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ---------- COOLDOWN ADMIN COMMANDS ----------
+    @admin_group.command(name="cooldown", description="Manage promotion cooldowns for users (admin only).")
+    @app_commands.describe(
+        action="Choose an action",
+        user="User to manage cooldown for",
+        days="Number of days to add/extend (for add/extend actions)"
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Add cooldown", value="add"),
+        app_commands.Choice(name="Remove cooldown", value="remove"),
+        app_commands.Choice(name="Extend cooldown", value="extend"),
+        app_commands.Choice(name="View cooldown", value="view"),
+    ])
+    async def cooldown_admin(self, interaction: discord.Interaction, action: app_commands.Choice[str], user: discord.Member, days: Optional[int] = None):
+        """Admin commands to manage promotion cooldowns."""
+        admin_user = interaction.user
+        guild = interaction.guild
+        
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        if not any(r.id == ROLE_ADMIN for r in admin_user.roles):  # type: ignore
+            await interaction.response.send_message("You lack admin role.", ephemeral=True)
+            return
+        
+        if action.value == "add":
+            if days is None or days <= 0:
+                await interaction.response.send_message("Please provide a positive number of days.", ephemeral=True)
+                return
+            
+            # Set cooldown to current time + specified days
+            cooldown_ts = ts_to_int(utcnow()) + (days * 24 * 60 * 60)
+            self.store.meta["last_promotions"][str(user.id)] = cooldown_ts - (days * 24 * 60 * 60)  # Set to start of cooldown
+            self.store.save()
+            
+            # DM the user
+            try:
+                embed = self.base_embed("Promotion Cooldown Added", colour_warn())
+                embed.description = f"An admin has placed you on a promotion cooldown for **{days} day(s)**."
+                embed.add_field(name="Cooldown Ends", value=f"<t:{cooldown_ts}:R>", inline=True)
+                embed.add_field(name="Duration", value=human_td(days * 24 * 60 * 60), inline=True)
+                embed.set_footer(text="This cooldown was manually added by an administrator.")
+                await user.send(embed=embed)
+            except Exception:
+                pass
+            
+            # Schedule end DM
+            asyncio.create_task(self._schedule_cooldown_end_dm(user.id, cooldown_ts))
+            
+            await self.log_event(guild, f"🔒 Admin {admin_user.mention} added {days}-day cooldown for {user.mention}.")
+            await interaction.response.send_message(embed=self.embed_info(f"Added {days}-day cooldown for {user.mention}. Ends <t:{cooldown_ts}:R>."), ephemeral=True)
+            
+        elif action.value == "remove":
+            # Remove cooldown by setting last promotion to 0
+            self.store.meta["last_promotions"][str(user.id)] = 0
+            self.store.save()
+            
+            # DM the user
+            try:
+                embed = self.base_embed("Promotion Cooldown Removed", colour_ok())
+                embed.description = "🎉 **Your promotion cooldown has been removed!**"
+                embed.add_field(name="Status", value="✅ You are now eligible for promotion", inline=True)
+                embed.set_footer(text="This cooldown was manually removed by an administrator.")
+                await user.send(embed=embed)
+            except Exception:
+                pass
+            
+            await self.log_event(guild, f"🔓 Admin {admin_user.mention} removed cooldown for {user.mention}.")
+            await interaction.response.send_message(embed=self.embed_info(f"Removed cooldown for {user.mention}. They are now eligible for promotion."), ephemeral=True)
+            
+        elif action.value == "extend":
+            if days is None or days <= 0:
+                await interaction.response.send_message("Please provide a positive number of days.", ephemeral=True)
+                return
+            
+            # Get current cooldown status
+            last_ts = self.store.meta["last_promotions"].get(str(user.id), 0)
+            if last_ts == 0:
+                await interaction.response.send_message(f"{user.mention} is not currently on cooldown. Use 'add' instead.", ephemeral=True)
+                return
+            
+            # Extend by adding days to current cooldown
+            cooldown_days, remaining = self._calculate_member_cooldown(user)
+            if remaining == 0:
+                await interaction.response.send_message(f"{user.mention} is not currently on cooldown. Use 'add' instead.", ephemeral=True)
+                return
+            
+            # Extend the cooldown
+            extension_seconds = days * 24 * 60 * 60
+            new_end_ts = ts_to_int(utcnow()) + remaining + extension_seconds
+            self.store.meta["last_promotions"][str(user.id)] = new_end_ts - (cooldown_days * 24 * 60 * 60)
+            self.store.save()
+            
+            # DM the user
+            try:
+                embed = self.base_embed("Promotion Cooldown Extended", colour_warn())
+                embed.description = f"Your promotion cooldown has been extended by **{days} day(s)**."
+                embed.add_field(name="New End Time", value=f"<t:{new_end_ts}:R>", inline=True)
+                embed.add_field(name="Extension", value=human_td(extension_seconds), inline=True)
+                embed.set_footer(text="This cooldown was manually extended by an administrator.")
+                await user.send(embed=embed)
+            except Exception:
+                pass
+            
+            # Reschedule end DM
+            asyncio.create_task(self._schedule_cooldown_end_dm(user.id, new_end_ts))
+            
+            await self.log_event(guild, f"⏰ Admin {admin_user.mention} extended cooldown for {user.mention} by {days} days. New end: <t:{new_end_ts}:R>.")
+            await interaction.response.send_message(embed=self.embed_info(f"Extended cooldown for {user.mention} by {days} days. New end: <t:{new_end_ts}:R>."), ephemeral=True)
+            
+        elif action.value == "view":
+            # Show current cooldown status
+            cooldown_days, remaining = self._calculate_member_cooldown(user)
+            last_ts = self.store.meta["last_promotions"].get(str(user.id), 0)
+            
+            embed = self.base_embed("Cooldown Admin View", colour_info() if remaining == 0 else colour_warn())
+            embed.add_field(name="User", value=user.mention, inline=True)
+            embed.add_field(name="Cooldown Period", value=f"{cooldown_days} days", inline=True)
+            
+            if last_ts == 0:
+                embed.add_field(name="Status", value="No cooldown recorded", inline=False)
+            else:
+                embed.add_field(name="Last Promotion", value=f"<t:{last_ts}:F>", inline=True)
+                if remaining == 0:
+                    embed.add_field(name="Status", value="✅ Not on cooldown", inline=True)
+                else:
+                    embed.add_field(name="Status", value="⏳ On cooldown", inline=True)
+                    embed.add_field(name="Ends", value=f"<t:{last_ts + remaining}:R>", inline=True)
+                    embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # --------------- LEADERBOARD (PING USERS) ---------------
     # already mentions users via <@igitd> in lines eee
