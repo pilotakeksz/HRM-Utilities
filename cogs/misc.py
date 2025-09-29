@@ -17,7 +17,7 @@ class MiscCog(commands.Cog):
         """Simple ping command to check bot responsiveness."""
         latency = round(self.bot.latency * 1000)
         embed = discord.Embed(
-            title="🏓 Pong!"
+            title="🏓 Pong!",
             description=f"Latency: {latency}ms",
             color=discord.Color.green()
         )
