@@ -4,6 +4,9 @@ from discord.ext import commands
 from discord import app_commands
 import time
 
+# User allowed to run !tuna (in addition to server admins)
+ALLOWED_TUNA_USER_ID = 735167992966676530
+
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -78,6 +81,11 @@ class MiscCog(commands.Cog):
     @commands.group(name="tuna")
     async def tuna(self, ctx):
         """Tuna utility commands."""
+        # Authorization gate: allow specified user or server admins
+        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
+        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
+            await ctx.send("❌ You are not allowed to use tuna commands.")
+            return
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `!tuna role` or `!tuna dm` for available commands.")
 
@@ -162,6 +170,54 @@ class MiscCog(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ An error occurred: {str(e)}")
 
+    @tuna_role.command(name="members")
+    async def tuna_role_members(self, ctx, *, role_name: str):
+        """List members who have a given role (by name or mention)."""
+        # Try role mention first
+        role = None
+        if role_name.startswith("<@&") and role_name.endswith(">"):
+            try:
+                role_id = int(role_name[3:-1])
+                role = ctx.guild.get_role(role_id)
+            except ValueError:
+                role = None
+        if role is None:
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if role is None:
+            await ctx.send(f"❌ Role '{role_name}' not found.")
+            return
+
+        members = [member.mention for member in role.members]
+        if not members:
+            await ctx.send(f"No members have {role.mention}.")
+            return
+
+        # Avoid overly long messages
+        joined = ", ".join(members)
+        if len(joined) > 3800:
+            # Chunk into multiple messages
+            await ctx.send(f"Members with {role.mention} (total {len(members)}):")
+            chunk = []
+            length = 0
+            for m in members:
+                if length + len(m) + 2 > 1900:
+                    await ctx.send(", ".join(chunk))
+                    chunk = [m]
+                    length = len(m)
+                else:
+                    chunk.append(m)
+                    length += len(m) + 2
+            if chunk:
+                await ctx.send(", ".join(chunk))
+            return
+
+        embed = discord.Embed(
+            title=f"Members with {role.name}",
+            description=joined,
+            color=discord.Color.blurple()
+        )
+        await ctx.send(embed=embed)
+
     @tuna.command(name="dm")
     async def tuna_dm(self, ctx, target, *, message: str):
         """Send a DM to a user or all members with a specific role."""
@@ -212,6 +268,25 @@ class MiscCog(commands.Cog):
             
         except Exception as e:
             await ctx.send(f"❌ An error occurred: {str(e)}")
+
+    @tuna.command(name="say")
+    async def tuna_say(self, ctx, channel: discord.TextChannel = None, *, message: str = None):
+        """Send a message to a channel. Usage: !tuna say [#channel] <message>"""
+        if message is None and channel is None:
+            await ctx.send("Usage: `!tuna say [#channel] <message>`")
+            return
+        if message is None and channel is not None:
+            await ctx.send("Usage: `!tuna say [#channel] <message>`")
+            return
+        target_channel = channel or ctx.channel
+        try:
+            await target_channel.send(message)
+            if target_channel.id != ctx.channel.id:
+                await ctx.send(f"✅ Sent message in {target_channel.mention}")
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to send messages in that channel.")
+        except Exception as e:
+            await ctx.send(f"❌ Failed to send message: {str(e)}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
