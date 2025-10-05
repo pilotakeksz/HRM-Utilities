@@ -1339,6 +1339,42 @@ class ShiftCog(commands.Cog):
             emb.description = "\n".join(desc)
         await interaction.response.send_message(embed=emb)
 
+    @app_commands.command(name="shift_stats", description="Show global shift statistics (admin only).")
+    async def shift_stats(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        # Require admin role, mirroring admin stats access
+        user = interaction.user
+        if not any(r.id == ROLE_ADMIN for r in user.roles):  # type: ignore
+            await interaction.response.send_message("You lack admin role.", ephemeral=True)
+            return
+        try:
+            num_records, total_seconds = self.store.get_statistics()
+            # Count members with manage role
+            manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+            role_count = len(manage_role.members) if manage_role else 0
+            # Messages since last reset with timeout
+            last_reset = int_to_ts(self.store.meta.get("last_reset_ts", ts_to_int(utcnow())))
+            try:
+                msg_count = await asyncio.wait_for(self.count_messages_since(guild, last_reset), timeout=10.0)
+            except asyncio.TimeoutError:
+                msg_count = 0
+                print("Message counting timed out, using 0 as default")
+            emb = self.base_embed("Shift Stats (Global)", colour_info())
+            emb.add_field(name="Total unique shifts", value=str(num_records), inline=True)
+            emb.add_field(name="Total shift time", value=human_td(total_seconds), inline=True)
+            emb.add_field(name="Since reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
+            emb.add_field(name="Messages since reset (in personnel-chat channel)", value=str(msg_count), inline=True)
+            emb.add_field(name="Members with personnel role", value=str(role_count), inline=True)
+            await interaction.response.send_message(embed=emb, ephemeral=False)
+        except Exception as e:
+            print(f"Error in shift_stats command: {e}")
+            emb = self.base_embed("Shift Stats (Global)", colour_err())
+            emb.description = f"Error retrieving statistics: {str(e)}"
+            await interaction.response.send_message(embed=emb, ephemeral=True)
+
     # ---------------- LOGGING TOGGLE ----------------
     @app_commands.command(name="shift_lists", description="Show promotion and infractions lists (admin only).")
     @app_commands.describe(list_type="Choose which list to show")
