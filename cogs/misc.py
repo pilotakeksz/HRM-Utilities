@@ -3,6 +3,11 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import time
+from io import BytesIO
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 # User allowed to run !tuna (in addition to server admins)
 ALLOWED_TUNA_USER_ID = 735167992966676530
@@ -469,8 +474,56 @@ class MiscCog(commands.Cog):
             await ctx.send(embed=embed)
         except discord.Forbidden:
             await ctx.send("❌ I don't have permission to create roles.")
-        except Exception as e:
-            await ctx.send(f"❌ Failed to create role: {e}")
+        except Exception as e:        except Exception as e:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        await ctx.send(embed=embed, file=file)        embed.add_field(name="RGB", value=f"{r}, {g}, {b}", inline=True)        embed.set_image(url="attachment://colour.png")        embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))        file = discord.File(bio, filename="colour.png")        bio.seek(0)        img.save(bio, "PNG")        bio = BytesIO()        img = Image.new("RGB", (256, 256), (r, g, b))            return            await ctx.send(embed=embed)            embed.description = f"RGB: {r}, {g}, {b}"            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))            # Pillow not available — fallback to embed with color sidebar        if Image is None:        b = value & 0xFF        g = (value >> 8) & 0xFF        r = (value >> 16) & 0xFF            return            await ctx.send("❌ Invalid hex value.")        except ValueError:            value = int(c, 16)        try:            c = "".join(ch * 2 for ch in c)        if len(c) == 3:            return            await ctx.send("❌ Invalid color. Provide 3- or 6-digit hex, e.g. `FF8800` or `F80`.")        if len(c) not in (3, 6):        c = hex_color.strip().lstrip("#")            return            await ctx.send("❌ You are not allowed to use tuna commands.")        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)        # authorization        Usage: !tuna colour FF8800  or  !tuna colour #FF8800  (3- or 6-digit hex allowed)"""        """Show a small image filled with the given hex colour.    async def tuna_colour(self, ctx, hex_color: str):    @tuna.command(name="colour")    # new: display a small image filled with given hex colour            await ctx.send(f"❌ Failed to create role: {e}")            await ctx.send(f"❌ Failed to create role: {e}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
