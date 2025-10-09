@@ -448,13 +448,18 @@ class MiscCog(commands.Cog):
 
         # parse color if provided
         role_color = None
+        c = None
         if color:
             c = color.strip()
             if c.startswith("#"):
                 c = c[1:]
+            if len(c) == 3:
+                c = "".join(ch * 2 for ch in c)
+            if len(c) != 6:
+                await ctx.send("❌ Invalid color. Use 3- or 6-digit hex like `#F80` or `#FF8800`.")
+                return
             try:
                 color_val = int(c, 16)
-                # discord.Color expects 0xRRGGBB
                 role_color = discord.Color(value=color_val)
             except Exception:
                 await ctx.send("❌ Invalid color. Use hex like `#RRGGBB` or `RRGGBB`.")
@@ -465,65 +470,67 @@ class MiscCog(commands.Cog):
             if not guild:
                 await ctx.send("❌ This command must be run in a server.")
                 return
-            role = await guild.create_role(name=role_name, color=role_color or discord.Color.default(), mentionable=False, reason=f"Created by {ctx.author}")
+            role = await guild.create_role(
+                name=role_name,
+                color=role_color or discord.Color.default(),
+                mentionable=False,
+                reason=f"Created by {ctx.author}"
+            )
             embed = discord.Embed(title="✅ Role Created", description=f"Created role {role.mention}", color=discord.Color.green())
             embed.add_field(name="Name", value=role.name, inline=True)
             embed.add_field(name="ID", value=str(role.id), inline=True)
-            if color:
+            if c:
                 embed.add_field(name="Color", value=f"#{c.upper()}", inline=True)
             await ctx.send(embed=embed)
         except discord.Forbidden:
             await ctx.send("❌ I don't have permission to create roles.")
-        except Exception as e:        except Exception as e:
+        except Exception as e:
+            await ctx.send(f"❌ Failed to create role: {e}")
 
+    @tuna.command(name="colour")
+    async def tuna_colour(self, ctx, hex_color: str):
+        """Show a small image filled with the given hex colour.
+        Usage: !tuna colour FF8800  or  !tuna colour #FF8800  (3- or 6-digit hex allowed)"""
+        # authorization
+        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
+        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
+            await ctx.send("❌ You are not allowed to use tuna commands.")
+            return
 
+        c = hex_color.strip().lstrip("#")
+        if len(c) not in (3, 6):
+            await ctx.send("❌ Invalid color. Provide 3- or 6-digit hex, e.g. `FF8800` or `F80`.")
+            return
+        if len(c) == 3:
+            c = "".join(ch * 2 for ch in c)
+        try:
+            value = int(c, 16)
+        except ValueError:
+            await ctx.send("❌ Invalid hex value.")
+            return
 
+        r = (value >> 16) & 0xFF
+        g = (value >> 8) & 0xFF
+        b = value & 0xFF
 
+        # If Pillow available, send an image attachment; otherwise fallback to embed color bar
+        if Image is None:
+            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
+            embed.description = f"RGB: {r}, {g}, {b}"
+            await ctx.send(embed=embed)
+            return
 
+        img = Image.new("RGB", (256, 256), (r, g, b))
+        bio = BytesIO()
+        img.save(bio, "PNG")
+        bio.seek(0)
+        file = discord.File(bio, filename="colour.png")
 
+        embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
+        embed.set_image(url="attachment://colour.png")
+        embed.add_field(name="RGB", value=f"{r}, {g}, {b}", inline=True)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        await ctx.send(embed=embed, file=file)        embed.add_field(name="RGB", value=f"{r}, {g}, {b}", inline=True)        embed.set_image(url="attachment://colour.png")        embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))        file = discord.File(bio, filename="colour.png")        bio.seek(0)        img.save(bio, "PNG")        bio = BytesIO()        img = Image.new("RGB", (256, 256), (r, g, b))            return            await ctx.send(embed=embed)            embed.description = f"RGB: {r}, {g}, {b}"            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))            # Pillow not available — fallback to embed with color sidebar        if Image is None:        b = value & 0xFF        g = (value >> 8) & 0xFF        r = (value >> 16) & 0xFF            return            await ctx.send("❌ Invalid hex value.")        except ValueError:            value = int(c, 16)        try:            c = "".join(ch * 2 for ch in c)        if len(c) == 3:            return            await ctx.send("❌ Invalid color. Provide 3- or 6-digit hex, e.g. `FF8800` or `F80`.")        if len(c) not in (3, 6):        c = hex_color.strip().lstrip("#")            return            await ctx.send("❌ You are not allowed to use tuna commands.")        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)        # authorization        Usage: !tuna colour FF8800  or  !tuna colour #FF8800  (3- or 6-digit hex allowed)"""        """Show a small image filled with the given hex colour.    async def tuna_colour(self, ctx, hex_color: str):    @tuna.command(name="colour")    # new: display a small image filled with given hex colour            await ctx.send(f"❌ Failed to create role: {e}")            await ctx.send(f"❌ Failed to create role: {e}")
+        await ctx.send(embed=embed, file=file)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
