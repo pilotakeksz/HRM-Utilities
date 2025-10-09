@@ -513,24 +513,47 @@ class MiscCog(commands.Cog):
         g = (value >> 8) & 0xFF
         b = value & 0xFF
 
+        # Check attach permission
+        try:
+            me = ctx.guild.me if ctx.guild else None
+            if me and not ctx.channel.permissions_for(me).attach_files:
+                await ctx.send("❌ I don't have permission to attach files in this channel. Showing fallback embed instead.")
+                embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
+                embed.description = f"RGB: {r}, {g}, {b}"
+                await ctx.send(embed=embed)
+                return
+        except Exception:
+            # ignore permission checks failure, continue
+
+            pass
+
         # If Pillow available, send an image attachment; otherwise fallback to embed color bar
         if Image is None:
+            # Pillow not installed
             embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
-            embed.description = f"RGB: {r}, {g}, {b}"
+            embed.description = f"RGB: {r}, {g}, {b}\n\n(Pillow not installed — install with `pip install Pillow` to get an image attachment.)"
             await ctx.send(embed=embed)
             return
 
-        img = Image.new("RGB", (256, 256), (r, g, b))
-        bio = BytesIO()
-        img.save(bio, "PNG")
-        bio.seek(0)
-        file = discord.File(bio, filename="colour.png")
+        # Create image and attempt to send as attachment (with safe error handling)
+        try:
+            img = Image.new("RGB", (256, 256), (r, g, b))
+            bio = BytesIO()
+            img.save(bio, "PNG")
+            bio.seek(0)
+            file = discord.File(bio, filename="colour.png")
 
-        embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
-        embed.set_image(url="attachment://colour.png")
-        embed.add_field(name="RGB", value=f"{r}, {g}, {b}", inline=True)
+            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
+            embed.set_image(url="attachment://colour.png")
+            embed.add_field(name="RGB", value=f"{r}, {g}, {b}", inline=True)
 
-        await ctx.send(embed=embed, file=file)
+            await ctx.send(embed=embed, file=file)
+        except Exception as e:
+            # fallback: send embed and show error in channel so you can debug
+            await ctx.send(f"❌ Failed to send image attachment: {e}")
+            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
+            embed.description = f"RGB: {r}, {g}, {b}"
+            await ctx.send(embed=embed)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
