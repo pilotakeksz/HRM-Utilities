@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 TRAINING_ROLE_ID = 1329910342301515838  # role allowed to run command
@@ -28,7 +28,7 @@ async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
      - try to post a short message to LOG_CHANNEL_ID
     actor may be a discord.User/Member or a string.
     """
-    ts = datetime.utcnow().isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
     try:
         actor_repr = f"{actor} ({getattr(actor, 'id', '')})" if actor is not None else "Unknown"
     except Exception:
@@ -130,7 +130,9 @@ class TrainingVoteView(discord.ui.View):
                 parts.append("\nNot joining:\n" + "\n".join(not_joiners))
         try:
             dm = await self.author.create_dm()
-            await dm.send("\n\n".join(parts))
+            embed = discord.Embed(title="Training vote update", description="\n\n".join(parts), color=EMBED_COLOR)
+            embed.set_footer(text=f"Host update • Message ID: {getattr(self.message,'id',None)}")
+            await dm.send(embed=embed)
             await log_action(self.bot, self.author, "host_dm_update_sent", extra=f"yes={yes} no={no} message_id={getattr(self.message,'id',None)}")
         except Exception as e:
             await log_action(self.bot, self.author, "host_dm_failed", extra=str(e))
@@ -210,6 +212,87 @@ class TrainingVoteView(discord.ui.View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         await log_action(self.bot, interaction.user, "who_requested", extra=f"message_id={getattr(self.message, 'id', None)}")
 
+    # Start session button (yellow emoji). Only host can use it and only if at least one YES vote exists.
+    @discord.ui.button(style=discord.ButtonStyle.secondary, emoji="🟨", label="Start Session")
+    async def start_session_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only host allowed
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message("Only the host can start the session.", ephemeral=True)
+            await log_action(self.bot, interaction.user, "start_session_denied_not_host", extra=f"message_id={getattr(self.message,'id',None)}")
+            return
+
+        yes_count = sum(1 for v in self.votes.values() if v == "yes")
+        if yes_count < 1:
+            await interaction.response.send_message("At least one person must have voted YES to start the session.", ephemeral=True)
+            await log_action(self.bot, interaction.user, "start_session_denied_no_yes_votes", extra=f"message_id={getattr(self.message,'id',None)}")
+            return
+
+        if self.started:
+            await interaction.response.send_message("Session has already been started.", ephemeral=True)
+            return
+
+        self.started = True
+        # disable interactive buttons
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+        # DM embed text to voters
+        dm_text = (
+            "<:MIAthumbtack1:1365681465806815282>  Training server code: `AXEGK`.\n\n"
+            "> Once you join the server, please join the sheriff team, and  do the following:\n\n"
+            "**<:MIAdot:1365679087078604840> Make sure you have a gun equipped.**\n"
+            "> `•` [Glock-17 / M4A1 rifle]\n\n"
+            "**<:MIAdot:1365679087078604840> Use the [Standard Kit] uniform.**\n\n"
+            "**<:MIAdot:1365679087078604840> And spawn one of the following vehicles:**\n"
+            "> `•` 2015 bullhorn prancer [MCNG Patrol]\n"
+            "> `•` Falcon Interceptor 2019 [MCNG Utility]\n"
+            "> `•` Chevlon Camion PPV 2000 [MCNG Utility]\n"
+        )
+
+        dm_failed = []
+        # DM each YES voter as an embed
+        for uid, v in list(self.votes.items()):
+            if v != "yes":
+                continue
+            try:
+                user = await self.bot.fetch_user(uid)
+                dm = await user.create_dm()
+                embed = discord.Embed(title="Training starting — AXEGK", description=dm_text, color=EMBED_COLOR)
+                embed.set_footer(text=f"Host: {self.author.display_name}")
+                await dm.send(embed=embed)
+                await log_action(self.bot, user, "dm_sent_start_session", extra=f"by_host={self.author.id} message_id={getattr(self.message,'id',None)}")
+            except Exception as e:
+                dm_failed.append(str(uid))
+                await log_action(self.bot, "system", "dm_failed_start_session", extra=f"user={uid} err={e}")
+
+        # Announce session start, ping host and joining voters
+        votes_mentions = " ".join(f"<@{uid}>" for uid, v in self.votes.items() if v == "yes")
+        host_mention = f"<@{self.author.id}>"
+        announce_embed = discord.Embed(
+            title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training Starting",
+            description="Training session has been started by the host.\n\nSee instructions below and join the server when ready.",
+            color=EMBED_COLOR
+        )
+        announce_embed.add_field(name="Host", value=host_mention, inline=True)
+        announce_embed.add_field(name="Voters (joining)", value=(votes_mentions or "No one"), inline=False)
+        announce_embed.add_field(name="Instructions", value=dm_text, inline=False)
+        announce_embed.set_footer(text=f"Started • Host: {self.author.display_name}")
+        announce_channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID) or await self.bot.fetch_channel(ANNOUNCE_CHANNEL_ID)
+        try:
+            await announce_channel.send(content=f"{host_mention} {votes_mentions}", embed=announce_embed)
+            await log_action(self.bot, self.author, "session_started_posted", extra=f"message_in={ANNOUNCE_CHANNEL_ID} host={self.author.id}")
+        except Exception as e:
+            await log_action(self.bot, "system", "session_start_announce_failed", extra=str(e))
+
+        await interaction.response.send_message("Session started. Voters have been DM'd and an announcement was posted.", ephemeral=True)
+        await log_action(self.bot, self.author, "session_started", extra=f"yes_count={yes_count} dm_failures={len(dm_failed)} message_id={getattr(self.message,'id',None)}")
+
     async def finalize(self):
         # disable all buttons and edit message
         for child in self.children:
@@ -266,15 +349,15 @@ class Trainings(commands.Cog):
         guild = interaction.guild
         if guild:
             last = self.guild_vote_cooldowns.get(guild.id)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             cooldown = timedelta(minutes=30)
             is_admin = getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator
             if last and not is_admin:
                 expire = last + cooldown
                 if now < expire:
                     remaining = expire - now
-                    # relative timestamp for when cooldown expires
-                    rel_ts = f"<t:{int(expire.timestamp())}:R>"
+                    # relative timestamp for when cooldown expires (use aware timestamp)
+                    rel_ts = f"<t:{int(expire.replace(tzinfo=timezone.utc).timestamp())}:R>"
                     await interaction.response.send_message(f"Training vote is on cooldown for this server. Try again {rel_ts}.", ephemeral=True)
                     await log_action(self.bot, interaction.user, "vote_command_on_cooldown", extra=f"guild_id={guild.id} remaining_seconds={int(remaining.total_seconds())}")
                     return
@@ -283,7 +366,7 @@ class Trainings(commands.Cog):
                 await log_action(self.bot, interaction.user, "vote_cooldown_bypassed", extra=f"guild_id={guild.id}")
 
         # compute relative timestamp for 10 minutes from now
-        end_dt = datetime.utcnow() + timedelta(minutes=10)
+        end_dt = datetime.now(timezone.utc) + timedelta(minutes=10)
         epoch = int(end_dt.timestamp())
         rel_ts = f"<t:{epoch}:R>"
 
@@ -301,9 +384,9 @@ class Trainings(commands.Cog):
         msg = await channel.send(content=content, embed=embed, view=view)
         view.message = msg
 
-        # set server-wide cooldown timestamp (mark now)
+        # set server-wide cooldown timestamp (mark now, timezone-aware)
         if guild:
-            self.guild_vote_cooldowns[guild.id] = datetime.utcnow()
+            self.guild_vote_cooldowns[guild.id] = datetime.now(timezone.utc)
 
         # log posted
         await log_action(self.bot, interaction.user, "vote_posted", extra=f"channel_id={ANNOUNCE_CHANNEL_ID} message_id={msg.id}")

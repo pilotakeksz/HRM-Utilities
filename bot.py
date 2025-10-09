@@ -89,10 +89,7 @@ async def on_ready():
     # Send version to specified channel
     try:
         version_channel_id = 1329910508182179900
-        version_channel = bot.get_channel(version_channel_id)
         secondary_channel_id = 1329910465333170216
-        secondary_channel = bot.get_channel(secondary_channel_id)
-
         # Build embed once
         embed = discord.Embed(
             title="Bot Restart",
@@ -112,15 +109,7 @@ async def on_ready():
             embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
         embed.set_footer(text="Developed with love by Tuna 🐟")
 
-        # Always send to secondary channel without ping
-        if secondary_channel:
-            try:
-                await secondary_channel.send(embed=embed)
-                print(f"Version {version_string} also sent to channel {secondary_channel_id} without ping")
-            except Exception as e:
-                print(f"Failed to send version to secondary channel {secondary_channel_id}: {e}")
-
-        # Rate-limited role ping in main channel
+        # Decide where to send: only send to the main version channel if we are actually able to ping the role (rate OK).
         role_id_to_ping = 1371198982935806033
         ping_data_path = os.path.join("data", "version_ping.json")
         os.makedirs("data", exist_ok=True)
@@ -140,31 +129,46 @@ async def on_ready():
         now_ts = int(datetime.now(timezone.utc).timestamp())
         can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 3600) and (int(ping_data.get("daily_count", 0)) < 5)
 
-        if version_channel:
-            if can_ping:
+        # Fetch channels
+        version_channel = bot.get_channel(version_channel_id)
+        secondary_channel = bot.get_channel(secondary_channel_id)
+
+        if can_ping and version_channel:
+            # Send to main version channel with role ping and update ping counters
+            try:
+                content = f"<@&{role_id_to_ping}>"
+                allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
+                await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
+                print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
+                ping_data["last_ping_ts"] = now_ts
+                ping_data["daily_count"] = int(ping_data.get("daily_count", 0)) + 1
+                with open(ping_data_path, "w", encoding="utf-8") as f:
+                    json.dump(ping_data, f, indent=2)
+            except Exception as e:
+                print(f"Failed to send pinged version message to {version_channel_id}: {e}")
+                # fallback: send without ping to secondary channel if available
+                if secondary_channel:
+                    try:
+                        await secondary_channel.send(embed=embed)
+                        print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
+                    except Exception as e2:
+                        print(f"Failed to send to secondary channel as fallback: {e2}")
+        else:
+            # Do NOT send to main version channel when we can't ping; send to secondary channel without ping
+            if secondary_channel:
                 try:
-                    content = f"<@&{role_id_to_ping}>"
-                    allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
-                    await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
-                    print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
-                    ping_data["last_ping_ts"] = now_ts
-                    ping_data["daily_count"] = int(ping_data.get("daily_count", 0)) + 1
-                    with open(ping_data_path, "w", encoding="utf-8") as f:
-                        json.dump(ping_data, f, indent=2)
+                    await secondary_channel.send(embed=embed)
+                    print(f"Version {version_string} sent to secondary channel {secondary_channel_id} without ping")
                 except Exception as e:
-                    print(f"Failed to send pinged version message: {e}")
+                    print(f"Failed to send version to secondary channel {secondary_channel_id}: {e}")
+            else:
+                # As a last resort, try sending to main version channel without ping
+                if version_channel:
                     try:
                         await version_channel.send(embed=embed)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    await version_channel.send(embed=embed)
-                    print(f"Version {version_string} sent to channel {version_channel_id} without ping (rate limit)")
-                except Exception as e:
-                    print(f"Failed to send version to channel {version_channel_id}: {e}")
-        else:
-            print(f"Could not find channel {version_channel_id} to send version")
+                        print(f"Version {version_string} sent to version channel {version_channel_id} without ping (secondary missing)")
+                    except Exception as e:
+                        print(f"Failed to send version to main channel as last resort: {e}")
     except Exception as e:
         print(f"Failed to send version to channel: {e}")
     
