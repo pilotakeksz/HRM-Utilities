@@ -190,7 +190,7 @@ class TrainingVoteView(discord.ui.View):
         except Exception:
             await log_action(self.bot, "system", "notify_host_failed_after_vote_no", extra=f"user={user_id} message_id={getattr(self.message,'id',None)}")
 
-    @discord.ui.button(style=discord.ButtonStyle.primary, emoji=MEMBER_EMOJI, label="Who voted")
+    @discord.ui.button(style=discord.ButtonStyle.primary, emoji=MEMBER_EMOJI, label="Voters")
     async def who_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         yes_list = []
         no_list = []
