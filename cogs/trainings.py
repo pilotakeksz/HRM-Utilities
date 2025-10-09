@@ -77,6 +77,11 @@ class ConfirmUnvoteView(discord.ui.View):
         # log unvote
         await log_action(self.parent_view.bot, interaction.user, "unvote_confirmed",
                          extra=f"message_id={getattr(self.parent_view.message, 'id', None)}")
+        # notify host about change
+        try:
+            await self.parent_view.notify_host()
+        except Exception:
+            await log_action(self.parent_view.bot, "system", "notify_host_failed_after_unvote", extra=f"message_id={getattr(self.parent_view.message, 'id', None)}")
         self.stop()
 
     async def on_timeout(self):
@@ -90,11 +95,45 @@ class TrainingVoteView(discord.ui.View):
         self.end_time = end_time
         self.message = message
         self.votes: Dict[int, str] = {}  # user_id -> 'yes'/'no'
+        self.started = False
 
     def counts(self):
         yes = sum(1 for v in self.votes.values() if v == "yes")
         no = sum(1 for v in self.votes.values() if v == "no")
         return yes, no
+
+    async def notify_host(self):
+        """DM the host with a short update about current vote counts and lists."""
+        if not self.author:
+            return
+        yes, no = self.counts()
+        parts = [f"Training vote update:\n✅ Joining: {yes}\n❌ Not joining: {no}"]
+        if self.votes:
+            joiners = []
+            not_joiners = []
+            for uid, v in self.votes.items():
+                mention = f"<@{uid}>"
+                member = None
+                try:
+                    if self.message and self.message.guild:
+                        member = self.message.guild.get_member(uid)
+                except Exception:
+                    member = None
+                display = member.display_name if member else str(uid)
+                if v == "yes":
+                    joiners.append(f"{mention} ({display})")
+                else:
+                    not_joiners.append(f"{mention} ({display})")
+            if joiners:
+                parts.append("\nJoiners:\n" + "\n".join(joiners))
+            if not_joiners:
+                parts.append("\nNot joining:\n" + "\n".join(not_joiners))
+        try:
+            dm = await self.author.create_dm()
+            await dm.send("\n\n".join(parts))
+            await log_action(self.bot, self.author, "host_dm_update_sent", extra=f"yes={yes} no={no} message_id={getattr(self.message,'id',None)}")
+        except Exception as e:
+            await log_action(self.bot, self.author, "host_dm_failed", extra=str(e))
 
     async def _update_message(self):
         if not self.message:
@@ -124,6 +163,11 @@ class TrainingVoteView(discord.ui.View):
         await self._update_message()
         await interaction.response.send_message("Your 'join' vote was recorded.", ephemeral=True)
         await log_action(self.bot, interaction.user, "vote_yes", extra=f"message_id={getattr(self.message, 'id', None)}")
+        # notify host on every vote change
+        try:
+            await self.notify_host()
+        except Exception:
+            await log_action(self.bot, "system", "notify_host_failed_after_vote_yes", extra=f"user={user_id} message_id={getattr(self.message,'id',None)}")
 
     @discord.ui.button(style=discord.ButtonStyle.danger, emoji=NO_EMOJI, label="No")
     async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -138,18 +182,26 @@ class TrainingVoteView(discord.ui.View):
         await self._update_message()
         await interaction.response.send_message("Your 'not joining' vote was recorded.", ephemeral=True)
         await log_action(self.bot, interaction.user, "vote_no", extra=f"message_id={getattr(self.message, 'id', None)}")
+        # notify host on every vote change
+        try:
+            await self.notify_host()
+        except Exception:
+            await log_action(self.bot, "system", "notify_host_failed_after_vote_no", extra=f"user={user_id} message_id={getattr(self.message,'id',None)}")
 
     @discord.ui.button(style=discord.ButtonStyle.primary, emoji=MEMBER_EMOJI, label="Who voted")
     async def who_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         yes_list = []
         no_list = []
+        # include mentions so the host (and requester) can see/ping who voted
         for uid, v in self.votes.items():
+            mention = f"<@{uid}>"
             member = interaction.guild.get_member(uid) if interaction.guild else None
             name = member.display_name if member else str(uid)
+            text = f"{mention} ({name})"
             if v == "yes":
-                yes_list.append(name)
+                yes_list.append(text)
             else:
-                no_list.append(name)
+                no_list.append(text)
         yes_text = "\n".join(yes_list) if yes_list else "No one"
         no_text = "\n".join(no_list) if no_list else "No one"
         embed = discord.Embed(title="Who voted", color=EMBED_COLOR)
@@ -194,6 +246,8 @@ class TrainingVoteView(discord.ui.View):
 class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # guild_id -> datetime of last vote invocation
+        self.guild_vote_cooldowns: Dict[int, datetime] = {}
 
     training = app_commands.Group(name="training", description="Training related commands")
 
@@ -207,6 +261,26 @@ class Trainings(commands.Cog):
             await interaction.response.send_message("You don't have permission to run this command.", ephemeral=True)
             await log_action(self.bot, interaction.user, "vote_command_denied", extra="missing role")
             return
+
+        # server-wide cooldown (30 minutes) per guild; admins bypass
+        guild = interaction.guild
+        if guild:
+            last = self.guild_vote_cooldowns.get(guild.id)
+            now = datetime.utcnow()
+            cooldown = timedelta(minutes=30)
+            is_admin = getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator
+            if last and not is_admin:
+                expire = last + cooldown
+                if now < expire:
+                    remaining = expire - now
+                    # relative timestamp for when cooldown expires
+                    rel_ts = f"<t:{int(expire.timestamp())}:R>"
+                    await interaction.response.send_message(f"Training vote is on cooldown for this server. Try again {rel_ts}.", ephemeral=True)
+                    await log_action(self.bot, interaction.user, "vote_command_on_cooldown", extra=f"guild_id={guild.id} remaining_seconds={int(remaining.total_seconds())}")
+                    return
+            if is_admin and last:
+                # admin bypass - log it
+                await log_action(self.bot, interaction.user, "vote_cooldown_bypassed", extra=f"guild_id={guild.id}")
 
         # compute relative timestamp for 10 minutes from now
         end_dt = datetime.utcnow() + timedelta(minutes=10)
@@ -226,6 +300,10 @@ class Trainings(commands.Cog):
         view = TrainingVoteView(self.bot, interaction.user, end_time=end_dt)
         msg = await channel.send(content=content, embed=embed, view=view)
         view.message = msg
+
+        # set server-wide cooldown timestamp (mark now)
+        if guild:
+            self.guild_vote_cooldowns[guild.id] = datetime.utcnow()
 
         # log posted
         await log_action(self.bot, interaction.user, "vote_posted", extra=f"channel_id={ANNOUNCE_CHANNEL_ID} message_id={msg.id}")
