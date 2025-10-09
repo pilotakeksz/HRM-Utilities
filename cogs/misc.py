@@ -95,6 +95,17 @@ class MiscCog(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `!tuna role add`, `!tuna role list`, or `!tuna role remove`")
 
+    @tuna.group(name="create")
+    async def tuna_create(self, ctx):
+        """Creation utilities for tuna."""
+        # authorization (same gate as parent)
+        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
+        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
+            await ctx.send("❌ You are not allowed to use tuna commands.")
+            return
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `!tuna create role <name> [hexcolor]`")
+
     @tuna_role.command(name="add")
     async def tuna_role_add(self, ctx, user: discord.Member, *, role_name: str):
         """Add a role to a user."""
@@ -420,6 +431,46 @@ class MiscCog(commands.Cog):
         if cpu:
             embed.add_field(name="CPU", value=cpu, inline=True)
         await ctx.send(embed=embed)
+
+    @tuna_create.command(name="role")
+    async def tuna_create_role(self, ctx, role_name: str, color: str = None):
+        """Create a role. Optional color hex like FF8800 or #FF8800."""
+        # authorization (double-check)
+        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
+        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
+            await ctx.send("❌ You are not allowed to use tuna commands.")
+            return
+
+        # parse color if provided
+        role_color = None
+        if color:
+            c = color.strip()
+            if c.startswith("#"):
+                c = c[1:]
+            try:
+                color_val = int(c, 16)
+                # discord.Color expects 0xRRGGBB
+                role_color = discord.Color(value=color_val)
+            except Exception:
+                await ctx.send("❌ Invalid color. Use hex like `#RRGGBB` or `RRGGBB`.")
+                return
+
+        try:
+            guild = ctx.guild
+            if not guild:
+                await ctx.send("❌ This command must be run in a server.")
+                return
+            role = await guild.create_role(name=role_name, color=role_color or discord.Color.default(), mentionable=False, reason=f"Created by {ctx.author}")
+            embed = discord.Embed(title="✅ Role Created", description=f"Created role {role.mention}", color=discord.Color.green())
+            embed.add_field(name="Name", value=role.name, inline=True)
+            embed.add_field(name="ID", value=str(role.id), inline=True)
+            if color:
+                embed.add_field(name="Color", value=f"#{c.upper()}", inline=True)
+            await ctx.send(embed=embed)
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to create roles.")
+        except Exception as e:
+            await ctx.send(f"❌ Failed to create role: {e}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
