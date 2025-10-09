@@ -235,7 +235,6 @@ async def main():
             "cogs.about_us",
             "cogs.applications",
             "cogs.ticket_system",
-            "cogs.divisons",
             "cogs.infract",
             "cogs.delete_archive",
             "cogs.callsign",
