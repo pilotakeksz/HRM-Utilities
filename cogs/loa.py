@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 LOA_REQUEST_ROLE = 1329910329701830686
 LOA_REVIEW_CHANNEL = 1329910521058558035
@@ -21,7 +21,7 @@ def ensure_dirs():
 def log_loa_action(msg):
     ensure_dirs()
     with open(LOA_LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.utcnow().isoformat()}] {msg}\n")
+        f.write(f"[{datetime.now(timezone.utc).isoformat()}] {msg}\n")
 
 def save_loa_request(request):
     ensure_dirs()
@@ -107,19 +107,21 @@ class LOARequestModal(discord.ui.Modal, title="LOA Request"):
             await interaction.response.send_message("Please enter a valid duration (1-28 days).", ephemeral=True)
             return
 
-        end_date = datetime.utcnow() + timedelta(days=days)
+        # use timezone-aware UTC datetimes to avoid local tz shifts
+        end_date = datetime.now(timezone.utc) + timedelta(days=days)
         request = {
             "user_id": interaction.user.id,
             "user_tag": str(interaction.user),
             "reason": self.reason.value,
             "duration": days,
-            "requested_at": datetime.utcnow().isoformat(),
-            "end_date": end_date.isoformat(),
+            "requested_at": datetime.now(timezone.utc).isoformat(),
+            "end_date": end_date.isoformat(),  # aware ISO string
             "status": "Pending"
         }
         save_loa_request(request)
         log_loa_action(f"REQUESTED: {interaction.user} ({interaction.user.id}) for {days} days. Reason: {self.reason.value}")
 
+        # embed uses UTC-aware timestamp
         embed = discord.Embed(
             title="New LOA Request",
             description=f"**User:** {interaction.user.mention}\n**Duration:** {days} days\n**End Date:** <t:{int(end_date.timestamp())}:D>\n**Reason:** {self.reason.value}",
@@ -172,6 +174,16 @@ class LOAReviewView(discord.ui.View):
 
         # Find end_date for this user (from requests). If not present, skip adding active LOA here;
         # update_loa_status sets Pending->Approved for any pending entries; try to capture end_date.
+        # helper to parse stored ISO datetimes as UTC-aware
+        def _parse_iso_utc(s):
+            try:
+                d = datetime.fromisoformat(s)
+                if d.tzinfo is None:
+                    return d.replace(tzinfo=timezone.utc)
+                return d.astimezone(timezone.utc)
+            except Exception:
+                return None
+
         req_end_date = None
         try:
             with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
@@ -185,6 +197,7 @@ class LOAReviewView(discord.ui.View):
             req_end_date = None
 
         if req_end_date:
+            # store ISO string (already saved) and ensure DB/display parsing uses UTC
             add_active_loa(self.user_id, req_end_date)
 
         try:
@@ -198,7 +211,9 @@ class LOAReviewView(discord.ui.View):
                         color=discord.Color.green()
                     )
                     if req_end_date:
-                        dm_embed.add_field(name="Ends", value=f"<t:{int(datetime.fromisoformat(req_end_date).timestamp())}:F>", inline=False)
+                        parsed = _parse_iso_utc(req_end_date)
+                        if parsed:
+                            dm_embed.add_field(name="Ends", value=f"<t:{int(parsed.timestamp())}:F>", inline=False)
                     await member.send(embed=dm_embed)
                 except Exception:
                     pass
@@ -268,13 +283,23 @@ class LOACog(commands.Cog):
         
         # Get member info for each active LOA
         loa_entries = []
+        # parse stored ISO datetimes as UTC-aware to compute remaining correctly
+        def _parse_iso_utc(s):
+            try:
+                d = datetime.fromisoformat(s)
+                if d.tzinfo is None:
+                    return d.replace(tzinfo=timezone.utc)
+                return d.astimezone(timezone.utc)
+            except Exception:
+                return None
+
         for user_id_str, end_date_str in active_loas.items():
             try:
                 user_id = int(user_id_str)
-                end_date = datetime.fromisoformat(end_date_str)
+                end_date = _parse_iso_utc(end_date_str)
                 member = guild.get_member(user_id)
-                if member:
-                    remaining = end_date - datetime.utcnow()
+                if member and end_date:
+                    remaining = end_date - datetime.now(timezone.utc)
                     if remaining.total_seconds() > 0:
                         loa_entries.append((member, end_date, remaining))
             except Exception:
@@ -385,7 +410,7 @@ class LOACog(commands.Cog):
                 log_loa_action(f"ADMINISTERED: {user} ({user.id}) LOA role added by {interaction.user} ({interaction.user.id})")
 
                 # Treat as a requested+approved LOA so it shows in active LOAs:
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 default_days = 28
                 end_date = now + timedelta(days=default_days)
                 request = {
@@ -470,7 +495,7 @@ class LOACog(commands.Cog):
     @tasks.loop(minutes=10)
     async def loa_expiry_check(self):
         ensure_dirs()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         # Check active LOAs
         try:
             with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
@@ -482,7 +507,12 @@ class LOACog(commands.Cog):
         expired_users = []
         for user_id, end_date_str in active_loas.items():
             try:
-                end_date = datetime.fromisoformat(end_date_str)
+                # parse as UTC-aware
+                d = datetime.fromisoformat(end_date_str)
+                if d.tzinfo is None:
+                    end_date = d.replace(tzinfo=timezone.utc)
+                else:
+                    end_date = d.astimezone(timezone.utc)
             except Exception:
                 continue
             if now >= end_date:
@@ -491,7 +521,15 @@ class LOACog(commands.Cog):
                     try:
                         await member.remove_roles(loa_role, reason="LOA expired")
                         log_loa_action(f"EXPIRED: {member} ({user_id}) LOA expired and role removed.")
-                        await member.send("Your LOA has expired and the LOA role has been removed.")
+                        try:
+                            dm_embed = discord.Embed(
+                                title="LOA expired",
+                                description="Your LOA has expired and the LOA role has been removed.",
+                                color=discord.Color.red()
+                            )
+                            await member.send(embed=dm_embed)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 expired_users.append(user_id)
