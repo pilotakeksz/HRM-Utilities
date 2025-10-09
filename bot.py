@@ -249,7 +249,8 @@ async def main():
             "cogs.shift",
             "cogs.rolereq",
             "cogs.loa",
-            "cogs.version"
+            "cogs.version",
+            "cogs.trainings"
         ]
         
         for cog in cogs:
