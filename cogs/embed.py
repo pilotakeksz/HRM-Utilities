@@ -330,23 +330,32 @@ class EditFieldByNameButton(discord.ui.Button):
 class FieldSelect(discord.ui.Select):
     def __init__(self, session, parent_interaction):
         self.session = session
+        self.parent_interaction = parent_interaction
         options = []
         for idx, (name, value, inline) in enumerate(self.session.get()["fields"]):
             display_name = name if name.strip() else "(NO NAME)"
-            # include index in label/description so user can identify duplicates
-            options.append(discord.SelectOption(label=f"{display_name}", value=str(idx), description=f"Field #{idx+1}"))
+            # truncate label/description to safe lengths for Discord
+            label = display_name[:100]
+            description = f"Field #{idx+1}"[:100]
+            options.append(discord.SelectOption(label=label, value=str(idx), description=description))
         super().__init__(placeholder="Choose a field...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        idx = int(self.values[0])
-        name, value, inline = self.session.get()["fields"][idx]
-        inline_str = "true" if inline else "false"
-        # open modal prefilled with current values
-        modal = FieldEditModal(self.session, self.parent_interaction, idx, name, value, inline_str)
-        await interaction.response.send_modal(modal)
-        # stop the view so the ephemeral select can be cleaned up
-        if self.view:
-            self.view.stop()
+        try:
+            idx = int(self.values[0])
+            name, value, inline = self.session.get()["fields"][idx]
+            inline_str = "true" if inline else "false"
+            # open modal prefilled with current values
+            modal = FieldEditModal(self.session, self.parent_interaction, idx, name, value, inline_str)
+            await interaction.response.send_modal(modal)
+            # stop the view so the ephemeral select can be cleaned up
+            if self.view:
+                self.view.stop()
+        except Exception as e:
+            # surface error to user instead of generic "This interaction failed"
+            await interaction.response.send_message("Failed to open field editor.", ephemeral=True)
+            # optional: log for debugging
+            print(f"FieldSelect callback error: {e}")
 
 class FieldSelectView(discord.ui.View):
     def __init__(self, session, parent_interaction, timeout=60):
