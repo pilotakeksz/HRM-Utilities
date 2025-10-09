@@ -1,3 +1,5 @@
+import os
+import traceback
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -8,6 +10,7 @@ from typing import Dict
 TRAINING_ROLE_ID = 1329910342301515838  # role allowed to run command
 ANNOUNCE_CHANNEL_ID = 1329910495536484374
 PING_ROLE_ID = 1329910324002029599
+LOG_CHANNEL_ID = 1343686645815181382
 
 YES_EMOJI = discord.PartialEmoji(name="yes", id=1358812809558753401)
 NO_EMOJI = discord.PartialEmoji(name="no", id=1358812780890947625)
@@ -15,6 +18,47 @@ MEMBER_EMOJI = discord.PartialEmoji(name="Member", id=1343945679390904330)
 
 EMBED_COLOR = 0xd0b47b
 IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68e8e4dc&is=68e7935c&hm=87d1062f2383b32fc32cdc397b1021296f29aa8caf549b38d3b7137ea8281262&"
+
+LOG_PATH = os.path.join(os.path.dirname(__file__), "../logs/trainings.txt")
+
+async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
+    """
+    Full action logging:
+     - write to local logs/trainings.txt
+     - try to post a short message to LOG_CHANNEL_ID
+    actor may be a discord.User/Member or a string.
+    """
+    ts = datetime.utcnow().isoformat()
+    try:
+        actor_repr = f"{actor} ({getattr(actor, 'id', '')})" if actor is not None else "Unknown"
+    except Exception:
+        actor_repr = str(actor)
+
+    line = f"[{ts}] {actor_repr} • {action}"
+    if extra:
+        # keep extra on one line
+        safe_extra = " ".join(str(extra).splitlines())
+        line = f"{line} • {safe_extra}"
+    # write local file
+    try:
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        # silent fail for local write, but still try to post to channel
+        pass
+
+    # send to log channel (best-effort)
+    try:
+        ch = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
+        await ch.send(f"`{ts}` {actor_repr} • **{action}** {('• ' + extra) if extra else ''}")
+    except Exception:
+        # write traceback to file if channel post fails
+        try:
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(traceback.format_exc() + "\n")
+        except Exception:
+            pass
 
 class ConfirmUnvoteView(discord.ui.View):
     def __init__(self, parent_view: "TrainingVoteView", user_id: int, timeout: int = 30):
@@ -30,6 +74,9 @@ class ConfirmUnvoteView(discord.ui.View):
         self.parent_view.votes.pop(self.user_id, None)
         await self.parent_view._update_message()
         await interaction.response.send_message("Your vote was removed.", ephemeral=True)
+        # log unvote
+        await log_action(self.parent_view.bot, interaction.user, "unvote_confirmed",
+                         extra=f"message_id={getattr(self.parent_view.message, 'id', None)}")
         self.stop()
 
     async def on_timeout(self):
@@ -54,8 +101,13 @@ class TrainingVoteView(discord.ui.View):
             return
         yes, no = self.counts()
         embed = self.message.embeds[0]
-        # update footer or description with live counts
-        embed.set_field_at(0, name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
+        # update votes field
+        try:
+            embed.set_field_at(0, name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
+        except Exception:
+            # fallback: replace fields
+            embed.clear_fields()
+            embed.add_field(name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
         await self.message.edit(embed=embed, view=self)
 
     @discord.ui.button(style=discord.ButtonStyle.success, emoji=YES_EMOJI, label="Join")
@@ -65,10 +117,13 @@ class TrainingVoteView(discord.ui.View):
         if existing == "yes":
             # prompt confirm unvote
             await interaction.response.send_message("You already voted to join. Confirm unvote to remove your vote.", view=ConfirmUnvoteView(self, user_id), ephemeral=True)
+            await log_action(self.bot, interaction.user, "prompt_confirm_unvote",
+                             extra=f"vote=yes message_id={getattr(self.message, 'id', None)}")
             return
         self.votes[user_id] = "yes"
         await self._update_message()
         await interaction.response.send_message("Your 'join' vote was recorded.", ephemeral=True)
+        await log_action(self.bot, interaction.user, "vote_yes", extra=f"message_id={getattr(self.message, 'id', None)}")
 
     @discord.ui.button(style=discord.ButtonStyle.danger, emoji=NO_EMOJI, label="No")
     async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -76,10 +131,13 @@ class TrainingVoteView(discord.ui.View):
         existing = self.votes.get(user_id)
         if existing == "no":
             await interaction.response.send_message("You already voted not to join. Confirm unvote to remove your vote.", view=ConfirmUnvoteView(self, user_id), ephemeral=True)
+            await log_action(self.bot, interaction.user, "prompt_confirm_unvote",
+                             extra=f"vote=no message_id={getattr(self.message, 'id', None)}")
             return
         self.votes[user_id] = "no"
         await self._update_message()
         await interaction.response.send_message("Your 'not joining' vote was recorded.", ephemeral=True)
+        await log_action(self.bot, interaction.user, "vote_no", extra=f"message_id={getattr(self.message, 'id', None)}")
 
     @discord.ui.button(style=discord.ButtonStyle.primary, emoji=MEMBER_EMOJI, label="Who voted")
     async def who_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -98,6 +156,7 @@ class TrainingVoteView(discord.ui.View):
         embed.add_field(name="✅ Joining", value=yes_text, inline=True)
         embed.add_field(name="❌ Not joining", value=no_text, inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        await log_action(self.bot, interaction.user, "who_requested", extra=f"message_id={getattr(self.message, 'id', None)}")
 
     async def finalize(self):
         # disable all buttons and edit message
@@ -106,9 +165,14 @@ class TrainingVoteView(discord.ui.View):
         if self.message:
             yes, no = self.counts()
             embed = self.message.embeds[0]
-            embed.set_field_at(0, name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
+            try:
+                embed.set_field_at(0, name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
+            except Exception:
+                embed.clear_fields()
+                embed.add_field(name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
             embed.set_footer(text=f"Ended • Host: {self.author.display_name}")
             await self.message.edit(embed=embed, view=self)
+        await log_action(self.bot, self.author, "vote_finalized", extra=f"yes={self.counts()[0]} no={self.counts()[1]} message_id={getattr(self.message, 'id', None)}")
         # send DM to author if votes exist
         if self.votes:
             yes, no = self.counts()
@@ -123,8 +187,9 @@ class TrainingVoteView(discord.ui.View):
                             joiners.append(member.display_name if member else str(uid))
                     lines.append("Joiners:\n" + ("\n".join(joiners)))
                 await dm.send("\n".join(lines))
-            except Exception:
-                pass
+                await log_action(self.bot, self.author, "dm_sent_results", extra=f"recipient_id={self.author.id} message_id={getattr(self.message, 'id', None)}")
+            except Exception as e:
+                await log_action(self.bot, self.author, "dm_failed", extra=str(e))
 
 class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -134,9 +199,13 @@ class Trainings(commands.Cog):
 
     @training.command(name="vote", description="Create a training vote")
     async def vote(self, interaction: discord.Interaction):
+        # log invocation
+        await log_action(self.bot, interaction.user, "vote_command_invoked", extra=f"channel_id={getattr(interaction.channel, 'id', None)}")
         # permission check
-        if not any(r.id == TRAINING_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+        user_roles = getattr(interaction.user, "roles", [])
+        if not any(r.id == TRAINING_ROLE_ID for r in user_roles):
             await interaction.response.send_message("You don't have permission to run this command.", ephemeral=True)
+            await log_action(self.bot, interaction.user, "vote_command_denied", extra="missing role")
             return
 
         # compute relative timestamp for 10 minutes from now
@@ -144,7 +213,7 @@ class Trainings(commands.Cog):
         epoch = int(end_dt.timestamp())
         rel_ts = f"<t:{epoch}:R>"
 
-        embed = discord.Embed(title=":MaplecliffNationalGaurd: // Training Vote", color=EMBED_COLOR, description=(
+        embed = discord.Embed(title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training Vote", color=EMBED_COLOR, description=(
             "> A training session vote has been cast. In order for a traninig to be hosted, at least 1 vote is required.\n\n"
             "> Please react if you are able to join, the vote lasts ten minutes. The vote will end in " + rel_ts
         ))
@@ -158,8 +227,12 @@ class Trainings(commands.Cog):
         msg = await channel.send(content=content, embed=embed, view=view)
         view.message = msg
 
+        # log posted
+        await log_action(self.bot, interaction.user, "vote_posted", extra=f"channel_id={ANNOUNCE_CHANNEL_ID} message_id={msg.id}")
+
         # ack to command runner
         await interaction.response.send_message("Training vote posted.", ephemeral=True)
+        await log_action(self.bot, interaction.user, "vote_command_acknowledged", extra=f"recipient={interaction.user.id}")
 
         # schedule finalize after 10 minutes
         async def _wait_and_finalize():
