@@ -411,13 +411,25 @@ class LOACog(commands.Cog):
 
                 # Treat as a requested+approved LOA so it shows in active LOAs:
                 now = datetime.now(timezone.utc)
+                # allow admin to provide a days param; fall back to default 28
                 default_days = 28
-                end_date = now + timedelta(days=default_days)
+                if days is not None:
+                    try:
+                        days_int = int(days)
+                        if days_int < 1 or days_int > 28:
+                            raise ValueError("days out of range")
+                    except Exception:
+                        await interaction.response.send_message("Invalid days value. Use 1–28.", ephemeral=True)
+                        return
+                else:
+                    days_int = default_days
+
+                end_date = now + timedelta(days=days_int)
                 request = {
                     "user_id": user.id,
                     "user_tag": str(user),
                     "reason": "Administered LOA",
-                    "duration": default_days,
+                    "duration": days_int,
                     "requested_at": now.isoformat(),
                     "end_date": end_date.isoformat(),
                     "status": "Approved"
