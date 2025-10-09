@@ -80,11 +80,15 @@ class EmbedBuilderView(discord.ui.View):
 
         # Row 3: Fields
         self.add_item(AddFieldButton(session, parent_interaction, row=3))
+        # allow editing a specific field by selecting its name
+        self.add_item(EditFieldByNameButton(session, parent_interaction, row=3))
         self.add_item(RemoveFieldButton(session, parent_interaction, row=3))
 
         # Row 4: Link buttons & Actions
         self.add_item(AddLinkButtonButton(session, parent_interaction, row=4))
         self.add_item(RemoveLinkButtonButton(session, parent_interaction, row=4))
+        # list sessions button (new)
+        self.add_item(ListSessionsButton(session, parent_interaction, row=4))
         self.add_item(DoneButton(session, cog, parent_interaction, row=4))
         self.add_item(SaveButton(session, cog, parent_interaction, row=4))
         self.add_item(LoadButton(session, cog, parent_interaction, row=4))
@@ -305,6 +309,78 @@ class RemoveFieldButton(discord.ui.Button):
             fields.pop()
         await update_embed_preview(self.parent_interaction, self.session)
 
+# new: edit a specific field by selecting name
+class EditFieldByNameButton(discord.ui.Button):
+    def __init__(self, session, parent_interaction, row=3):
+        super().__init__(label="Edit Field (by name)", style=discord.ButtonStyle.primary, row=row)
+        self.session = session
+        self.parent_interaction = parent_interaction
+
+    async def callback(self, interaction: discord.Interaction):
+        fields = self.session.get()["fields"]
+        if not fields:
+            await interaction.response.send_message("No fields to edit.", ephemeral=True)
+            return
+
+        # build a select with each field name (show index to disambiguate)
+        view = FieldSelectView(self.session, self.parent_interaction)
+        await interaction.response.send_message("Select a field to edit:", view=view, ephemeral=True)
+
+class FieldSelect(discord.ui.Select):
+    def __init__(self, session, parent_interaction):
+        self.session = session
+        options = []
+        for idx, (name, value, inline) in enumerate(self.session.get()["fields"]):
+            display_name = name if name.strip() else "(NO NAME)"
+            # include index in label/description so user can identify duplicates
+            options.append(discord.SelectOption(label=f"{display_name}", value=str(idx), description=f"Field #{idx+1}"))
+        super().__init__(placeholder="Choose a field...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        idx = int(self.values[0])
+        name, value, inline = self.session.get()["fields"][idx]
+        inline_str = "true" if inline else "false"
+        # open modal prefilled with current values
+        modal = FieldEditModal(self.session, self.parent_interaction, idx, name, value, inline_str)
+        await interaction.response.send_modal(modal)
+        # stop the view so the ephemeral select can be cleaned up
+        if self.view:
+            self.view.stop()
+
+class FieldSelectView(discord.ui.View):
+    def __init__(self, session, parent_interaction, timeout=60):
+        super().__init__(timeout=timeout)
+        self.session = session
+        self.parent_interaction = parent_interaction
+        self.add_item(FieldSelect(session, parent_interaction))
+
+# modal to edit a specific field; prefill values
+class FieldEditModal(discord.ui.Modal, title="Edit Field"):
+    name = discord.ui.TextInput(label="Field Name", required=True)
+    value = discord.ui.TextInput(label="Field Value", required=True, style=discord.TextStyle.paragraph)
+    inline = discord.ui.TextInput(label="Inline? (true/false)", required=True)
+
+    def __init__(self, session, parent_interaction, index, initial_name, initial_value, initial_inline):
+        super().__init__()
+        self.session = session
+        self.parent_interaction = parent_interaction
+        self.index = index
+        # prefill defaults
+        self.name.default = initial_name
+        self.value.default = initial_value
+        self.inline.default = initial_inline
+
+    async def on_submit(self, interaction: discord.Interaction):
+        inline_bool = self.inline.value.lower() == "true"
+        fields = self.session.get()["fields"]
+        # guard index validity
+        if 0 <= self.index < len(fields):
+            fields[self.index] = (self.name.value, self.value.value, inline_bool)
+            await update_embed_preview(self.parent_interaction, self.session)
+            await interaction.response.send_message("Field updated!", ephemeral=True, delete_after=3)
+        else:
+            await interaction.response.send_message("Field no longer exists.", ephemeral=True)
+
 # Link buttons & Actions (row 4)
 class AddLinkButtonButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=4):
@@ -335,6 +411,49 @@ class RemoveLinkButtonButton(discord.ui.Button):
         if buttons:
             buttons.pop()
         await update_embed_preview(self.parent_interaction, self.session)
+
+# new: list saved sessions (non-destructive)
+class ListSessionsButton(discord.ui.Button):
+    def __init__(self, session, parent_interaction, row=4):
+        super().__init__(label="List Saved Sessions", style=discord.ButtonStyle.secondary, row=row)
+        self.session = session
+        self.parent_interaction = parent_interaction
+
+    async def callback(self, interaction: discord.Interaction):
+        # Ensure DB/table exists and (if needed) has 'name' column
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS embed_sessions (key TEXT PRIMARY KEY, user_id INTEGER, embeds TEXT, created_at TEXT, name TEXT)"
+            )
+            try:
+                await db.execute("ALTER TABLE embed_sessions ADD COLUMN name TEXT")
+                await db.commit()
+            except Exception:
+                # column probably already exists; ignore
+                pass
+
+            # list sessions for this user (non-destructive)
+            async with db.execute(
+                "SELECT key, name, created_at FROM embed_sessions WHERE user_id = ? ORDER BY created_at DESC",
+                (self.session.user_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+        if not rows:
+            await interaction.response.send_message("No saved sessions found.", ephemeral=True)
+            return
+
+        lines = []
+        for key, name, created_at in rows:
+            display_name = (name.strip() if name and name.strip() else "NO NAME")
+            lines.append(f"`{key}` - {display_name} - {created_at}")
+
+        # send ephemeral list
+        chunk = "\n".join(lines)
+        # If too long, truncate
+        if len(chunk) > 1900:
+            chunk = chunk[:1900] + "\n...(truncated)"
+        await interaction.response.send_message(f"Saved sessions:\n{chunk}", ephemeral=True)
 
 class DoneButton(discord.ui.Button):
     def __init__(self, session, cog, parent_interaction, row=4):
@@ -371,23 +490,47 @@ class SaveButton(discord.ui.Button):
         self.cog = cog
         self.parent_interaction = parent_interaction
     async def callback(self, interaction: discord.Interaction):
+        # Open modal to ask for a name (non-destructive save)
+        await interaction.response.send_modal(SaveSessionModal(self.session, self.cog, self.parent_interaction))
+
+# new modal to provide a name for the session (if empty -> NO NAME)
+class SaveSessionModal(discord.ui.Modal, title="Save Session"):
+    name = discord.ui.TextInput(label="Session Name (optional)", required=False)
+
+    def __init__(self, session, cog, parent_interaction):
+        super().__init__()
+        self.session = session
+        self.cog = cog
+        self.parent_interaction = parent_interaction
+
+    async def on_submit(self, interaction: discord.Interaction):
         key = str(uuid.uuid4())[:8]
+        name_val = self.name.value.strip() if self.name.value and self.name.value.strip() else "NO NAME"
         async with aiosqlite.connect(DB_PATH) as db:
+            # ensure table exists with 'name' column
             await db.execute(
-                "CREATE TABLE IF NOT EXISTS embed_sessions (key TEXT PRIMARY KEY, user_id INTEGER, embeds TEXT, created_at TEXT)"
+                "CREATE TABLE IF NOT EXISTS embed_sessions (key TEXT PRIMARY KEY, user_id INTEGER, embeds TEXT, created_at TEXT, name TEXT)"
             )
+            try:
+                await db.execute("ALTER TABLE embed_sessions ADD COLUMN name TEXT")
+                await db.commit()
+            except Exception:
+                # column probably already exists; ignore
+                pass
+
             await db.execute(
-                "INSERT INTO embed_sessions (key, user_id, embeds, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO embed_sessions (key, user_id, embeds, created_at, name) VALUES (?, ?, ?, ?, ?)",
                 (
                     key,
                     self.session.user_id,
                     repr(self.session.embeds),
-                    datetime.utcnow().isoformat()
+                    datetime.utcnow().isoformat(),
+                    name_val
                 )
             )
             await db.commit()
         log_action(interaction.user, "saved_session", key)
-        await interaction.response.send_message(f"Session saved! Your key: `{key}`", ephemeral=True)
+        await interaction.response.send_message(f"Session saved! Your key: `{key}` (name: {name_val})", ephemeral=True)
 
 class LoadButton(discord.ui.Button):
     def __init__(self, session, cog, parent_interaction, row=4):
