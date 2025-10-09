@@ -139,7 +139,22 @@ class LOAReviewView(discord.ui.View):
         self.user_id = user_id
 
     async def update_embed(self, interaction, status, reviewer):
+        # copy existing embed and preserve non-status fields
         embed = interaction.message.embeds[0].copy()
+        # collect existing fields except Status/Reviewed by
+        preserved = [(f.name, f.value, f.inline) for f in embed.fields if f.name not in ("Status", "Reviewed by")]
+        embed.clear_fields()
+        for name, value, inline in preserved:
+            embed.add_field(name=name, value=value, inline=inline)
+
+        # set color based on status
+        if "Approved" in status or "✅" in status:
+            embed.color = discord.Color.green()
+        elif "Denied" in status or "❌" in status:
+            embed.color = discord.Color.red()
+        else:
+            embed.color = discord.Color.orange()
+
         embed.add_field(name="Status", value=status, inline=False)
         embed.add_field(name="Reviewed by", value=reviewer.mention, inline=False)
         await interaction.message.edit(embed=embed, view=None)
@@ -155,24 +170,38 @@ class LOAReviewView(discord.ui.View):
         log_loa_action(f"APPROVED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
         update_loa_status(self.user_id, "Approved")
 
-        # Find end_date for this user
+        # Find end_date for this user (from requests). If not present, skip adding active LOA here;
+        # update_loa_status sets Pending->Approved for any pending entries; try to capture end_date.
         req_end_date = None
         try:
             with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            for req in data:
-                if req["user_id"] == self.user_id and req["status"] == "Approved":
-                    req_end_date = req["end_date"]
+            # pick the most recent approved entry for this user
+            for req in reversed(data):
+                if req.get("user_id") == self.user_id and req.get("status") in ("Approved", "Approved "):
+                    req_end_date = req.get("end_date")
                     break
         except Exception:
-            pass
+            req_end_date = None
+
         if req_end_date:
             add_active_loa(self.user_id, req_end_date)
 
         try:
             if member and loa_role:
                 await member.add_roles(loa_role, reason="LOA approved")
-                await member.send("✅ Your LOA request has been approved! You have been given the LOA role.")
+                # DM the user as embed
+                try:
+                    dm_embed = discord.Embed(
+                        title="✅ LOA Approved",
+                        description=f"Your LOA request has been approved by {interaction.user.mention}.",
+                        color=discord.Color.green()
+                    )
+                    if req_end_date:
+                        dm_embed.add_field(name="Ends", value=f"<t:{int(datetime.fromisoformat(req_end_date).timestamp())}:F>", inline=False)
+                    await member.send(embed=dm_embed)
+                except Exception:
+                    pass
         except Exception:
             pass
         await self.update_embed(interaction, "✅ Approved", interaction.user)
@@ -189,7 +218,16 @@ class LOAReviewView(discord.ui.View):
         log_loa_action(f"DENIED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
         try:
             if member:
-                await member.send("❌ Your LOA request has been denied.")
+                # send denied DM as embed
+                try:
+                    dm_embed = discord.Embed(
+                        title="❌ LOA Denied",
+                        description=f"Your LOA request has been denied by {interaction.user.mention}.",
+                        color=discord.Color.red()
+                    )
+                    await member.send(embed=dm_embed)
+                except Exception:
+                    pass
         except Exception:
             pass
         await self.update_embed(interaction, "❌ Denied", interaction.user)
@@ -340,22 +378,44 @@ class LOACog(commands.Cog):
             if loa_role in user.roles:
                 await interaction.response.send_message(f"{user.mention} already has the LOA role.", ephemeral=True)
                 return
-            
+
             # Add LOA role
             try:
                 await user.add_roles(loa_role, reason="LOA administered by admin")
                 log_loa_action(f"ADMINISTERED: {user} ({user.id}) LOA role added by {interaction.user} ({interaction.user.id})")
-                
+
+                # Treat as a requested+approved LOA so it shows in active LOAs:
+                now = datetime.utcnow()
+                default_days = 28
+                end_date = now + timedelta(days=default_days)
+                request = {
+                    "user_id": user.id,
+                    "user_tag": str(user),
+                    "reason": "Administered LOA",
+                    "duration": default_days,
+                    "requested_at": now.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "status": "Approved"
+                }
+                save_loa_request(request)
+                add_active_loa(user.id, end_date.isoformat())
+
                 embed = discord.Embed(
                     title="LOA Administered",
-                    description=f"LOA role has been given to {user.mention}.",
+                    description=f"LOA role has been given to {user.mention}. Treated as an approved request (ends <t:{int(end_date.timestamp())}:F>).",
                     color=discord.Color.green()
                 )
                 await interaction.response.send_message(embed=embed)
-                
-                # Notify user
+
+                # Notify user as embed
                 try:
-                    await user.send("You have been given the LOA role by an administrator.")
+                    dm_embed = discord.Embed(
+                        title="✅ LOA Administered",
+                        description="An administrator has given you an LOA. This has been recorded as an approved request.",
+                        color=discord.Color.green()
+                    )
+                    dm_embed.add_field(name="Ends", value=f"<t:{int(end_date.timestamp())}:F>", inline=False)
+                    await user.send(embed=dm_embed)
                 except Exception:
                     pass
             except Exception as e:
