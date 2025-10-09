@@ -205,6 +205,208 @@ class LOACog(commands.Cog):
     async def loa_request(self, interaction: discord.Interaction):
         await interaction.response.send_modal(LOARequestModal())
 
+    @discord.app_commands.command(name="loa_active", description="Show currently active LOAs.")
+    async def loa_active(self, interaction: discord.Interaction):
+        """Show all currently active LOAs."""
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        try:
+            with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
+                active_loas = json.load(f)
+        except Exception:
+            active_loas = {}
+        
+        if not active_loas:
+            embed = discord.Embed(
+                title="Active LOAs",
+                description="No active LOAs found.",
+                color=discord.Color.green()
+            )
+            await interaction.response.send_message(embed=embed)
+            return
+        
+        # Get member info for each active LOA
+        loa_entries = []
+        for user_id_str, end_date_str in active_loas.items():
+            try:
+                user_id = int(user_id_str)
+                end_date = datetime.fromisoformat(end_date_str)
+                member = guild.get_member(user_id)
+                if member:
+                    remaining = end_date - datetime.utcnow()
+                    if remaining.total_seconds() > 0:
+                        loa_entries.append((member, end_date, remaining))
+            except Exception:
+                continue
+        
+        # Sort by remaining time (shortest first)
+        loa_entries.sort(key=lambda x: x[2].total_seconds())
+        
+        embed = discord.Embed(
+            title="Active LOAs",
+            color=discord.Color.orange()
+        )
+        
+        if not loa_entries:
+            embed.description = "No valid active LOAs found."
+        else:
+            lines = []
+            for member, end_date, remaining in loa_entries:
+                days = remaining.days
+                hours = remaining.seconds // 3600
+                minutes = (remaining.seconds % 3600) // 60
+                time_str = f"{days}d {hours}h {minutes}m" if days > 0 else f"{hours}h {minutes}m"
+                lines.append(f"• {member.mention} — ends <t:{int(end_date.timestamp())}:R> ({time_str} remaining)")
+            embed.description = "\n".join(lines)
+        
+        await interaction.response.send_message(embed=embed)
+
+    @discord.app_commands.command(name="loa_admin", description="Admin LOA management (admin only).")
+    @discord.app_commands.describe(
+        user="User to manage LOA for",
+        action="Action to perform",
+        days="Days to extend (for extend action only)"
+    )
+    @discord.app_commands.choices(action=[
+        discord.app_commands.Choice(name="Extend LOA", value="extend"),
+        discord.app_commands.Choice(name="Administer LOA", value="administer"),
+        discord.app_commands.Choice(name="End LOA", value="end")
+    ])
+    async def loa_admin(self, interaction: discord.Interaction, user: discord.Member, action: discord.app_commands.Choice[str], days: int = None):
+        """Admin commands to manage LOAs."""
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        # Check admin role
+        admin_role_id = 1355842403134603275
+        if not any(r.id == admin_role_id for r in interaction.user.roles):
+            await interaction.response.send_message("You lack admin role.", ephemeral=True)
+            return
+        
+        loa_role = guild.get_role(LOA_ACTIVE_ROLE)
+        if not loa_role:
+            await interaction.response.send_message("LOA role not found.", ephemeral=True)
+            return
+        
+        if action.value == "extend":
+            if days is None or days <= 0:
+                await interaction.response.send_message("Please provide a positive number of days to extend.", ephemeral=True)
+                return
+            
+            # Check if user has active LOA
+            try:
+                with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
+                    active_loas = json.load(f)
+            except Exception:
+                active_loas = {}
+            
+            if str(user.id) not in active_loas:
+                await interaction.response.send_message(f"{user.mention} does not have an active LOA.", ephemeral=True)
+                return
+            
+            # Extend the LOA
+            current_end = datetime.fromisoformat(active_loas[str(user.id)])
+            new_end = current_end + timedelta(days=days)
+            active_loas[str(user.id)] = new_end.isoformat()
+            
+            with open(ACTIVE_LOAS_FILE, "w", encoding="utf-8") as f:
+                json.dump(active_loas, f, indent=2)
+            
+            log_loa_action(f"EXTENDED: {user} ({user.id}) LOA extended by {days} days by {interaction.user} ({interaction.user.id})")
+            
+            embed = discord.Embed(
+                title="LOA Extended",
+                description=f"Extended {user.mention}'s LOA by {days} days.",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="New End Date", value=f"<t:{int(new_end.timestamp())}:F>", inline=True)
+            embed.add_field(name="Extended by", value=f"{days} days", inline=True)
+            
+            await interaction.response.send_message(embed=embed)
+            
+            # Notify user
+            try:
+                await user.send(f"Your LOA has been extended by {days} days. New end date: <t:{int(new_end.timestamp())}:F>")
+            except Exception:
+                pass
+        
+        elif action.value == "administer":
+            # Check if user already has LOA role
+            if loa_role in user.roles:
+                await interaction.response.send_message(f"{user.mention} already has the LOA role.", ephemeral=True)
+                return
+            
+            # Add LOA role
+            try:
+                await user.add_roles(loa_role, reason="LOA administered by admin")
+                log_loa_action(f"ADMINISTERED: {user} ({user.id}) LOA role added by {interaction.user} ({interaction.user.id})")
+                
+                embed = discord.Embed(
+                    title="LOA Administered",
+                    description=f"LOA role has been given to {user.mention}.",
+                    color=discord.Color.green()
+                )
+                await interaction.response.send_message(embed=embed)
+                
+                # Notify user
+                try:
+                    await user.send("You have been given the LOA role by an administrator.")
+                except Exception:
+                    pass
+            except Exception as e:
+                await interaction.response.send_message(f"Failed to add LOA role: {e}", ephemeral=True)
+        
+        elif action.value == "end":
+            # Remove LOA role and active LOA entry
+            removed_role = False
+            removed_entry = False
+            
+            if loa_role in user.roles:
+                try:
+                    await user.remove_roles(loa_role, reason="LOA ended by admin")
+                    removed_role = True
+                except Exception as e:
+                    await interaction.response.send_message(f"Failed to remove LOA role: {e}", ephemeral=True)
+                    return
+            
+            # Remove from active LOAs
+            try:
+                with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
+                    active_loas = json.load(f)
+            except Exception:
+                active_loas = {}
+            
+            if str(user.id) in active_loas:
+                del active_loas[str(user.id)]
+                with open(ACTIVE_LOAS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(active_loas, f, indent=2)
+                removed_entry = True
+            
+            log_loa_action(f"ENDED: {user} ({user.id}) LOA ended by {interaction.user} ({interaction.user.id})")
+            
+            embed = discord.Embed(
+                title="LOA Ended",
+                description=f"LOA has been ended for {user.mention}.",
+                color=discord.Color.red()
+            )
+            if removed_role:
+                embed.add_field(name="Role Removed", value="✅ LOA role removed", inline=True)
+            if removed_entry:
+                embed.add_field(name="Entry Removed", value="✅ Active LOA entry removed", inline=True)
+            
+            await interaction.response.send_message(embed=embed)
+            
+            # Notify user
+            try:
+                await user.send("Your LOA has been ended by an administrator.")
+            except Exception:
+                pass
+
     @tasks.loop(minutes=10)
     async def loa_expiry_check(self):
         ensure_dirs()
