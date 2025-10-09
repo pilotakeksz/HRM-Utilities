@@ -9,6 +9,8 @@ import base64
 import traceback
 from aiohttp import web
 from version_manager import get_version
+import json
+from datetime import datetime, timezone, date
 
 
 load_dotenv(".env")
@@ -88,31 +90,79 @@ async def on_ready():
     try:
         version_channel_id = 1329910508182179900
         version_channel = bot.get_channel(version_channel_id)
+        secondary_channel_id = 1329910465333170216
+        secondary_channel = bot.get_channel(secondary_channel_id)
+
+        # Build embed once
+        embed = discord.Embed(
+            title="Bot Restart",
+            description=f"Bot has restarted with version **{version_string}**",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Version Number", value=str(version_num), inline=True)
+        if version_info.get("commit_message"):
+            commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
+            embed.add_field(name="Commit Message", value=commit_msg, inline=False)
+        if version_info.get("updated_cogs"):
+            cogs_list = ", ".join(version_info['updated_cogs'])
+            if len(cogs_list) > 100:
+                cogs_list = cogs_list[:100] + "..."
+            embed.add_field(name="Updated Cogs", value=cogs_list, inline=False)
+        else:
+            embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
+        embed.set_footer(text="Developed with love by Tuna 🐟")
+
+        # Always send to secondary channel without ping
+        if secondary_channel:
+            try:
+                await secondary_channel.send(embed=embed)
+                print(f"Version {version_string} also sent to channel {secondary_channel_id} without ping")
+            except Exception as e:
+                print(f"Failed to send version to secondary channel {secondary_channel_id}: {e}")
+
+        # Rate-limited role ping in main channel
+        role_id_to_ping = 1371198982935806033
+        ping_data_path = os.path.join("data", "version_ping.json")
+        os.makedirs("data", exist_ok=True)
+        ping_data = {"last_ping_ts": 0, "daily_count": 0, "day": ""}
+        try:
+            if os.path.exists(ping_data_path):
+                with open(ping_data_path, "r", encoding="utf-8") as f:
+                    ping_data = json.load(f)
+        except Exception as e:
+            print(f"Failed to read ping data file: {e}")
+
+        today_str = date.today().isoformat()
+        if ping_data.get("day") != today_str:
+            ping_data["day"] = today_str
+            ping_data["daily_count"] = 0
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 3600) and (int(ping_data.get("daily_count", 0)) < 5)
+
         if version_channel:
-            embed = discord.Embed(
-                title="Bot Restart",
-                description=f"Bot has restarted with version **{version_string}**",
-                color=discord.Color.green()
-            )
-            embed.add_field(name="Version Number", value=str(version_num), inline=True)
-            
-            # Add git information if available (commit message only, no hash)
-            if version_info.get("commit_message"):
-                commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
-                embed.add_field(name="Commit Message", value=commit_msg, inline=False)
-            
-            # Add updated cogs if any
-            if version_info.get("updated_cogs"):
-                cogs_list = ", ".join(version_info['updated_cogs'])
-                if len(cogs_list) > 100:
-                    cogs_list = cogs_list[:100] + "..."
-                embed.add_field(name="Updated Cogs", value=cogs_list, inline=False)
+            if can_ping:
+                try:
+                    content = f"<@&{role_id_to_ping}>"
+                    allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
+                    await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
+                    print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
+                    ping_data["last_ping_ts"] = now_ts
+                    ping_data["daily_count"] = int(ping_data.get("daily_count", 0)) + 1
+                    with open(ping_data_path, "w", encoding="utf-8") as f:
+                        json.dump(ping_data, f, indent=2)
+                except Exception as e:
+                    print(f"Failed to send pinged version message: {e}")
+                    try:
+                        await version_channel.send(embed=embed)
+                    except Exception:
+                        pass
             else:
-                embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
-            
-            embed.set_footer(text="Developed with love by Tuna 🐟")
-            await version_channel.send(embed=embed)
-            print(f"Version {version_string} sent to channel {version_channel_id}")
+                try:
+                    await version_channel.send(embed=embed)
+                    print(f"Version {version_string} sent to channel {version_channel_id} without ping (rate limit)")
+                except Exception as e:
+                    print(f"Failed to send version to channel {version_channel_id}: {e}")
         else:
             print(f"Could not find channel {version_channel_id} to send version")
     except Exception as e:

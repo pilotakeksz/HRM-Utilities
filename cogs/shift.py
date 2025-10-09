@@ -1437,59 +1437,7 @@ class ShiftCog(commands.Cog):
             await self.log_event(guild, f"✅ Logging enabled by {user.mention}.")
         await interaction.response.send_message(embed=self.embed_info(f"Set logging to **{enabled}**."), ephemeral=True)
 
-    @app_commands.command(name="promotion_cooldown", description="Check promotion cooldown status for a user.")
-    @app_commands.describe(user="User to check cooldown for (optional, defaults to yourself)")
-    async def promotion_cooldown(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
-        """Check if a user can be promoted based on their cooldown status."""
-        target_user = user or interaction.user
-        guild = interaction.guild
-        
-        if guild is None:
-            await interaction.response.send_message("Guild only.", ephemeral=True)
-            return
-        
-        # Check if user has manage role
-        if not any(r.id == ROLE_MANAGE_REQUIRED for r in target_user.roles):  # type: ignore
-            await interaction.response.send_message(f"{target_user.mention} does not have the required role for promotions.", ephemeral=True)
-            return
-        
-        # Get cooldown information
-        last_promo_ts = self.store.meta["last_promotions"].get(str(target_user.id), 0)
-        can_be_promoted = self.store.can_be_promoted(target_user.id, target_user.roles)
-        
-        # Determine cooldown period
-        role_ids = {r.id for r in target_user.roles}
-        cooldown_days = 4  # default
-        if PROMO_COOLDOWN_14 in role_ids:
-            cooldown_days = 14
-        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_10):
-            cooldown_days = 10
-        elif PROMO_COOLDOWN_8 in role_ids:
-            cooldown_days = 8
-        elif any(role_id in role_ids for role_id in PROMO_COOLDOWN_6):
-            cooldown_days = 6
-        elif PROMO_COOLDOWN_4 in role_ids:
-            cooldown_days = 4
-        
-        # Build embed
-        embed = self.base_embed("Promotion Cooldown Status", colour_info() if can_be_promoted else colour_warn())
-        embed.add_field(name="User", value=target_user.mention, inline=True)
-        embed.add_field(name="Cooldown Period", value=f"{cooldown_days} days", inline=True)
-        embed.add_field(name="Status", value="✅ Eligible" if can_be_promoted else "⏳ On Cooldown", inline=True)
-        
-        if last_promo_ts == 0:
-            embed.add_field(name="Last Promotion", value="Never promoted", inline=True)
-        else:
-            last_promo_date = int_to_ts(last_promo_ts)
-            days_since = (ts_to_int(utcnow()) - last_promo_ts) / (24 * 60 * 60)
-            embed.add_field(name="Last Promotion", value=f"<t:{last_promo_ts}:F>", inline=True)
-            embed.add_field(name="Days Since", value=f"{days_since:.1f} days", inline=True)
-            
-            if not can_be_promoted:
-                days_remaining = cooldown_days - days_since
-                embed.add_field(name="Cooldown Remaining", value=f"{days_remaining:.1f} days", inline=True)
-        
-        await interaction.response.send_message(embed=embed)
+    # Removed redundant promotion_cooldown slash command as requested
 
     # ---------- COOLDOWN HELPERS AND COMMANDS ----------
     def _calculate_member_cooldown(self, member: discord.Member) -> Tuple[int, int]:
@@ -1611,6 +1559,38 @@ class ShiftCog(commands.Cog):
                 embed.add_field(name="Status", value="⏳ On cooldown", inline=True)
                 embed.add_field(name="Ends", value=f"<t:{last_ts + remaining}:R>", inline=True)
                 embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="cooldown_active", description="List members currently on cooldown (admin only).")
+    async def cooldown_active(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        user = interaction.user
+        if not any(r.id == ROLE_ADMIN for r in user.roles):  # type: ignore
+            await interaction.response.send_message("You lack admin role.", ephemeral=True)
+            return
+        # Check members with manage role only
+        manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+        if not manage_role:
+            await interaction.response.send_message("Manage role not found.", ephemeral=True)
+            return
+        rows = []
+        for member in manage_role.members:
+            cooldown_days, remaining = self._calculate_member_cooldown(member)
+            last_ts = self.store.meta.get("last_promotions", {}).get(str(member.id), 0)
+            if remaining > 0 and last_ts != 0:
+                rows.append((remaining, member, last_ts, cooldown_days))
+        rows.sort(key=lambda x: x[0], reverse=True)
+        embed = self.base_embed("Active Promotion Cooldowns", colour_warn())
+        if not rows:
+            embed.description = "No members are currently on cooldown."
+        else:
+            lines = []
+            for remaining, member, last_ts, cooldown_days in rows:
+                lines.append(f"• {member.mention} — ends <t:{last_ts + remaining}:R> — remaining {human_td(remaining)} (period {cooldown_days}d)")
+            embed.description = "\n".join(lines)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ---------- COOLDOWN ADMIN COMMANDS ----------
