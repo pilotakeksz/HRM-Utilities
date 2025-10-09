@@ -90,9 +90,9 @@ class EmbedBuilderView(discord.ui.View):
         # list sessions button (new)
         self.add_item(ListSessionsButton(session, parent_interaction, row=4))
         self.add_item(DoneButton(session, cog, parent_interaction, row=4))
-        # move Save/Load to row 5 to avoid "item would not fit" error
-        self.add_item(SaveButton(session, cog, parent_interaction, row=5))
-        self.add_item(LoadButton(session, cog, parent_interaction, row=5))
+        # place Save/Load on row 3 so no row exceeds 5 components (rows must be 0-4)
+        self.add_item(SaveButton(session, cog, parent_interaction, row=3))
+        self.add_item(LoadButton(session, cog, parent_interaction, row=3))
 
 # Navigation
 class PrevEmbedButton(discord.ui.Button):
