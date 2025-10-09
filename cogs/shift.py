@@ -1144,7 +1144,7 @@ class ShiftCog(commands.Cog):
         elif QUOTA_ROLE_15 in mids:
             return 15
         elif QUOTA_ROLE_35 in mids:
-            return 35
+            return 30
         elif ROLE_MANAGE_REQUIRED in mids:  # Include 1329910329701830686 role in quota logic
             return DEFAULT_QUOTA
         else:
