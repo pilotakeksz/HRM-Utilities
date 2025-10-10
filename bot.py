@@ -127,7 +127,7 @@ async def on_ready():
             ping_data["daily_count"] = 0
 
         now_ts = int(datetime.now(timezone.utc).timestamp())
-        can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 3600) and (int(ping_data.get("daily_count", 0)) < 5)
+        can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 43200) and (int(ping_data.get("daily_count", 0)) < 5)
 
         # Fetch channels
         version_channel = bot.get_channel(version_channel_id)

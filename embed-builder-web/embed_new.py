@@ -2,6 +2,8 @@ import os
 import json
 import asyncio
 import re
+import io
+import aiohttp
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -26,7 +28,6 @@ def log(msg):
     except Exception:
         pass
 
-# new helper to normalize color values (accept hex string or int)
 def _parse_color(val):
     """Return an int color value or None. Accepts hex string like 'fff700' or '#fff700' or integer."""
     if val is None or val == "":
@@ -47,11 +48,9 @@ def _iter_fields(field_list):
     """Yield (name, value, inline) for a variety of stored field shapes."""
     for f in field_list or []:
         if isinstance(f, (list, tuple)):
-            # [name, value, inline]
             try:
                 name, value, inline = f
             except Exception:
-                # try shorter shapes
                 try:
                     name, value = f[0], f[1]
                     inline = False
@@ -62,7 +61,6 @@ def _iter_fields(field_list):
             value = f.get("value") or f.get("val") or ""
             inline = bool(f.get("inline"))
         else:
-            # unknown shape: stringify
             name = "field"
             value = str(f)
             inline = False
@@ -73,7 +71,7 @@ class ChannelSelect(discord.ui.Select):
         options = [discord.SelectOption(label=c.name, value=str(c.id)) for c in channels[:25]]
         super().__init__(placeholder="Choose target channel", min_values=1, max_values=1, options=options)
 
-class SendView(discord.ui.View):
+class ComprehensiveSendView(discord.ui.View):
     def __init__(self, bot, author, payload):
         super().__init__(timeout=300)
         self.bot = bot
@@ -82,6 +80,7 @@ class SendView(discord.ui.View):
         self.target_channel = None
         self.add_item(discord.ui.Button(label="Send Public", style=discord.ButtonStyle.primary, custom_id="send_public"))
         self.add_item(discord.ui.Button(label="Send Ephemeral", style=discord.ButtonStyle.secondary, custom_id="send_ephemeral"))
+        self.add_item(discord.ui.Button(label="Export Complete JSON", style=discord.ButtonStyle.secondary, custom_id="export_json"))
     
     def _collect_linked_embeds(self):
         """Collect all embeds referenced in select menus and buttons."""
@@ -94,11 +93,9 @@ class SendView(discord.ui.View):
                 for option in select.get("options", []):
                     value = option.get("value", "")
                     if value.startswith("send:"):
-                        # Extract key from send:key format
                         key = value.split(":", 1)[1]
                         if key not in seen_keys:
                             seen_keys.add(key)
-                            # Load the referenced embed
                             path = os.path.join(EMBED_DIR, f"{key}.json")
                             if os.path.exists(path):
                                 try:
@@ -109,7 +106,6 @@ class SendView(discord.ui.View):
                                 except Exception:
                                     pass
                     elif value.startswith("send_json:"):
-                        # Extract and decode base64 JSON
                         b64 = value.split(":", 1)[1]
                         try:
                             json_text = base64.b64decode(b64).decode("utf-8")
@@ -141,17 +137,26 @@ class SendView(discord.ui.View):
         
         return linked_embeds
 
-    # helper to build Select items for a given embed dict and attach callbacks
     def _add_selects_to_view(self, view, emb, ctx_channel=None):
+        """Add select menus to a view with proper callbacks."""
         for si, sel in enumerate(emb.get("selects", []) or []):
             options = []
             for o in sel.get("options", []) or []:
-                options.append(discord.SelectOption(label=o.get("label") or o.get("value") or "opt", value=(o.get("value") or ""), description=o.get("description")))
+                options.append(discord.SelectOption(
+                    label=o.get("label") or o.get("value") or "opt", 
+                    value=(o.get("value") or ""), 
+                    description=o.get("description")
+                ))
             if not options:
                 continue
-            sel_obj = discord.ui.Select(placeholder=sel.get("placeholder") or "Choose…", min_values=1, max_values=1, options=options)
+            sel_obj = discord.ui.Select(
+                placeholder=sel.get("placeholder") or "Choose…", 
+                min_values=1, 
+                max_values=1, 
+                options=options
+            )
+            
             async def sel_callback(interaction: discord.Interaction, select: discord.ui.Select, _sel=sel):
-                # restrict if desired (keeps previous behavior)
                 if interaction.user.id != self.author.id:
                     await interaction.response.send_message("Only the original invoker can use this.", ephemeral=True)
                     return
@@ -159,7 +164,6 @@ class SendView(discord.ui.View):
                 val = select.values[0]
                 try:
                     if val.startswith("send_json:"):
-                        # decode base64 JSON and send that payload
                         b64 = val.split(":",1)[1]
                         try:
                             json_text = base64.b64decode(b64).decode("utf-8")
@@ -173,12 +177,15 @@ class SendView(discord.ui.View):
                         elif isinstance(obj, dict) and obj.get("embeds"):
                             payload = obj
                         else:
-                            # assume a single embed object => wrap
                             payload = {"embeds": [obj]}
                         sent = 0
                         target_chan = ctx_channel or interaction.channel
                         for eemb in payload.get("embeds", []):
-                            e = discord.Embed(title=eemb.get("title") or None, description=eemb.get("description") or None, color=_parse_color(eemb.get("color")))
+                            e = discord.Embed(
+                                title=eemb.get("title") or None, 
+                                description=eemb.get("description") or None, 
+                                color=_parse_color(eemb.get("color"))
+                            )
                             if eemb.get("thumbnail_url"):
                                 e.set_thumbnail(url=eemb.get("thumbnail_url"))
                             if eemb.get("image_url"):
@@ -199,7 +206,6 @@ class SendView(discord.ui.View):
                         return
 
                     elif val.startswith("send:"):
-                        # existing saved-key behavior (unchanged)
                         parts = val.split(":", 2)
                         key = parts[1] if len(parts) >= 2 else ""
                         eph = False
@@ -215,7 +221,11 @@ class SendView(discord.ui.View):
                         sent = 0
                         target_chan = ctx_channel or interaction.channel
                         for eemb in payload.get("embeds", []):
-                            e = discord.Embed(title=eemb.get("title") or None, description=eemb.get("description") or None, color=_parse_color(eemb.get("color")))
+                            e = discord.Embed(
+                                title=eemb.get("title") or None, 
+                                description=eemb.get("description") or None, 
+                                color=_parse_color(eemb.get("color"))
+                            )
                             if eemb.get("thumbnail_url"):
                                 e.set_thumbnail(url=eemb.get("thumbnail_url"))
                             if eemb.get("image_url"):
@@ -274,12 +284,13 @@ class SendView(discord.ui.View):
             complete_payload = {
                 "embeds": self.payload.get("embeds", []) + linked_embeds,
                 "plain_message": self.payload.get("plain_message", ""),
-                "linked_embeds": linked_embeds  # Store linked embeds separately for reference
+                "linked_embeds": linked_embeds,
+                "metadata": self.payload.get("metadata", {})
             }
             
             # Send the complete JSON as a code block for reference
             json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
-            if len(json_str) <= 2000:  # Discord message limit
+            if len(json_str) <= 2000:
                 await chan.send(f"```json\n{json_str}\n```")
             
             plain = self.payload.get("plain_message", "") or None
@@ -301,21 +312,28 @@ class SendView(discord.ui.View):
                     except Exception:
                         pass
                 view = None
-                # build view with both buttons and selects
+                # Build view with both buttons and selects
                 if emb.get("buttons") or emb.get("selects"):
                     view = discord.ui.View()
                     for b in emb.get("buttons", []):
                         if b.get("type") == "link" and b.get("url"):
-                            view.add_item(discord.ui.Button(label=b.get("label","link"), style=discord.ButtonStyle.link, url=b.get("url")))
+                            view.add_item(discord.ui.Button(
+                                label=b.get("label","link"), 
+                                style=discord.ButtonStyle.link, 
+                                url=b.get("url")
+                            ))
                         elif b.get("type") == "send_embed":
-                            btn = discord.ui.Button(label=b.get("label","send"), style=discord.ButtonStyle.secondary, custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}")
+                            btn = discord.ui.Button(
+                                label=b.get("label","send"), 
+                                style=discord.ButtonStyle.secondary, 
+                                custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}"
+                            )
                             view.add_item(btn)
-                    # add selects and attach callbacks (pass chan so send goes to same channel)
+                    # Add selects and attach callbacks
                     self._add_selects_to_view(view, emb, ctx_channel=chan)
                 await chan.send(content=plain, embed=e, view=view)
                 count += 1
             await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}. Complete JSON with {len(linked_embeds)} linked embeds included.", ephemeral=True)
-            # log
             log(f"SEND: {interaction.user} posted key to channel {chan.id} embeds={count} linked={len(linked_embeds)}")
             try:
                 lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
@@ -341,12 +359,13 @@ class SendView(discord.ui.View):
             complete_payload = {
                 "embeds": self.payload.get("embeds", []) + linked_embeds,
                 "plain_message": self.payload.get("plain_message", ""),
-                "linked_embeds": linked_embeds  # Store linked embeds separately for reference
+                "linked_embeds": linked_embeds,
+                "metadata": self.payload.get("metadata", {})
             }
             
             # Send the complete JSON as a code block for reference
             json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
-            if len(json_str) <= 2000:  # Discord message limit
+            if len(json_str) <= 2000:
                 await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
             
             for emb in self.payload.get("embeds", []):
@@ -379,6 +398,52 @@ class SendView(discord.ui.View):
             await interaction.followup.send(f"Failed to send ephemeral: {e}", ephemeral=True)
             log(f"ERROR ephemeral posting: {e}")
 
+    @discord.ui.button(label="Export Complete JSON", style=discord.ButtonStyle.secondary, custom_id="export_json")
+    async def export_json(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message("Only the command invoker can use these controls.", ephemeral=True)
+            return
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Collect all linked embeds
+            linked_embeds = self._collect_linked_embeds()
+            
+            # Create complete JSON payload with all embeds
+            complete_payload = {
+                "embeds": self.payload.get("embeds", []) + linked_embeds,
+                "plain_message": self.payload.get("plain_message", ""),
+                "linked_embeds": linked_embeds,
+                "metadata": self.payload.get("metadata", {}),
+                "export_info": {
+                    "exported_at": datetime.now(timezone.utc).isoformat(),
+                    "total_embeds": len(self.payload.get("embeds", [])),
+                    "linked_embeds_count": len(linked_embeds),
+                    "has_actions": any(emb.get("buttons") or emb.get("selects") for emb in self.payload.get("embeds", [])),
+                    "exported_by": str(interaction.user)
+                }
+            }
+            
+            # Create file and send
+            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
+            file_obj = discord.File(
+                io=io.BytesIO(json_str.encode('utf-8')),
+                filename=f"complete_embed_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            )
+            
+            await interaction.followup.send(
+                f"Complete JSON export with {len(linked_embeds)} linked embeds included:",
+                file=file_obj,
+                ephemeral=True
+            )
+            
+            log(f"EXPORT: {interaction.user} exported complete JSON with {len(linked_embeds)} linked embeds")
+            
+        except Exception as e:
+            await interaction.followup.send(f"Failed to export JSON: {e}", ephemeral=True)
+            log(f"ERROR exporting JSON: {e}")
+
 class KeyModal(ui.Modal, title="Paste embed key or JSON"):
     key_or_json = ui.TextInput(label="Key or full JSON", style=discord.TextStyle.long, placeholder="Paste key or the JSON payload here", required=True)
 
@@ -388,7 +453,6 @@ class KeyModal(ui.Modal, title="Paste embed key or JSON"):
         self.author = author
 
     async def on_submit(self, interaction: discord.Interaction):
-        # only allow the invoker
         if interaction.user.id != self.author.id:
             await interaction.response.send_message("You cannot submit this form.", ephemeral=True)
             return
@@ -414,11 +478,9 @@ class ConfirmView(ui.View):
                 for option in select.get("options", []):
                     value = option.get("value", "")
                     if value.startswith("send:"):
-                        # Extract key from send:key format
                         key = value.split(":", 1)[1]
                         if key not in seen_keys:
                             seen_keys.add(key)
-                            # Load the referenced embed
                             path = os.path.join(EMBED_DIR, f"{key}.json")
                             if os.path.exists(path):
                                 try:
@@ -429,7 +491,6 @@ class ConfirmView(ui.View):
                                 except Exception:
                                     pass
                     elif value.startswith("send_json:"):
-                        # Extract and decode base64 JSON
                         b64 = value.split(":", 1)[1]
                         try:
                             json_text = base64.b64decode(b64).decode("utf-8")
@@ -480,12 +541,13 @@ class ConfirmView(ui.View):
             complete_payload = {
                 "embeds": self.payload.get("embeds", []) + linked_embeds,
                 "plain_message": self.payload.get("plain_message", ""),
-                "linked_embeds": linked_embeds  # Store linked embeds separately for reference
+                "linked_embeds": linked_embeds,
+                "metadata": self.payload.get("metadata", {})
             }
             
             # Send the complete JSON as a code block for reference
             json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
-            if len(json_str) <= 2000:  # Discord message limit
+            if len(json_str) <= 2000:
                 if ephemeral:
                     await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
                 else:
@@ -514,12 +576,19 @@ class ConfirmView(ui.View):
                     view = ui.View()
                     for b in emb.get("buttons", []):
                         if b.get("type") == "link" and b.get("url"):
-                            view.add_item(ui.Button(label=b.get("label","link"), style=discord.ButtonStyle.link, url=b.get("url")))
+                            view.add_item(ui.Button(
+                                label=b.get("label","link"), 
+                                style=discord.ButtonStyle.link, 
+                                url=b.get("url")
+                            ))
                         elif b.get("type") == "send_embed":
-                            btn = ui.Button(label=b.get("label","send"), style=discord.ButtonStyle.secondary, custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}")
+                            btn = ui.Button(
+                                label=b.get("label","send"), 
+                                style=discord.ButtonStyle.secondary, 
+                                custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}"
+                            )
                             view.add_item(btn)
                 if ephemeral:
-                    # ephemeral messages can't be posted to other channels, so send ephemeral to invoker
                     await interaction.followup.send(embed=e, ephemeral=True)
                 else:
                     await chan.send(content=plain, embed=e, view=view)
@@ -560,9 +629,7 @@ class EmbedNewCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # existing helper kept
     def _load_payload_from_key_or_json(self, key_or_json: str, guild=None):
-        # same as before (no change)
         key_or_json = key_or_json.strip()
         if key_or_json.startswith("{") or key_or_json.startswith("["):
             try:
@@ -583,7 +650,6 @@ class EmbedNewCog(commands.Cog):
             return None, f"Failed to read key file: {e}"
 
     async def _handle_modal_payload(self, interaction: discord.Interaction, key_or_json: str):
-        # run role check
         if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
             await interaction.followup.send("You do not have permission to run this.", ephemeral=True)
             return
@@ -593,19 +659,17 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send(err, ephemeral=True)
             return
 
-        # Ask user to paste channel in chat (non-ephemeral) - instruct and wait for message
+        # Ask user to paste channel in chat
         prompt = await interaction.followup.send(f"{interaction.user.mention} — please paste the target channel mention (e.g. #channel) or channel ID in this channel within 60s.", ephemeral=False)
         def check(m: discord.Message):
             return m.author.id == interaction.user.id and m.channel.id == prompt.channel.id
 
         try:
             msg = await self.bot.wait_for('message', check=check, timeout=60)
-            # parse channel mention or id
             match = re.search(r"<#(\d+)>", msg.content)
             if match:
                 chan_id = match.group(1)
             else:
-                # maybe raw ID
                 content = msg.content.strip()
                 if content.isdigit():
                     chan_id = content
@@ -616,7 +680,7 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send("Timed out waiting for channel. Cancelled.", ephemeral=True)
             return
 
-        # show confirmation view
+        # Show confirmation view
         conf_view = ConfirmView(self.bot, interaction.user, payload, chan_id)
         await interaction.followup.send(f"Selected channel: <#{chan_id}> — confirm send below (public or ephemeral to you).", view=conf_view, ephemeral=True)
         log(f"INTERACTIVE_SEND_STARTED by {interaction.user} key_or_json={key_or_json} target_channel={chan_id}")
@@ -624,9 +688,7 @@ class EmbedNewCog(commands.Cog):
     @commands.command(name="embed_send")
     async def embed_send(self, ctx, *, key_or_json: str = None):
         """Run interactive flow: show paste form, then ask for channel, then confirm."""
-        # If user passed key/json directly, reuse flow without modal
         if key_or_json:
-            # run role check
             if not any(r.id == ALLOWED_ROLE_ID for r in getattr(ctx.author, "roles", [])):
                 await ctx.send("You do not have permission to run this command.")
                 return
@@ -658,15 +720,12 @@ class EmbedNewCog(commands.Cog):
             log(f"INTERACTIVE_SEND_STARTED by {ctx.author} key_or_json={key_or_json} target_channel={chan_id}")
             return
 
-        # show modal to paste key or JSON
         modal = KeyModal(self, ctx.author)
         await ctx.send_modal(modal)
 
     @app_commands.command(name="embed_send", description="Interactive send of saved embed(s) by key or JSON (modal)")
     async def slash_embed_send(self, interaction: discord.Interaction, key_or_json: str = None):
-        # Slash wrapper: if key provided, behave like text; otherwise show modal
         if key_or_json:
-            # once used in slash, behave the same as above but using interaction
             if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
                 await interaction.response.send_message("You do not have permission to run this command.", ephemeral=True)
                 return
@@ -698,9 +757,45 @@ class EmbedNewCog(commands.Cog):
             log(f"INTERACTIVE_SEND_STARTED by {interaction.user} key_or_json={key_or_json} target_channel={chan_id}")
             return
 
-        # no key — show modal
         modal = KeyModal(self, interaction.user)
         await interaction.response.send_modal(modal)
+
+    @app_commands.command(name="embed_webhook", description="Send comprehensive embed data via webhook")
+    async def embed_webhook(self, interaction: discord.Interaction, webhook_url: str, key_or_json: str = None):
+        """Send comprehensive embed data via webhook with complete JSON export."""
+        if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+            await interaction.response.send_message("You do not have permission to run this command.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        payload, err = self._load_payload_from_key_or_json(key_or_json, guild=interaction.guild)
+        if err:
+            await interaction.followup.send(err, ephemeral=True)
+            return
+
+        try:
+            # Create comprehensive webhook payload
+            webhook_payload = {
+                "embeds": payload.get("embeds", []),
+                "metadata": payload.get("metadata", {}),
+                "username": "Maple Cliff National Guard",
+                "avatar_url": "https://example.com/avatar.png"  # Replace with actual avatar
+            }
+
+            # Send webhook
+            async with aiohttp.ClientSession() as session:
+                async with session.post(webhook_url, json=webhook_payload) as response:
+                    if response.status == 204:
+                        await interaction.followup.send("Webhook sent successfully with complete embed data!", ephemeral=True)
+                        log(f"WEBHOOK: {interaction.user} sent webhook to {webhook_url}")
+                    else:
+                        error_text = await response.text()
+                        await interaction.followup.send(f"Webhook failed: {response.status} - {error_text}", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"Failed to send webhook: {e}", ephemeral=True)
+            log(f"ERROR webhook: {e}")
 
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))

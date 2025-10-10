@@ -1,158 +1,365 @@
-git <!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Maple Cliff National Guard — Embed Editor</title>
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discohook - Discord Embed Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="particles-js" aria-hidden="true"></div>
+    <!-- Particles Background -->
+    <div id="particles-js"></div>
+    
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <img src="logo.png" alt="Discohook" class="logo-img">
+                <h1 class="logo-text">Maple Cliff National Guard</h1>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" id="import-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14,2 14,8 20,8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10,9 9,9 8,9"></polyline>
+                    </svg>
+                    Import
+                </button>
+                <button class="btn btn-secondary" id="export-json-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14,2 14,8 20,8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10,9 9,9 8,9"></polyline>
+                    </svg>
+                    Export JSON
+                </button>
+                <button class="btn btn-secondary" id="copy-json-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy JSON
+                </button>
+                <button class="btn btn-primary" id="send-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22,2 15,22 11,13 2,9 22,2"></polygon>
+                    </svg>
+                    Send Webhook
+                </button>
+            </div>
+        </div>
+    </header>
 
-  <header class="topbar">
-    <div class="brand-left">
-      <img src="logo.png" alt="logo" class="logo"/>
-      <div class="brand-title">Maple Cliff National Guard — Embed Editor</div>
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Embeds</h2>
+                    <button class="btn btn-sm btn-primary" id="add-embed-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Add Embed
+                    </button>
+                </div>
+                
+                <div class="embed-list" id="embed-list">
+                    <!-- Embed items will be dynamically added here -->
+                </div>
+
+                <div class="sidebar-footer">
+                    <div class="saved-embeds">
+                        <h3>Saved Embeds</h3>
+                        <div class="saved-list" id="saved-list">
+                            <!-- Saved embeds will be added here -->
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Editor -->
+            <section class="editor">
+                <div class="editor-header">
+                    <div class="embed-counter">
+                        <span id="embed-counter">Embed 1 of 1</span>
+                    </div>
+                    <div class="editor-actions">
+                        <button class="btn btn-sm btn-secondary" id="duplicate-embed-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            Duplicate
+                        </button>
+                        <button class="btn btn-sm btn-danger" id="delete-embed-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3,6 5,6 21,6"></polyline>
+                                <path d="M19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                            </svg>
+                            Delete
+                        </button>
+                    </div>
+                </div>
+
+                <div class="editor-content">
+                    <!-- Basic Information -->
+                    <div class="section">
+                        <h3>Basic Information</h3>
+                        <div class="form-group">
+                            <label for="embed-title">Title</label>
+                            <input type="text" id="embed-title" class="form-input" placeholder="Embed title">
+                        </div>
+                        <div class="form-group">
+                            <label for="embed-description">Description</label>
+                            <textarea id="embed-description" class="form-textarea" placeholder="Embed description" rows="4"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="embed-color">Color</label>
+                                <div class="color-input-group">
+                                    <input type="text" id="embed-color" class="form-input" placeholder="#7289da">
+                                    <input type="color" id="embed-color-picker" class="color-picker">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="embed-url">URL</label>
+                                <input type="url" id="embed-url" class="form-input" placeholder="https://example.com">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Author -->
+                    <div class="section">
+                        <h3>Author</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="author-name">Name</label>
+                                <input type="text" id="author-name" class="form-input" placeholder="Author name">
+                            </div>
+                            <div class="form-group">
+                                <label for="author-url">URL</label>
+                                <input type="url" id="author-url" class="form-input" placeholder="https://example.com">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="author-icon">Icon URL</label>
+                            <input type="url" id="author-icon" class="form-input" placeholder="https://example.com/icon.png">
+                        </div>
+                    </div>
+
+                    <!-- Thumbnail & Image -->
+                    <div class="section">
+                        <h3>Thumbnail & Image</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="thumbnail-url">Thumbnail URL</label>
+                                <input type="url" id="thumbnail-url" class="form-input" placeholder="https://example.com/thumb.png">
+                            </div>
+                            <div class="form-group">
+                                <label for="image-url">Image URL</label>
+                                <input type="url" id="image-url" class="form-input" placeholder="https://example.com/image.png">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fields -->
+                    <div class="section">
+                        <div class="section-header">
+                            <h3>Fields</h3>
+                            <button class="btn btn-sm btn-secondary" id="add-field-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                </svg>
+                                Add Field
+                            </button>
+                        </div>
+                        <div class="fields-list" id="fields-list">
+                            <!-- Fields will be dynamically added here -->
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="section">
+                        <h3>Footer</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="footer-text">Text</label>
+                                <input type="text" id="footer-text" class="form-input" placeholder="Footer text">
+                            </div>
+                            <div class="form-group">
+                                <label for="footer-icon">Icon URL</label>
+                                <input type="url" id="footer-icon" class="form-input" placeholder="https://example.com/icon.png">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="section">
+                        <div class="section-header">
+                            <h3>Actions</h3>
+                            <div class="action-buttons">
+                                <button class="btn btn-sm btn-secondary" id="add-button-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                    Add Button
+                                </button>
+                                <button class="btn btn-sm btn-secondary" id="add-select-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                    Add Select Menu
+                                </button>
+                            </div>
+                        </div>
+                        <div class="actions-list" id="actions-list">
+                            <!-- Actions will be dynamically added here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Preview -->
+            <aside class="preview">
+                <div class="preview-header">
+                    <h3>Preview</h3>
+                    <button class="btn btn-sm btn-secondary" id="refresh-preview-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23,4 23,10 17,10"></polyline>
+                            <polyline points="1,20 1,14 7,14"></polyline>
+                            <path d="M20.49,9A9,9 0 0,0 5.64,5.64L1,10m22,4l-4.64,4.36A9,9 0 0,1 3.51,15"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+                <div class="preview-content" id="preview-content">
+                    <!-- Preview will be rendered here -->
+                </div>
+            </aside>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div class="modal" id="import-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import JSON</h2>
+                <button class="modal-close" id="import-modal-close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Paste your JSON data below:</p>
+                <textarea id="import-textarea" class="form-textarea" placeholder='{"embeds": [{"title": "Hello", "description": "World"}]}' rows="10"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="import-cancel-btn">Cancel</button>
+                <button class="btn btn-primary" id="import-confirm-btn">Import</button>
+            </div>
+        </div>
     </div>
 
-    <div class="brand-right">
-      <div id="embed-carousel" class="carousel" aria-hidden="false"></div>
-      <button id="add-embed" class="btn">➕ Add Embed</button>
-      <button id="prev-embed" class="btn">◀</button>
-      <button id="next-embed" class="btn">▶</button>
-      <button id="export-json" class="btn">Export JSON</button>
-      <button id="import-json" class="btn">Import JSON</button>
-      <button id="copy-json" class="btn">Copy JSON</button>
-      <input id="upload-json-file" type="file" accept=".json,application/json" style="display:none" />
+    <div class="modal" id="webhook-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Send Webhook</h2>
+                <button class="modal-close" id="webhook-modal-close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="webhook-url">Webhook URL</label>
+                    <input type="url" id="webhook-url" class="form-input" placeholder="https://discord.com/api/webhooks/...">
+                </div>
+                <div class="form-group">
+                    <label for="webhook-username">Username (optional)</label>
+                    <input type="text" id="webhook-username" class="form-input" placeholder="Custom username">
+                </div>
+                <div class="form-group">
+                    <label for="webhook-avatar">Avatar URL (optional)</label>
+                    <input type="url" id="webhook-avatar" class="form-input" placeholder="https://example.com/avatar.png">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="webhook-cancel-btn">Cancel</button>
+                <button class="btn btn-primary" id="webhook-send-btn">Send</button>
+            </div>
+        </div>
     </div>
-  </header>
 
-  <main class="app" role="main">
-    <aside class="sidebar">
-      <div id="session-info">Embed 1 / 1</div>
-
-      <!-- stored list (populated from localStorage embed_... keys) -->
-      <div id="stored-list" class="stored-list" aria-live="polite"></div>
-
-      <div class="muted" id="last-key"></div>
-    </aside>
-
-    <article class="builder">
-      <div class="editor-overlay">
-        <div class="row">
-          <input id="title" class="input" placeholder="Title" />
-          <input id="color" class="input color" placeholder="Hex color (e.g. d0b47b)" />
-          <input id="color-picker" type="color" class="color-picker" title="Pick color" />
+    <div class="modal" id="copy-json-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Copy JSON</h2>
+                <button class="modal-close" id="copy-json-modal-close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Copy the complete JSON data below:</p>
+                <div class="json-container">
+                    <pre id="json-code-block"><code id="json-code-content"></code></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="copy-json-cancel-btn">Close</button>
+                <button class="btn btn-primary" id="copy-json-copy-btn">Copy to Clipboard</button>
+            </div>
         </div>
-
-        <textarea id="description" class="textarea" placeholder="Description"></textarea>
-
-        <div class="row">
-          <input id="image_url" class="input" placeholder="Image URL" />
-          <input id="thumbnail_url" class="input" placeholder="Thumbnail URL" />
-        </div>
-
-        <div class="row">
-          <input id="footer" class="input" placeholder="Footer text" />
-          <input id="footer_icon" class="input" placeholder="Footer icon URL" />
-        </div>
-
-        <div class="block">
-          <h4>Fields (grouped per embed)</h4>
-          <div id="fields-list"></div>
-          <div class="controls">
-            <button id="add-field" class="btn">Add field</button>
-          </div>
-        </div>
-
-        <div class="block">
-          <h4>Buttons / Actions</h4>
-          <div id="link-buttons"></div>
-          <div id="select-menus" style="margin-top:8px"></div>
-          <div class="controls">
-            <button id="add-link" class="btn">Add button</button>
-            <button id="add-select" class="btn">Add select</button>
-          </div>
-          <div class="muted">Button types: Link (url) / SendEmbed (send another saved embed). For SendEmbed provide target key and whether to send ephemerally to the invoker.</div>
-        </div>
-
-        <div class="block">
-          <h4>Plain message (optional)</h4>
-          <textarea id="plain_message" class="textarea" placeholder="Plain message to post with embed(s)"></textarea>
-        </div>
-
-        <div class="builder-actions">
-          <button id="generate-key" class="btn">Generate Key</button>
-          <button id="save-local" class="btn">Save local</button>
-        </div>
-
-        <div id="preview-area"></div>
-      </div>
-    </article>
-  </main>
-
-  <footer class="footer muted">Made with love by Tuna 🐟</footer>
-
-  <!-- Import modal -->
-  <div id="import-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-inner">
-      <h3>Import JSON</h3>
-      <p class="muted">Paste JSON here or upload a .json file. The JSON should be { "embeds": [ ... ] } or an array of embeds.</p>
-      <textarea id="import-text" class="textarea" placeholder='Paste JSON here'></textarea>
-      <div class="modal-actions">
-        <button id="import-paste-btn" class="btn">Import from paste</button>
-        <button id="import-upload-btn" class="btn">Upload file</button>
-        <button id="import-cancel" class="btn muted">Cancel</button>
-      </div>
-      <div id="import-status" class="muted"></div>
     </div>
-  </div>
 
-  <!-- JSON display / copy overlay -->
-  <div id="json-display" class="modal hidden" aria-hidden="true">
-    <div class="modal-inner code-modal">
-      <button id="json-close" class="close-x" title="Close">✕</button>
-      <h3>Exported JSON</h3>
-      <pre id="json-pre"><code id="json-code"></code></pre>
-      <div class="modal-actions">
-        <button id="json-copy-btn" class="btn">Copy to clipboard</button>
-        <button id="json-download-btn" class="btn">Download</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- JSON option modal (used by select builder) -->
-  <div id="json-option-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-inner">
-      <h3>Paste full embed JSON</h3>
-      <p class="muted">Paste a single embed object, an array of embeds, or a payload { "embeds": [...] }.</p>
-      <textarea id="json-option-text" class="textarea" placeholder='Paste JSON here'></textarea>
-      <div class="modal-actions">
-        <button id="json-option-save" class="btn">Insert option</button>
-        <button id="json-option-cancel" class="btn muted">Cancel</button>
-      </div>
-      <div id="json-option-error" class="muted" style="margin-top:8px"></div>
-    </div>
-  </div>
-
-  <script src="particles.js"></script>
-  <script>
-    if (window.particlesJS) {
-      particlesJS('particles-js', {
-        particles: {
-          number: { value: 80, density: { enable: true, value_area: 800 } },
-          color: { value: ["#d0b47b", "#ffffff", "#aaaaaa"] },
-          shape: { type: "circle" },
-          opacity: { value: 0.55 },
-          size: { value: 3 },
-          line_linked: { enable: true, distance: 110, color: "#d0b47b", opacity: 0.12 },
-          move: { enable: true, speed: 1 }
-        },
-        interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } } }
-      });
-    }
-  </script>
-
-  <script src="app.js"></script>
+    <!-- Scripts -->
+    <script src="particles.js"></script>
+    <script>
+        // Initialize particles.js
+        if (window.particlesJS) {
+            particlesJS('particles-js', {
+                particles: {
+                    number: { value: 80, density: { enable: true, value_area: 800 } },
+                    color: { value: ["#7289da", "#ffffff", "#99aab5"] },
+                    shape: { type: "circle" },
+                    opacity: { value: 0.5 },
+                    size: { value: 3 },
+                    line_linked: { enable: true, distance: 150, color: "#7289da", opacity: 0.1 },
+                    move: { enable: true, speed: 1, direction: "none", random: false, straight: false, out_mode: "out", bounce: false }
+                },
+                interactivity: {
+                    detect_on: "canvas",
+                    events: {
+                        onhover: { enable: true, mode: "repulse" },
+                        onclick: { enable: true, mode: "push" },
+                        resize: true
+                    }
+                },
+                retina_detect: true
+            });
+        }
+    </script>
+    <script src="app.js"></script>
 </body>
 </html>
