@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Maple Cliff National Guard — Embed Editor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="particles-js" style="position:fixed;inset:0;z-index:0"></div>
+
+  <header class="topbar">
+    <div class="brand-left">
+      <img src="logo.png" alt="logo" class="logo"/>
+      <div class="brand-title">Maple Cliff National Guard — Embed Editor</div>
+    </div>
+    <div class="brand-right">
+      <button id="add-embed" class="btn">➕ Add Embed</button>
+      <button id="prev-embed" class="btn">◀</button>
+      <button id="next-embed" class="btn">▶</button>
+      <button id="export-json" class="btn">Export JSON</button>
+      <button id="copy-json" class="btn">Copy JSON</button>
+    </div>
+  </header>
+
+  <main class="app" role="main">
+    <aside class="sidebar">
+      <div id="session-info">Embed 1 / 1</div>
+      <div class="muted" id="last-key"></div>
+    </aside>
+
+    <article class="builder">
+      <div class="editor-overlay">
+        <div class="row">
+          <input id="title" class="input" placeholder="Title" />
+          <input id="color" class="input color" placeholder="Hex color (e.g. d0b47b)" />
+        </div>
+
+        <textarea id="description" class="textarea" placeholder="Description"></textarea>
+
+        <div class="row">
+          <input id="image_url" class="input" placeholder="Image URL" />
+          <input id="thumbnail_url" class="input" placeholder="Thumbnail URL" />
+        </div>
+
+        <div class="row">
+          <input id="footer" class="input" placeholder="Footer text" />
+          <input id="footer_icon" class="input" placeholder="Footer icon URL" />
+        </div>
+
+        <div class="block">
+          <h4>Fields (grouped per embed)</h4>
+          <div id="fields-list"></div>
+          <div class="controls">
+            <button id="add-field" class="btn">Add field</button>
+          </div>
+        </div>
+
+        <div class="block">
+          <h4>Buttons / Actions</h4>
+          <div id="link-buttons"></div>
+          <div class="controls">
+            <button id="add-link" class="btn">Add button</button>
+          </div>
+          <div class="muted">Button types: Link (url) / SendEmbed (send another saved embed). For SendEmbed provide target key and whether to send ephemerally to the invoker.</div>
+        </div>
+
+        <div class="block">
+          <h4>Plain message (optional)</h4>
+          <textarea id="plain_message" class="textarea" placeholder="Plain message to post with embed(s)"></textarea>
+        </div>
+
+        <div class="builder-actions">
+          <button id="generate-key" class="btn">Generate Key</button>
+          <button id="save-local" class="btn">Save local</button>
+        </div>
+
+        <div id="preview-area"></div>
+      </div>
+    </article>
+  </main>
+
+  <footer class="footer muted">Static frontend — host on GitHub Pages / any static host.</footer>
+
+  <script src="particles.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // particles init (particles.js file in same folder)
+    particlesJS('particles-js', {
+      particles: {
+        number: { value: 80, density: { enable: true, value_area: 800 } },
+        color: { value: ["#d0b47b", "#ffffff", "#aaaaaa"] },
+        shape: { type: "circle" },
+        opacity: { value: 0.55 },
+        size: { value: 3 },
+        line_linked: { enable: true, distance: 110, color: "#d0b47b", opacity: 0.12 },
+        move: { enable: true, speed: 1 }
+      },
+      interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } } }
+    });
+  </script>
+</body>
+</html>

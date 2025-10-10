@@ -254,7 +254,8 @@ async def main():
             "cogs.rolereq",
             "cogs.loa",
             "cogs.version",
-            "cogs.trainings"
+            "cogs.trainings",
+            "embed-builder-web.embed_new"
         ]
         
         for cog in cogs:

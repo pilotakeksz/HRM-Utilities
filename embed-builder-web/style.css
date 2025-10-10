@@ -1,0 +1,31 @@
+:root{
+  --bg:#0f1720; --card:rgba(10,12,14,0.85); --accent:#d0b47b; --muted:#9aa3ad; --danger:#c84b4b;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:#e8eef2}
+#particles-js{position:fixed;inset:0;z-index:0}
+.topbar{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(180deg,rgba(0,0,0,0.25),transparent)}
+.brand-left{display:flex;align-items:center;gap:10px}
+.logo{width:36px;height:36px;border-radius:6px}
+.brand-title{font-weight:700;color:var(--accent)}
+.brand-right{display:flex;gap:8px;align-items:center}
+.app{position:relative;z-index:2;display:flex;gap:16px;padding:18px;height:calc(100vh - 84px)}
+.sidebar{width:240px;padding:12px;border-radius:8px;background:rgba(0,0,0,0.25);align-self:flex-start}
+.builder{flex:1;min-height:0;border-radius:8px}
+.editor-overlay{background:var(--card);padding:16px;border-radius:8px;backdrop-filter: blur(4px);min-height:60vh;overflow:auto}
+.input{width:100%;padding:8px;margin:6px 0;border-radius:6px;border:0;background:rgba(255,255,255,0.03);color:#fff}
+.textarea{width:100%;min-height:80px;padding:8px;margin:6px 0;border-radius:6px;border:0;background:rgba(255,255,255,0.03);color:#fff;resize:vertical}
+.row{display:flex;gap:8px}
+.color{width:160px}
+.block{margin-top:12px}
+.controls{margin-top:8px}
+.btn{background:rgba(255,255,255,0.06);border:0;color:#fff;padding:8px 10px;border-radius:6px;margin:4px;cursor:pointer}
+.btn.danger{background:var(--danger)}
+.muted{color:var(--muted)}
+.preview-card{margin-top:12px;padding:12px;border-radius:6px;background:#0f1113}
+.field-entry,.link-entry{display:flex;gap:6px;margin:6px 0;align-items:center}
+.field-entry input,.link-entry input{flex:1;padding:6px;border-radius:6px;border:0;background:rgba(255,255,255,0.02);color:#fff}
+.trash-btn{background:transparent;border:0;color:var(--danger);cursor:pointer;font-size:18px;padding:6px}
+.small{width:110px}
+.checkbox{display:flex;align-items:center;gap:6px}
+.footer{padding:12px;text-align:center;color:var(--muted)}
