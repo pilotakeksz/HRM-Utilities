@@ -1,3 +1,4 @@
+# ...existing code...
 import os
 import json
 import asyncio
@@ -10,6 +11,7 @@ from discord import app_commands
 from discord import ui
 from datetime import datetime, timezone
 import base64
+from json import JSONDecodeError
 
 EMBED_DIR = os.path.join(os.path.dirname(__file__), "../embed-builder-web/data/embeds")
 LOG_CHANNEL_ID = 1343686645815181382
@@ -66,6 +68,53 @@ def _iter_fields(field_list):
             inline = False
         yield (str(name)[:256], str(value)[:1024], bool(inline))
 
+def _get_url(obj, *keys):
+    """Helper to find url in nested fields like image.url or image_url."""
+    for k in keys:
+        v = obj.get(k)
+        if isinstance(v, dict):
+            # look for url inside object
+            if v.get("url"):
+                return v.get("url")
+        elif v:
+            return v
+    return None
+
+def _decode_base64_json_token(token: str):
+    """Robustly decode a base64 token produced by the frontend btoa(...) wrapper and return parsed JSON.
+       Raises ValueError on failure with a helpful message.
+    """
+    s = token.strip()
+    if not s:
+        raise ValueError("Empty base64 payload")
+    # Fix padding
+    rem = len(s) % 4
+    if rem:
+        s += "=" * (4 - rem)
+    # Try standard then urlsafe decode
+    last_err = None
+    raw = None
+    for decoder in (base64.b64decode, base64.urlsafe_b64decode):
+        try:
+            raw = decoder(s)
+            break
+        except Exception as ex:
+            last_err = ex
+            raw = None
+    if raw is None:
+        raise ValueError(f"Base64 decode failed: {last_err}")
+    try:
+        text = raw.decode("utf-8").strip()
+    except Exception as ex:
+        raise ValueError(f"UTF-8 decode failed: {ex}")
+    if not text:
+        raise ValueError("Decoded JSON payload is empty")
+    try:
+        return json.loads(text)
+    except JSONDecodeError as ex:
+        preview = text[:300].replace("\n", "\\n")
+        raise ValueError(f"JSON parse error: {ex}. Decoded preview: {preview}")
+
 class ChannelSelect(discord.ui.Select):
     def __init__(self, channels):
         options = [discord.SelectOption(label=c.name, value=str(c.id)) for c in channels[:25]]
@@ -82,33 +131,49 @@ class ComprehensiveSendView(discord.ui.View):
         self.add_item(discord.ui.Button(label="Send Ephemeral", style=discord.ButtonStyle.secondary, custom_id="send_ephemeral"))
         self.add_item(discord.ui.Button(label="Export Complete JSON", style=discord.ButtonStyle.secondary, custom_id="export_json"))
     
+    def _convert_to_discord_embed(self, embed_data):
+        """Normalize referenced embed object (dict) into a consistent dict form for later building."""
+        # keep original structure but ensure keys for thumbnail/image/footer are present
+        return {
+            "title": embed_data.get("title"),
+            "description": embed_data.get("description"),
+            "color": embed_data.get("color"),
+            "url": embed_data.get("url"),
+            "author": embed_data.get("author") or {},
+            "thumbnail": embed_data.get("thumbnail") or embed_data.get("thumbnail_url") or {},
+            "image": embed_data.get("image") or embed_data.get("image_url") or {},
+            "fields": embed_data.get("fields", []),
+            "footer": embed_data.get("footer") or embed_data.get("footer_icon") or {},
+            "actions": embed_data.get("actions", []) or []
+        }
+
     def _collect_linked_embeds(self):
-        """Collect all embeds referenced in select menus and buttons."""
+        """Collect all embed dicts referenced in select menus and buttons (no I/O side-effects)."""
         linked_embeds = []
         seen_keys = set()
-        
-        # First, add any referenced embeds from the payload's referenced_embeds section
-        if "referenced_embeds" in self.payload:
+
+        # referenced_embeds first (keeps provided objects)
+        if isinstance(self.payload.get("referenced_embeds"), dict):
             for key, embed_data in self.payload["referenced_embeds"].items():
                 if key not in seen_keys:
                     seen_keys.add(key)
-                    # Convert the embed data to Discord embed format
                     linked_embeds.append(self._convert_to_discord_embed(embed_data))
-        
+
         for emb in self.payload.get("embeds", []):
-            # Check select menus
-            for select in emb.get("selects", []):
-                for option in select.get("options", []):
-                    value = option.get("value", "")
+            # selects
+            for select in emb.get("selects", []) or []:
+                for option in select.get("options", []) or []:
+                    value = option.get("value", "") if isinstance(option, dict) else ""
                     if value.startswith("send:"):
                         key = value.split(":", 1)[1]
-                        if key not in seen_keys:
+                        if key and key not in seen_keys:
                             seen_keys.add(key)
-                            # Check if this key exists in referenced_embeds first
-                            if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
-                                linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                            # check referenced_embeds first
+                            ref = (self.payload.get("referenced_embeds") or {}).get(key)
+                            if ref:
+                                linked_embeds.append(self._convert_to_discord_embed(ref))
                             else:
-                                # Fallback to file system
+                                # load from file if exists
                                 path = os.path.join(EMBED_DIR, f"{key}.json")
                                 if os.path.exists(path):
                                     try:
@@ -117,32 +182,32 @@ class ComprehensiveSendView(discord.ui.View):
                                         ref_payload = saved.get("payload") or saved
                                         linked_embeds.extend(ref_payload.get("embeds", []))
                                     except Exception:
-                                        pass
+                                        # ignore broken saved file
+                                        continue
                     elif value.startswith("send_json:"):
                         b64 = value.split(":", 1)[1]
                         try:
-                            json_text = base64.b64decode(b64).decode("utf-8")
-                            obj = json.loads(json_text)
-                            if isinstance(obj, list):
-                                linked_embeds.extend(obj)
-                            elif isinstance(obj, dict) and obj.get("embeds"):
-                                linked_embeds.extend(obj["embeds"])
-                            else:
-                                linked_embeds.append(obj)
-                        except Exception:
-                            pass
-            
-            # Check buttons for send_embed type
-            for button in emb.get("buttons", []):
+                            obj = _decode_base64_json_token(b64)
+                        except ValueError:
+                            continue
+                        # normalize to embeds list and append
+                        if isinstance(obj, list):
+                            linked_embeds.extend(obj)
+                        elif isinstance(obj, dict) and obj.get("embeds"):
+                            linked_embeds.extend(obj.get("embeds", []))
+                        else:
+                            linked_embeds.append(obj)
+
+            # buttons: send_embed targets
+            for button in emb.get("buttons", []) or []:
                 if button.get("type") == "send_embed":
                     key = button.get("target", "")
                     if key and key not in seen_keys:
                         seen_keys.add(key)
-                        # Check if this key exists in referenced_embeds first
-                        if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
-                            linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                        ref = (self.payload.get("referenced_embeds") or {}).get(key)
+                        if ref:
+                            linked_embeds.append(self._convert_to_discord_embed(ref))
                         else:
-                            # Fallback to file system
                             path = os.path.join(EMBED_DIR, f"{key}.json")
                             if os.path.exists(path):
                                 try:
@@ -151,24 +216,9 @@ class ComprehensiveSendView(discord.ui.View):
                                     ref_payload = saved.get("payload") or saved
                                     linked_embeds.extend(ref_payload.get("embeds", []))
                                 except Exception:
-                                    pass
-        
-        return linked_embeds
+                                    continue
 
-    def _convert_to_discord_embed(self, embed_data):
-        """Convert embed data from the web interface format to Discord embed format."""
-        return {
-            "title": embed_data.get("title"),
-            "description": embed_data.get("description"),
-            "color": embed_data.get("color"),
-            "url": embed_data.get("url"),
-            "author": embed_data.get("author"),
-            "thumbnail": embed_data.get("thumbnail"),
-            "image": embed_data.get("image"),
-            "fields": embed_data.get("fields", []),
-            "footer": embed_data.get("footer"),
-            "timestamp": embed_data.get("timestamp")
-        }
+        return linked_embeds
 
     def _add_selects_to_view(self, view, emb, ctx_channel=None, referenced=None):
         """
@@ -200,9 +250,8 @@ class ComprehensiveSendView(discord.ui.View):
                     if val.startswith("send_json:"):
                         b64 = val.split(":",1)[1]
                         try:
-                            json_text = base64.b64decode(b64).decode("utf-8")
-                            obj = json.loads(json_text)
-                        except Exception as ex:
+                            obj = _decode_base64_json_token(b64)
+                        except ValueError as ex:
                             await interaction.followup.send(f"Failed to decode JSON option: {ex}", ephemeral=True)
                             return
                         # normalize payload -> ensure {"embeds":[...]}
@@ -225,8 +274,9 @@ class ComprehensiveSendView(discord.ui.View):
                             if thumb: e.set_thumbnail(url=thumb)
                             if img: e.set_image(url=img)
                             if eemb.get("footer"):
-                                footer_text = eemb.get("footer").get("text") if isinstance(eemb.get("footer"), dict) else eemb.get("footer")
-                                footer_icon = eemb.get("footer").get("icon_url") if isinstance(eemb.get("footer"), dict) else eemb.get("footer_icon")
+                                footer = eemb.get("footer") if isinstance(eemb.get("footer"), dict) else {}
+                                footer_text = footer.get("text") or eemb.get("footer")
+                                footer_icon = footer.get("icon_url") or eemb.get("footer_icon")
                                 e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                             for name, value, inline in _iter_fields(eemb.get("fields")):
                                 try:
@@ -255,7 +305,6 @@ class ComprehensiveSendView(discord.ui.View):
                         if ref:
                             payload = {"embeds": [ref]} if isinstance(ref, dict) else {"embeds": ref}
                         else:
-                            # fallback to loading saved file
                             path = os.path.join(EMBED_DIR, f"{key}.json")
                             if not os.path.exists(path):
                                 await interaction.followup.send(f"Saved key not found: {key}", ephemeral=True)
@@ -277,8 +326,9 @@ class ComprehensiveSendView(discord.ui.View):
                             if thumb: e.set_thumbnail(url=thumb)
                             if img: e.set_image(url=img)
                             if eemb.get("footer"):
-                                footer_text = eemb.get("footer").get("text") if isinstance(eemb.get("footer"), dict) else eemb.get("footer")
-                                footer_icon = eemb.get("footer").get("icon_url") if isinstance(eemb.get("footer"), dict) else eemb.get("footer_icon")
+                                footer = eemb.get("footer") if isinstance(eemb.get("footer"), dict) else {}
+                                footer_text = footer.get("text") or eemb.get("footer")
+                                footer_icon = footer.get("icon_url") or eemb.get("footer_icon")
                                 e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                             for name, value, inline in _iter_fields(eemb.get("fields")):
                                 try:
@@ -342,8 +392,9 @@ class ComprehensiveSendView(discord.ui.View):
                 if thumb: e.set_thumbnail(url=thumb)
                 if img: e.set_image(url=img)
                 if emb.get("footer"):
-                    footer_text = emb.get("footer").get("text") if isinstance(emb.get("footer"), dict) else emb.get("footer")
-                    footer_icon = emb.get("footer").get("icon_url") if isinstance(emb.get("footer"), dict) else emb.get("footer_icon")
+                    footer = emb.get("footer") if isinstance(emb.get("footer"), dict) else {}
+                    footer_text = footer.get("text") or emb.get("footer")
+                    footer_icon = footer.get("icon_url") or emb.get("footer_icon")
                     e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                 for name, value, inline in _iter_fields(emb.get("fields")):
                     try:
@@ -366,8 +417,9 @@ class ComprehensiveSendView(discord.ui.View):
                     if thumb: e.set_thumbnail(url=thumb)
                     if img: e.set_image(url=img)
                     if ref_obj.get("footer"):
-                        footer_text = ref_obj.get("footer").get("text") if isinstance(ref_obj.get("footer"), dict) else ref_obj.get("footer")
-                        footer_icon = ref_obj.get("footer").get("icon_url") if isinstance(ref_obj.get("footer"), dict) else ref_obj.get("footer_icon")
+                        footer = ref_obj.get("footer") if isinstance(ref_obj.get("footer"), dict) else {}
+                        footer_text = footer.get("text") or ref_obj.get("footer")
+                        footer_icon = footer.get("icon_url") or ref_obj.get("footer_icon")
                         e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                     for name, value, inline in _iter_fields(ref_obj.get("fields")):
                         try:
@@ -385,7 +437,7 @@ class ComprehensiveSendView(discord.ui.View):
             if first_emb and (first_emb.get("buttons") or first_emb.get("selects")):
                 view = discord.ui.View()
                 # add buttons
-                for b in first_emb.get("buttons", []):
+                for b in first_emb.get("buttons", []) or []:
                     if b.get("type") == "link" and b.get("url"):
                         view.add_item(discord.ui.Button(label=b.get("label","link"), style=discord.ButtonStyle.link, url=b.get("url")))
                     elif b.get("type") == "send_embed":
@@ -431,7 +483,6 @@ class ComprehensiveSendView(discord.ui.View):
                 "linked_embeds": linked_embeds,
                 "metadata": self.payload.get("metadata", {})
             }
-            
             
             for emb in self.payload.get("embeds", []):
                 e = discord.Embed(
@@ -532,33 +583,44 @@ class ConfirmView(ui.View):
         self.payload = payload
         self.target_channel_id = str(target_channel_id)
     
+    def _convert_to_discord_embed(self, embed_data):
+        return {
+            "title": embed_data.get("title"),
+            "description": embed_data.get("description"),
+            "color": embed_data.get("color"),
+            "url": embed_data.get("url"),
+            "author": embed_data.get("author") or {},
+            "thumbnail": embed_data.get("thumbnail") or embed_data.get("thumbnail_url") or {},
+            "image": embed_data.get("image") or embed_data.get("image_url") or {},
+            "fields": embed_data.get("fields", []),
+            "footer": embed_data.get("footer") or embed_data.get("footer_icon") or {},
+            "actions": embed_data.get("actions", []) or []
+        }
+
     def _collect_linked_embeds(self):
-        """Collect all embeds referenced in select menus and buttons."""
+        """Collect all embeds referenced in select menus and buttons (no I/O side-effects)."""
         linked_embeds = []
         seen_keys = set()
-        
-        # First, add any referenced embeds from the payload's referenced_embeds section
-        if "referenced_embeds" in self.payload:
+
+        # referenced_embeds first
+        if isinstance(self.payload.get("referenced_embeds"), dict):
             for key, embed_data in self.payload["referenced_embeds"].items():
                 if key not in seen_keys:
                     seen_keys.add(key)
-                    # Convert the embed data to Discord embed format
                     linked_embeds.append(self._convert_to_discord_embed(embed_data))
-        
-        for emb in self.payload.get("embeds", []):
-            # Check select menus
-            for select in emb.get("selects", []):
-                for option in select.get("options", []):
-                    value = option.get("value", "")
+
+        for emb in self.payload.get("embeds", []) or []:
+            for select in emb.get("selects", []) or []:
+                for option in select.get("options", []) or []:
+                    value = option.get("value", "") if isinstance(option, dict) else ""
                     if value.startswith("send:"):
                         key = value.split(":", 1)[1]
-                        if key not in seen_keys:
+                        if key and key not in seen_keys:
                             seen_keys.add(key)
-                            # Check if this key exists in referenced_embeds first
-                            if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
-                                linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                            ref = (self.payload.get("referenced_embeds") or {}).get(key)
+                            if ref:
+                                linked_embeds.append(self._convert_to_discord_embed(ref))
                             else:
-                                # Fallback to file system
                                 path = os.path.join(EMBED_DIR, f"{key}.json")
                                 if os.path.exists(path):
                                     try:
@@ -567,32 +629,29 @@ class ConfirmView(ui.View):
                                         ref_payload = saved.get("payload") or saved
                                         linked_embeds.extend(ref_payload.get("embeds", []))
                                     except Exception:
-                                        pass
+                                        continue
                     elif value.startswith("send_json:"):
                         b64 = value.split(":", 1)[1]
                         try:
-                            json_text = base64.b64decode(b64).decode("utf-8")
-                            obj = json.loads(json_text)
-                            if isinstance(obj, list):
-                                linked_embeds.extend(obj)
-                            elif isinstance(obj, dict) and obj.get("embeds"):
-                                linked_embeds.extend(obj["embeds"])
-                            else:
-                                linked_embeds.append(obj)
-                        except Exception:
-                            pass
-            
-            # Check buttons for send_embed type
-            for button in emb.get("buttons", []):
+                            obj = _decode_base64_json_token(b64)
+                        except ValueError:
+                            continue
+                        if isinstance(obj, list):
+                            linked_embeds.extend(obj)
+                        elif isinstance(obj, dict) and obj.get("embeds"):
+                            linked_embeds.extend(obj.get("embeds", []))
+                        else:
+                            linked_embeds.append(obj)
+
+            for button in emb.get("buttons", []) or []:
                 if button.get("type") == "send_embed":
                     key = button.get("target", "")
                     if key and key not in seen_keys:
                         seen_keys.add(key)
-                        # Check if this key exists in referenced_embeds first
-                        if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
-                            linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                        ref = (self.payload.get("referenced_embeds") or {}).get(key)
+                        if ref:
+                            linked_embeds.append(self._convert_to_discord_embed(ref))
                         else:
-                            # Fallback to file system
                             path = os.path.join(EMBED_DIR, f"{key}.json")
                             if os.path.exists(path):
                                 try:
@@ -601,8 +660,8 @@ class ConfirmView(ui.View):
                                     ref_payload = saved.get("payload") or saved
                                     linked_embeds.extend(ref_payload.get("embeds", []))
                                 except Exception:
-                                    pass
-        
+                                    continue
+
         return linked_embeds
 
     async def _do_send(self, interaction: discord.Interaction, ephemeral: bool):
@@ -628,7 +687,6 @@ class ConfirmView(ui.View):
                 "metadata": self.payload.get("metadata", {})
             }
             
-
             plain = self.payload.get("plain_message", "") or None
             for emb in self.payload.get("embeds", []):
                 e = discord.Embed(
@@ -862,7 +920,7 @@ class EmbedNewCog(commands.Cog):
             # Send webhook
             async with aiohttp.ClientSession() as session:
                 async with session.post(webhook_url, json=webhook_payload) as response:
-                    if response.status == 204:
+                    if response.status in (200, 204):
                         await interaction.followup.send("Webhook sent successfully with complete embed data!", ephemeral=True)
                         log(f"WEBHOOK: {interaction.user} sent webhook to {webhook_url}")
                     else:
@@ -887,11 +945,10 @@ class EmbedNewCog(commands.Cog):
             data = json.loads(json_data)
             
             # Debug: Log the parsed data structure
-            log(f"Parsed JSON data: {data}")
-            log(f"Data keys: {list(data.keys())}")
+            log(f"Parsed JSON data keys: {list(data.keys()) if isinstance(data, dict) else 'non-dict'}")
             
             # Extract embeds from the data
-            embeds_data = data.get("embeds", [])
+            embeds_data = data.get("embeds", []) if isinstance(data, dict) else []
             log(f"Found {len(embeds_data)} embeds in data")
             
             if not embeds_data:
@@ -908,9 +965,13 @@ class EmbedNewCog(commands.Cog):
             sent_count = 0
             for i, embed_data in enumerate(embeds_data):
                 try:
-                    # Debug: Log embed data
-                    log(f"Processing embed {i}: {embed_data}")
+                    # Debug: Log embed data keys
+                    log(f"Processing embed {i} keys: {list(embed_data.keys()) if isinstance(embed_data, dict) else 'non-dict'}")
                     
+                    if not isinstance(embed_data, dict):
+                        log(f"Skipping non-dict embed at index {i}")
+                        continue
+
                     # Create Discord embed
                     embed = discord.Embed(
                         title=embed_data.get("title"),
@@ -919,15 +980,15 @@ class EmbedNewCog(commands.Cog):
                         url=embed_data.get("url")
                     )
                     
-                    # Debug: Check if embed has any content
+                    # Quick content check
                     has_content = any([
                         embed.title,
                         embed.description,
                         embed_data.get("fields"),
-                        embed_data.get("author", {}).get("name"),
-                        embed_data.get("footer", {}).get("text"),
-                        embed_data.get("thumbnail", {}).get("url"),
-                        embed_data.get("image", {}).get("url")
+                        (embed_data.get("author") or {}).get("name"),
+                        (embed_data.get("footer") or {}).get("text"),
+                        _get_url(embed_data, "thumbnail", "thumbnail_url"),
+                        _get_url(embed_data, "image", "image_url")
                     ])
                     
                     if not has_content:
@@ -935,35 +996,40 @@ class EmbedNewCog(commands.Cog):
                         continue
 
                     # Add author if present
-                    if embed_data.get("author", {}).get("name"):
-                        author = embed_data["author"]
+                    if (embed_data.get("author") or {}).get("name"):
+                        author = embed_data.get("author", {})
                         embed.set_author(
-                            name=author["name"],
+                            name=author.get("name"),
                             url=author.get("url"),
                             icon_url=author.get("icon_url")
                         )
 
                     # Add thumbnail if present
-                    if embed_data.get("thumbnail", {}).get("url"):
-                        embed.set_thumbnail(url=embed_data["thumbnail"]["url"])
+                    thumb_url = _get_url(embed_data, "thumbnail", "thumbnail_url")
+                    if thumb_url:
+                        embed.set_thumbnail(url=thumb_url)
 
                     # Add image if present
-                    if embed_data.get("image", {}).get("url"):
-                        embed.set_image(url=embed_data["image"]["url"])
+                    image_url = _get_url(embed_data, "image", "image_url")
+                    if image_url:
+                        embed.set_image(url=image_url)
 
                     # Add fields if present
                     for field in embed_data.get("fields", []):
-                        embed.add_field(
-                            name=field.get("name", "\u200b"),
-                            value=field.get("value", "\u200b"),
-                            inline=field.get("inline", False)
-                        )
+                        try:
+                            embed.add_field(
+                                name=field.get("name", "\u200b"),
+                                value=field.get("value", "\u200b"),
+                                inline=field.get("inline", False)
+                            )
+                        except Exception:
+                            continue
 
                     # Add footer if present
-                    if embed_data.get("footer", {}).get("text"):
-                        footer = embed_data["footer"]
+                    footer = embed_data.get("footer", {}) or {}
+                    if footer.get("text"):
                         embed.set_footer(
-                            text=footer["text"],
+                            text=footer.get("text"),
                             icon_url=footer.get("icon_url")
                         )
 
@@ -971,7 +1037,7 @@ class EmbedNewCog(commands.Cog):
                     view = discord.ui.View()
                     
                     # Add buttons
-                    for button_data in embed_data.get("buttons", []):
+                    for button_data in embed_data.get("buttons", []) or []:
                         if button_data.get("type") == "link" and button_data.get("url"):
                             view.add_item(discord.ui.Button(
                                 label=button_data.get("label", "Button"),
@@ -980,14 +1046,13 @@ class EmbedNewCog(commands.Cog):
                             ))
 
                     # Add select menus
-                    for select_data in embed_data.get("selects", []):
+                    for select_data in embed_data.get("selects", []) or []:
                         options = []
-                        for option_data in select_data.get("options", []):
+                        for option_data in select_data.get("options", []) or []:
                             options.append(discord.SelectOption(
                                 label=option_data.get("label", "Option"),
                                 value=option_data.get("value", ""),
-                                description=option_data.get("description", ""),
-                                emoji=option_data.get("icon") if option_data.get("icon", "").startswith((":", "<")) else None
+                                description=option_data.get("description", "")
                             ))
                         
                         if options:
@@ -998,44 +1063,82 @@ class EmbedNewCog(commands.Cog):
                                 options=options
                             )
                             
-                            # Add callback for select menu
-                            async def select_callback(interaction: discord.Interaction, select_data=select_data):
+                            async def select_callback(interaction: discord.Interaction, select_obj=select, select_data=select_data):
                                 await interaction.response.defer(ephemeral=True)
-                                selected_value = interaction.data["values"][0]
-                                
-                                # Handle different option types
-                                if selected_value.startswith("send:"):
-                                    # Handle send:key format
-                                    key = selected_value.split(":", 1)[1]
-                                    path = os.path.join(EMBED_DIR, f"{key}.json")
-                                    if os.path.exists(path):
+                                try:
+                                    selected_value = interaction.data.get("values", [None])[0]
+                                    if not selected_value:
+                                        await interaction.followup.send("No value selected.", ephemeral=True)
+                                        return
+
+                                    if selected_value.startswith("send:"):
+                                        key = selected_value.split(":", 1)[1]
+                                        path = os.path.join(EMBED_DIR, f"{key}.json")
+                                        if os.path.exists(path):
+                                            try:
+                                                with open(path, "r", encoding="utf-8") as f:
+                                                    saved_data = json.load(f)
+                                                saved_payload = saved_data.get("payload") or saved_data
+                                                for saved_embed_data in saved_payload.get("embeds", []):
+                                                    se = discord.Embed(
+                                                        title=saved_embed_data.get("title"),
+                                                        description=saved_embed_data.get("description"),
+                                                        color=_parse_color(saved_embed_data.get("color"))
+                                                    )
+                                                    thumb = _get_url(saved_embed_data, "thumbnail", "thumbnail_url")
+                                                    img = _get_url(saved_embed_data, "image", "image_url")
+                                                    if thumb: se.set_thumbnail(url=thumb)
+                                                    if img: se.set_image(url=img)
+                                                    for name, value, inline in _iter_fields(saved_embed_data.get("fields")):
+                                                        try:
+                                                            se.add_field(name=name, value=value, inline=inline)
+                                                        except Exception:
+                                                            pass
+                                                    await interaction.followup.send(embed=se, ephemeral=True)
+                                            except Exception as e:
+                                                await interaction.followup.send(f"Error loading saved embed: {e}", ephemeral=True)
+                                        else:
+                                            await interaction.followup.send(f"Saved embed '{key}' not found.", ephemeral=True)
+                                    
+                                    elif selected_value.startswith("link:"):
+                                        url = selected_value.split(":", 1)[1]
+                                        await interaction.followup.send(f"<{url}>", ephemeral=True)
+                                    
+                                    elif selected_value.startswith("send_json:"):
+                                        b64 = selected_value.split(":",1)[1]
                                         try:
-                                            with open(path, "r", encoding="utf-8") as f:
-                                                saved_data = json.load(f)
-                                            saved_payload = saved_data.get("payload") or saved_data
-                                            
-                                            # Send the saved embed
-                                            for saved_embed_data in saved_payload.get("embeds", []):
-                                                saved_embed = discord.Embed(
-                                                    title=saved_embed_data.get("title"),
-                                                    description=saved_embed_data.get("description"),
-                                                    color=_parse_color(saved_embed_data.get("color"))
-                                                )
-                                                await interaction.followup.send(embed=saved_embed, ephemeral=True)
-                                        except Exception as e:
-                                            await interaction.followup.send(f"Error loading saved embed: {e}", ephemeral=True)
+                                            obj = _decode_base64_json_token(b64)
+                                        except ValueError as ex:
+                                            await interaction.followup.send(f"Failed to decode JSON option: {ex}", ephemeral=True)
+                                            return
+                                        if isinstance(obj, list):
+                                            payload_embeds = obj
+                                        elif isinstance(obj, dict) and obj.get("embeds"):
+                                            payload_embeds = obj.get("embeds", [])
+                                        else:
+                                            payload_embeds = [obj]
+                                        for eemb in payload_embeds:
+                                            se = discord.Embed(
+                                                title=eemb.get("title"),
+                                                description=eemb.get("description"),
+                                                color=_parse_color(eemb.get("color"))
+                                            )
+                                            thumb = _get_url(eemb, "thumbnail", "thumbnail_url")
+                                            img = _get_url(eemb, "image", "image_url")
+                                            if thumb: se.set_thumbnail(url=thumb)
+                                            if img: se.set_image(url=img)
+                                            for name, value, inline in _iter_fields(eemb.get("fields")):
+                                                try:
+                                                    se.add_field(name=name, value=value, inline=inline)
+                                                except Exception:
+                                                    pass
+                                            await interaction.followup.send(embed=se, ephemeral=True)
+
                                     else:
-                                        await interaction.followup.send(f"Saved embed '{key}' not found.", ephemeral=True)
-                                
-                                elif selected_value.startswith("link:"):
-                                    # Handle link:url format
-                                    url = selected_value.split(":", 1)[1]
-                                    await interaction.followup.send(f"<{url}>", ephemeral=True)
-                                
-                                else:
-                                    # Handle other values
-                                    await interaction.followup.send(f"Selected: {selected_value}", ephemeral=True)
-                            
+                                        await interaction.followup.send(f"Selected: {selected_value}", ephemeral=True)
+                                except Exception as ex:
+                                    await interaction.followup.send(f"Select handling error: {ex}", ephemeral=True)
+
                             select.callback = select_callback
                             view.add_item(select)
 
@@ -1075,17 +1178,6 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send(f"Error processing JSON: {e}", ephemeral=True)
             log(f"ERROR embed_send_json: {e}")
 
-def _get_url(obj, *keys):
-    """Helper to find url in nested fields like image.url or image_url."""
-    for k in keys:
-        v = obj.get(k)
-        if isinstance(v, dict):
-            # look for url inside object
-            if v.get("url"):
-                return v.get("url")
-        elif v:
-            return v
-    return None
-
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))
+# ...existing code...
