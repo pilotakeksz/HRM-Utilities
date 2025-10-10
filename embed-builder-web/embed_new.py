@@ -1178,6 +1178,121 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send(f"Error processing JSON: {e}", ephemeral=True)
             log(f"ERROR embed_send_json: {e}")
 
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    """Handle button interactions for embed sending."""
+    if not interaction.data or not interaction.data.get("custom_id"):
+        return
+
+    custom_id = interaction.data["custom_id"]
+
+    # Handle sendembed buttons
+    if custom_id.startswith("sendembed:"):
+        try:
+            # Robust parsing: target may contain ":" (e.g. send_json:BASE64)
+            payload = custom_id[len("sendembed:"):]
+            is_ephemeral = False
+            target = payload
+
+            # If there is a trailing ephemeral flag ':e' or ':p', split it
+            if payload.endswith(":e") or payload.endswith(":p"):
+                is_ephemeral = payload.endswith(":e")
+                # drop trailing ":e" or ":p"
+                target = payload[:-2]
+                # trim any leading ':' left accidentally
+                if target.startswith(":"):
+                    target = target[1:]
+
+            # Now 'target' contains the whole target string (may include colons)
+            # 'is_ephemeral' contains the flag
+
+            # Load the embed data
+            embed_data = None
+
+            # Check if target is a send_json:b64 format
+            if target.startswith("send_json:"):
+                import base64
+                import json
+                try:
+                    b64_data = target.split(":", 1)[1]
+                    raw = base64.b64decode(b64_data + "===")
+                    embed_data = json.loads(raw.decode("utf-8"))
+                except Exception as ex:
+                    await interaction.response.send_message(f"Failed to decode embedded JSON: {ex}", ephemeral=True)
+                    return
+
+            # If target is 'send:KEY' we need to load saved file
+            elif target.startswith("send:"):
+                key = target.split(":", 1)[1]
+                try:
+                    path = os.path.join(os.path.dirname(__file__), "embed-builder-web", "data", "embeds", f"{key}.json")
+                    if os.path.exists(path):
+                        with open(path, "r", encoding="utf-8") as f:
+                            saved = json.load(f)
+                        embed_data = saved.get("payload") or saved
+                    else:
+                        await interaction.response.send_message(f"Saved key not found: {key}", ephemeral=True)
+                        return
+                except Exception as ex:
+                    await interaction.response.send_message(f"Failed to load saved embed: {ex}", ephemeral=True)
+                    return
+            else:
+                # Unknown target format
+                await interaction.response.send_message("Unknown sendembed target.", ephemeral=True)
+                return
+
+            # At this point embed_data should be a dict or list of embeds
+            if not embed_data:
+                await interaction.response.send_message("No embeds were found in the payload.", ephemeral=True)
+                return
+
+            # Send either ephemeral or to the channel that triggered interaction
+            await interaction.response.defer(ephemeral=is_ephemeral)
+            # reuse existing code paths to send embed(s) — minimal demonstration:
+            if isinstance(embed_data, dict) and embed_data.get("embeds"):
+                payload_embeds = embed_data["embeds"]
+            elif isinstance(embed_data, list):
+                payload_embeds = embed_data
+            else:
+                payload_embeds = [embed_data]
+
+            sent = 0
+            for emb in payload_embeds:
+                # construct discord.Embed safely
+                try:
+                    e = discord.Embed(
+                        title=emb.get("title") or None,
+                        description=emb.get("description") or None,
+                        color=_parse_color(emb.get("color"))
+                    )
+                    # optional fields
+                    if _get_url(emb, "thumbnail", "thumbnail_url"):
+                        e.set_thumbnail(url=_get_url(emb, "thumbnail", "thumbnail_url"))
+                    if _get_url(emb, "image", "image_url"):
+                        e.set_image(url=_get_url(emb, "image", "image_url"))
+                    for name, value, inline in _iter_fields(emb.get("fields")):
+                        try:
+                            e.add_field(name=name, value=value, inline=inline)
+                        except Exception:
+                            pass
+                    if is_ephemeral:
+                        await interaction.followup.send(embed=e, ephemeral=True)
+                    else:
+                        await interaction.channel.send(embed=e)
+                    sent += 1
+                except Exception as ex:
+                    # skip invalid embed
+                    continue
+
+            if sent == 0:
+                await interaction.followup.send("No embeds were sent. This might be because all embeds were empty or invalid. Check the logs for details.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"Sent {sent} embed(s).", ephemeral=True)
+
+        except Exception as e:
+            await interaction.response.send_message(f"Error handling sendembed: {e}", ephemeral=True)
+            return
+
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))
 # ...existing code...
