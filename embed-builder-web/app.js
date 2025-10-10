@@ -244,7 +244,8 @@ class EmbedBuilder {
             target: '',
             ephemeral: false,
             placeholder: '',
-            options: []
+            options: [],
+            buttonType: 'link' // Default button type
         };
 
         this.embeds[this.currentEmbedIndex].actions.push(action);
@@ -258,6 +259,11 @@ class EmbedBuilder {
         const action = this.embeds[this.currentEmbedIndex].actions[actionIndex];
         if (property === 'ephemeral') {
             action[property] = value === 'true';
+        } else if (property === 'buttonType') {
+            action[property] = value;
+            // Show/hide appropriate inputs based on button type
+            this.renderActions();
+            return; // Don't call renderPreview here as renderActions will handle it
         } else {
             action[property] = value;
         }
@@ -309,6 +315,30 @@ class EmbedBuilder {
             this.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].value = `send:${selectedKey}`;
             this.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].description = `Send saved embed: ${selectedKey}`;
             
+            this.renderActions();
+            this.renderPreview();
+        });
+    }
+
+    addSavedEmbedToButton(actionIndex) {
+        const savedEmbeds = this.getSavedEmbeds();
+        if (savedEmbeds.length === 0) {
+            alert('No saved embeds available');
+            return;
+        }
+
+        // Create a modal for embed selection
+        this.createEmbedSelectionModal(savedEmbeds, (selectedKey) => {
+            if (!selectedKey) return;
+
+            const selectedEmbed = savedEmbeds.find(embed => embed.key === selectedKey);
+            if (!selectedEmbed) {
+                alert('Embed not found');
+                return;
+            }
+
+            // Update the button with the saved embed reference
+            this.embeds[this.currentEmbedIndex].actions[actionIndex].target = `send:${selectedKey}`;
             this.renderActions();
             this.renderPreview();
         });
@@ -642,15 +672,47 @@ class EmbedBuilder {
                 labelInput.value = action.label;
                 labelInput.addEventListener('input', (e) => this.updateAction(actionIndex, 'label', e.target.value));
 
+                // Button type selector
+                const typeSelect = document.createElement('select');
+                typeSelect.className = 'form-input';
+                typeSelect.innerHTML = `
+                    <option value="link" ${action.buttonType === 'link' ? 'selected' : ''}>Link Button</option>
+                    <option value="send_embed" ${action.buttonType === 'send_embed' ? 'selected' : ''}>Send Embed</option>
+                `;
+                typeSelect.addEventListener('change', (e) => this.updateAction(actionIndex, 'buttonType', e.target.value));
+
                 const urlInput = document.createElement('input');
                 urlInput.type = 'url';
                 urlInput.className = 'form-input';
                 urlInput.placeholder = 'Button URL';
-                urlInput.value = action.url;
+                urlInput.value = action.url || '';
+                urlInput.style.display = action.buttonType === 'link' ? 'block' : 'none';
                 urlInput.addEventListener('input', (e) => this.updateAction(actionIndex, 'url', e.target.value));
 
+                // Embed selection for send_embed type
+                const embedSelect = document.createElement('div');
+                embedSelect.className = 'embed-select-container';
+                embedSelect.style.display = action.buttonType === 'send_embed' ? 'block' : 'none';
+
+                const embedSelectInput = document.createElement('input');
+                embedSelectInput.type = 'text';
+                embedSelectInput.className = 'form-input';
+                embedSelectInput.placeholder = 'Saved embed key or send_json:b64';
+                embedSelectInput.value = action.target || '';
+                embedSelectInput.addEventListener('input', (e) => this.updateAction(actionIndex, 'target', e.target.value));
+
+                const useSavedEmbedBtn = document.createElement('button');
+                useSavedEmbedBtn.className = 'btn btn-sm btn-primary';
+                useSavedEmbedBtn.textContent = 'Use Saved Embed';
+                useSavedEmbedBtn.addEventListener('click', () => this.addSavedEmbedToButton(actionIndex));
+
+                embedSelect.appendChild(embedSelectInput);
+                embedSelect.appendChild(useSavedEmbedBtn);
+
                 content.appendChild(labelInput);
+                content.appendChild(typeSelect);
                 content.appendChild(urlInput);
+                content.appendChild(embedSelect);
         } else {
                 const placeholderInput = document.createElement('input');
                 placeholderInput.type = 'text';
@@ -694,9 +756,10 @@ class EmbedBuilder {
                 action.options.forEach((option, optionIndex) => {
                     const optionItem = document.createElement('div');
                     optionItem.className = 'option-item';
-                    optionItem.style.display = 'flex';
-                    optionItem.style.gap = '0.5rem';
-                    optionItem.style.marginBottom = '0.5rem';
+
+                    // Create inputs container
+                    const inputsContainer = document.createElement('div');
+                    inputsContainer.className = 'option-inputs';
 
                     const labelInput = document.createElement('input');
                     labelInput.type = 'text';
@@ -712,6 +775,13 @@ class EmbedBuilder {
                     valueInput.value = option.value;
                     valueInput.addEventListener('input', (e) => this.updateActionOption(actionIndex, optionIndex, 'value', e.target.value));
 
+                    inputsContainer.appendChild(labelInput);
+                    inputsContainer.appendChild(valueInput);
+
+                    // Create buttons container
+                    const buttonsContainer = document.createElement('div');
+                    buttonsContainer.className = 'option-buttons';
+
                     const useSavedBtn = document.createElement('button');
                     useSavedBtn.className = 'btn btn-sm btn-primary';
                     useSavedBtn.textContent = 'Use Saved';
@@ -723,10 +793,19 @@ class EmbedBuilder {
                     deleteOptionBtn.innerHTML = '🗑';
                     deleteOptionBtn.addEventListener('click', () => this.deleteActionOption(actionIndex, optionIndex));
 
-                    optionItem.appendChild(labelInput);
-                    optionItem.appendChild(valueInput);
-                    optionItem.appendChild(useSavedBtn);
-                    optionItem.appendChild(deleteOptionBtn);
+                    buttonsContainer.appendChild(useSavedBtn);
+                    buttonsContainer.appendChild(deleteOptionBtn);
+
+                    // Add description if value contains embed reference
+                    if (option.value && (option.value.startsWith('send:') || option.value.startsWith('send_json:'))) {
+                        const description = document.createElement('div');
+                        description.className = 'option-description';
+                        description.textContent = 'This option will send an embed';
+                        optionItem.appendChild(description);
+                    }
+
+                    optionItem.appendChild(inputsContainer);
+                    optionItem.appendChild(buttonsContainer);
                     optionsContainer.appendChild(optionItem);
                 });
 
@@ -903,6 +982,9 @@ class EmbedBuilder {
     }
 
     buildCompletePayload() {
+        // Collect all saved embeds that are referenced
+        const referencedEmbeds = this.collectReferencedEmbeds();
+        
         return {
             embeds: this.embeds.map(embed => ({
                 title: embed.title || undefined,
@@ -929,23 +1011,49 @@ class EmbedBuilder {
                     text: embed.footer.text,
                     icon_url: embed.footer.icon_url || undefined
                 } : undefined,
-                // Include actions (buttons and select menus)
-                buttons: embed.actions.filter(action => action.type === 'button').map(button => ({
-                    type: 'link',
-                    label: button.label,
-                    url: button.url
-                })),
+                // Include actions (buttons and select menus) with inlined embed data
+                buttons: embed.actions.filter(action => action.type === 'button').map(button => {
+                    if (button.buttonType === 'send_embed') {
+                        return {
+                            type: 'send_embed',
+                            label: button.label,
+                            target: button.target,
+                            ephemeral: button.ephemeral || false
+                        };
+                    } else {
+                        return {
+                            type: 'link',
+                            label: button.label,
+                            url: button.url
+                        };
+                    }
+                }),
                 selects: embed.actions.filter(action => action.type === 'select').map(select => ({
                     placeholder: select.placeholder,
                     name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),
-                    options: select.options.map(option => ({
-                        label: option.label,
-                        value: option.value,
-                        description: option.description || '',
-                        icon: option.icon || ''
-                    }))
+                    options: select.options.map(option => {
+                        const resolvedOption = { ...option };
+                        
+                        // If this option references a saved embed, inline the embed data
+                        if (option.value && option.value.startsWith('send:')) {
+                            const embedKey = option.value.substring(5); // Remove 'send:' prefix
+                            const referencedEmbed = referencedEmbeds[embedKey];
+                            if (referencedEmbed) {
+                                resolvedOption.value = `send_json:${btoa(JSON.stringify(referencedEmbed))}`;
+                            }
+                        }
+                        
+                        return {
+                            label: resolvedOption.label,
+                            value: resolvedOption.value,
+                            description: resolvedOption.description || '',
+                            icon: resolvedOption.icon || ''
+                        };
+                    })
                 }))
             })).filter(embed => Object.keys(embed).length > 0),
+            // Include all referenced embeds as inlined data
+            referenced_embeds: referencedEmbeds,
             // Include metadata
             metadata: {
                 total_embeds: this.embeds.length,
@@ -956,6 +1064,36 @@ class EmbedBuilder {
                 version: '2.0'
             }
         };
+    }
+
+    collectReferencedEmbeds() {
+        const referencedEmbeds = {};
+        
+        // Find all references to saved embeds in select menu options
+        this.embeds.forEach(embed => {
+            embed.actions.forEach(action => {
+                if (action.type === 'select') {
+                    action.options.forEach(option => {
+                        if (option.value && option.value.startsWith('send:')) {
+                            const embedKey = option.value.substring(5); // Remove 'send:' prefix
+                            
+                            // Get the saved embed data from localStorage
+                            const savedData = localStorage.getItem(`embed_${embedKey}`);
+                            if (savedData) {
+                                try {
+                                    const parsed = JSON.parse(savedData);
+                                    referencedEmbeds[embedKey] = parsed.embed;
+                                } catch (e) {
+                                    console.warn(`Failed to parse saved embed ${embedKey}:`, e);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        });
+        
+        return referencedEmbeds;
     }
 
     async copyJSONToClipboard() {
@@ -995,8 +1133,8 @@ class EmbedBuilder {
 
         if (!url) {
             alert('Please enter a webhook URL');
-            return;
-        }
+      return;
+    }
 
         // Create comprehensive payload with all data including actions
         const payload = {
@@ -1026,11 +1164,22 @@ class EmbedBuilder {
                     icon_url: embed.footer.icon_url || undefined
                 } : undefined,
                 // Include actions (buttons and select menus)
-                buttons: embed.actions.filter(action => action.type === 'button').map(button => ({
-                    type: 'link',
-                    label: button.label,
-                    url: button.url
-                })),
+                buttons: embed.actions.filter(action => action.type === 'button').map(button => {
+                    if (button.buttonType === 'send_embed') {
+                        return {
+                            type: 'send_embed',
+                            label: button.label,
+                            target: button.target,
+                            ephemeral: button.ephemeral || false
+                        };
+                    } else {
+                        return {
+                            type: 'link',
+                            label: button.label,
+                            url: button.url
+                        };
+                    }
+                }),
                 selects: embed.actions.filter(action => action.type === 'select').map(select => ({
                     placeholder: select.placeholder,
                     name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),
@@ -1203,11 +1352,22 @@ class EmbedBuilder {
                     icon_url: embed.footer.icon_url || undefined
                 } : undefined,
                 // Include actions (buttons and select menus)
-                buttons: embed.actions.filter(action => action.type === 'button').map(button => ({
-                    type: 'link',
-                    label: button.label,
-                    url: button.url
-                })),
+                buttons: embed.actions.filter(action => action.type === 'button').map(button => {
+                    if (button.buttonType === 'send_embed') {
+                        return {
+                            type: 'send_embed',
+                            label: button.label,
+                            target: button.target,
+                            ephemeral: button.ephemeral || false
+                        };
+                    } else {
+                        return {
+                            type: 'link',
+                            label: button.label,
+                            url: button.url
+                        };
+                    }
+                }),
                 selects: embed.actions.filter(action => action.type === 'select').map(select => ({
                     placeholder: select.placeholder,
                     name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),

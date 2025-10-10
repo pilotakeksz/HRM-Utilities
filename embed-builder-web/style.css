@@ -505,10 +505,46 @@ label {
 }
 
 .action-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.action-content .form-input {
+    width: 100%;
+}
+
+.options-container {
+    margin-top: 1rem;
+}
+
+.option-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--background-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+}
+
+.option-inputs {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    align-items: end;
+    gap: 0.75rem;
+}
+
+.option-buttons {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.option-description {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
 }
 
 /* Preview */

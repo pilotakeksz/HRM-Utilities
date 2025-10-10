@@ -56,6 +56,111 @@ sys.stdout = startup_output
 sys.stderr = startup_output
 
 @bot.event
+async def on_interaction(interaction: discord.Interaction):
+    """Handle button interactions for embed sending."""
+    if not interaction.data or not interaction.data.get("custom_id"):
+        return
+    
+    custom_id = interaction.data["custom_id"]
+    
+    # Handle sendembed buttons
+    if custom_id.startswith("sendembed:"):
+        try:
+            # Parse the custom_id: sendembed:target:ephemeral_flag
+            parts = custom_id.split(":", 2)
+            if len(parts) != 3:
+                await interaction.response.send_message("Invalid button configuration.", ephemeral=True)
+                return
+            
+            target = parts[1]
+            ephemeral_flag = parts[2]
+            is_ephemeral = ephemeral_flag == "e"
+            
+            # Load the embed data
+            embed_data = None
+            
+            # Check if target is a send_json:b64 format
+            if target.startswith("send_json:"):
+                import base64
+                import json
+                try:
+                    b64_data = target.split(":", 1)[1]
+                    json_text = base64.b64decode(b64_data).decode("utf-8")
+                    embed_data = json.loads(json_text)
+                except Exception as e:
+                    await interaction.response.send_message(f"Failed to decode embed data: {e}", ephemeral=True)
+                    return
+            
+            # Check if target is a saved embed key
+            elif target:
+                import os
+                embed_dir = os.path.join(os.path.dirname(__file__), "embed-builder-web", "data")
+                os.makedirs(embed_dir, exist_ok=True)
+                embed_file = os.path.join(embed_dir, f"{target}.json")
+                
+                if os.path.exists(embed_file):
+                    try:
+                        with open(embed_file, "r", encoding="utf-8") as f:
+                            saved_data = json.load(f)
+                        embed_data = saved_data.get("embed", saved_data)
+                    except Exception as e:
+                        await interaction.response.send_message(f"Failed to load saved embed: {e}", ephemeral=True)
+                        return
+                else:
+                    await interaction.response.send_message(f"Saved embed '{target}' not found.", ephemeral=True)
+                    return
+            
+            if not embed_data:
+                await interaction.response.send_message("No embed data found.", ephemeral=True)
+                return
+            
+            # Create Discord embed
+            embed = discord.Embed(
+                title=embed_data.get("title"),
+                description=embed_data.get("description"),
+                color=discord.Color(embed_data.get("color", 0)) if embed_data.get("color") else None
+            )
+            
+            # Add fields
+            for field in embed_data.get("fields", []):
+                embed.add_field(
+                    name=field.get("name", ""),
+                    value=field.get("value", ""),
+                    inline=field.get("inline", False)
+                )
+            
+            # Add footer
+            if embed_data.get("footer"):
+                footer = embed_data["footer"]
+                embed.set_footer(
+                    text=footer.get("text"),
+                    icon_url=footer.get("icon_url")
+                )
+            
+            # Add thumbnail
+            if embed_data.get("thumbnail"):
+                embed.set_thumbnail(url=embed_data["thumbnail"].get("url"))
+            
+            # Add image
+            if embed_data.get("image"):
+                embed.set_image(url=embed_data["image"].get("url"))
+            
+            # Add author
+            if embed_data.get("author"):
+                author = embed_data["author"]
+                embed.set_author(
+                    name=author.get("name"),
+                    url=author.get("url"),
+                    icon_url=author.get("icon_url")
+                )
+            
+            # Send the embed (always ephemeral for button interactions)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            await interaction.response.send_message(f"Error handling button: {e}", ephemeral=True)
+
+@bot.event
 async def on_ready():
     # Restore stdout/stderr
     sys.stdout = old_stdout

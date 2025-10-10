@@ -87,6 +87,14 @@ class ComprehensiveSendView(discord.ui.View):
         linked_embeds = []
         seen_keys = set()
         
+        # First, add any referenced embeds from the payload's referenced_embeds section
+        if "referenced_embeds" in self.payload:
+            for key, embed_data in self.payload["referenced_embeds"].items():
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    # Convert the embed data to Discord embed format
+                    linked_embeds.append(self._convert_to_discord_embed(embed_data))
+        
         for emb in self.payload.get("embeds", []):
             # Check select menus
             for select in emb.get("selects", []):
@@ -96,15 +104,20 @@ class ComprehensiveSendView(discord.ui.View):
                         key = value.split(":", 1)[1]
                         if key not in seen_keys:
                             seen_keys.add(key)
-                            path = os.path.join(EMBED_DIR, f"{key}.json")
-                            if os.path.exists(path):
-                                try:
-                                    with open(path, "r", encoding="utf-8") as f:
-                                        saved = json.load(f)
-                                    ref_payload = saved.get("payload") or saved
-                                    linked_embeds.extend(ref_payload.get("embeds", []))
-                                except Exception:
-                                    pass
+                            # Check if this key exists in referenced_embeds first
+                            if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
+                                linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                            else:
+                                # Fallback to file system
+                                path = os.path.join(EMBED_DIR, f"{key}.json")
+                                if os.path.exists(path):
+                                    try:
+                                        with open(path, "r", encoding="utf-8") as f:
+                                            saved = json.load(f)
+                                        ref_payload = saved.get("payload") or saved
+                                        linked_embeds.extend(ref_payload.get("embeds", []))
+                                    except Exception:
+                                        pass
                     elif value.startswith("send_json:"):
                         b64 = value.split(":", 1)[1]
                         try:
@@ -125,17 +138,37 @@ class ComprehensiveSendView(discord.ui.View):
                     key = button.get("target", "")
                     if key and key not in seen_keys:
                         seen_keys.add(key)
-                        path = os.path.join(EMBED_DIR, f"{key}.json")
-                        if os.path.exists(path):
-                            try:
-                                with open(path, "r", encoding="utf-8") as f:
-                                    saved = json.load(f)
-                                ref_payload = saved.get("payload") or saved
-                                linked_embeds.extend(ref_payload.get("embeds", []))
-                            except Exception:
-                                pass
+                        # Check if this key exists in referenced_embeds first
+                        if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
+                            linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                        else:
+                            # Fallback to file system
+                            path = os.path.join(EMBED_DIR, f"{key}.json")
+                            if os.path.exists(path):
+                                try:
+                                    with open(path, "r", encoding="utf-8") as f:
+                                        saved = json.load(f)
+                                    ref_payload = saved.get("payload") or saved
+                                    linked_embeds.extend(ref_payload.get("embeds", []))
+                                except Exception:
+                                    pass
         
         return linked_embeds
+
+    def _convert_to_discord_embed(self, embed_data):
+        """Convert embed data from the web interface format to Discord embed format."""
+        return {
+            "title": embed_data.get("title"),
+            "description": embed_data.get("description"),
+            "color": embed_data.get("color"),
+            "url": embed_data.get("url"),
+            "author": embed_data.get("author"),
+            "thumbnail": embed_data.get("thumbnail"),
+            "image": embed_data.get("image"),
+            "fields": embed_data.get("fields", []),
+            "footer": embed_data.get("footer"),
+            "timestamp": embed_data.get("timestamp")
+        }
 
     def _add_selects_to_view(self, view, emb, ctx_channel=None):
         """Add select menus to a view with proper callbacks."""
@@ -322,7 +355,7 @@ class ComprehensiveSendView(discord.ui.View):
                             btn = discord.ui.Button(
                                 label=b.get("label","send"), 
                                 style=discord.ButtonStyle.secondary, 
-                                custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}"
+                                custom_id=f"sendembed:{b.get('target') or ''}:e"
                             )
                             view.add_item(btn)
                     # Add selects and attach callbacks
@@ -464,6 +497,14 @@ class ConfirmView(ui.View):
         linked_embeds = []
         seen_keys = set()
         
+        # First, add any referenced embeds from the payload's referenced_embeds section
+        if "referenced_embeds" in self.payload:
+            for key, embed_data in self.payload["referenced_embeds"].items():
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    # Convert the embed data to Discord embed format
+                    linked_embeds.append(self._convert_to_discord_embed(embed_data))
+        
         for emb in self.payload.get("embeds", []):
             # Check select menus
             for select in emb.get("selects", []):
@@ -473,15 +514,20 @@ class ConfirmView(ui.View):
                         key = value.split(":", 1)[1]
                         if key not in seen_keys:
                             seen_keys.add(key)
-                            path = os.path.join(EMBED_DIR, f"{key}.json")
-                            if os.path.exists(path):
-                                try:
-                                    with open(path, "r", encoding="utf-8") as f:
-                                        saved = json.load(f)
-                                    ref_payload = saved.get("payload") or saved
-                                    linked_embeds.extend(ref_payload.get("embeds", []))
-                                except Exception:
-                                    pass
+                            # Check if this key exists in referenced_embeds first
+                            if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
+                                linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                            else:
+                                # Fallback to file system
+                                path = os.path.join(EMBED_DIR, f"{key}.json")
+                                if os.path.exists(path):
+                                    try:
+                                        with open(path, "r", encoding="utf-8") as f:
+                                            saved = json.load(f)
+                                        ref_payload = saved.get("payload") or saved
+                                        linked_embeds.extend(ref_payload.get("embeds", []))
+                                    except Exception:
+                                        pass
                     elif value.startswith("send_json:"):
                         b64 = value.split(":", 1)[1]
                         try:
@@ -502,15 +548,20 @@ class ConfirmView(ui.View):
                     key = button.get("target", "")
                     if key and key not in seen_keys:
                         seen_keys.add(key)
-                        path = os.path.join(EMBED_DIR, f"{key}.json")
-                        if os.path.exists(path):
-                            try:
-                                with open(path, "r", encoding="utf-8") as f:
-                                    saved = json.load(f)
-                                ref_payload = saved.get("payload") or saved
-                                linked_embeds.extend(ref_payload.get("embeds", []))
-                            except Exception:
-                                pass
+                        # Check if this key exists in referenced_embeds first
+                        if "referenced_embeds" in self.payload and key in self.payload["referenced_embeds"]:
+                            linked_embeds.append(self._convert_to_discord_embed(self.payload["referenced_embeds"][key]))
+                        else:
+                            # Fallback to file system
+                            path = os.path.join(EMBED_DIR, f"{key}.json")
+                            if os.path.exists(path):
+                                try:
+                                    with open(path, "r", encoding="utf-8") as f:
+                                        saved = json.load(f)
+                                    ref_payload = saved.get("payload") or saved
+                                    linked_embeds.extend(ref_payload.get("embeds", []))
+                                except Exception:
+                                    pass
         
         return linked_embeds
 
@@ -570,7 +621,7 @@ class ConfirmView(ui.View):
                             btn = ui.Button(
                                 label=b.get("label","send"), 
                                 style=discord.ButtonStyle.secondary, 
-                                custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}"
+                                custom_id=f"sendembed:{b.get('target') or ''}:e"
                             )
                             view.add_item(btn)
                 if ephemeral:
