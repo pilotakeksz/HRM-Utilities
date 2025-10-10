@@ -68,8 +68,10 @@
         <div class="block">
           <h4>Buttons / Actions</h4>
           <div id="link-buttons"></div>
+          <div id="select-menus" style="margin-top:8px"></div>
           <div class="controls">
             <button id="add-link" class="btn">Add button</button>
+            <button id="add-select" class="btn">Add select</button>
           </div>
           <div class="muted">Button types: Link (url) / SendEmbed (send another saved embed). For SendEmbed provide target key and whether to send ephemerally to the invoker.</div>
         </div>
@@ -116,6 +118,20 @@
         <button id="json-copy-btn" class="btn">Copy to clipboard</button>
         <button id="json-download-btn" class="btn">Download</button>
       </div>
+    </div>
+  </div>
+
+  <!-- JSON option modal (used by select builder) -->
+  <div id="json-option-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-inner">
+      <h3>Paste full embed JSON</h3>
+      <p class="muted">Paste a single embed object, an array of embeds, or a payload { "embeds": [...] }.</p>
+      <textarea id="json-option-text" class="textarea" placeholder='Paste JSON here'></textarea>
+      <div class="modal-actions">
+        <button id="json-option-save" class="btn">Insert option</button>
+        <button id="json-option-cancel" class="btn muted">Cancel</button>
+      </div>
+      <div id="json-option-error" class="muted" style="margin-top:8px"></div>
     </div>
   </div>
 

@@ -10,7 +10,7 @@ html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:var(
 .logo{width:36px;height:36px;border-radius:6px}
 .brand-title{font-weight:700;color:var(--accent)}
 .brand-right{display:flex;gap:8px;align-items:center}
-.app{position:relative;z-index:2;display:flex;gap:16px;padding:18px;height:calc(100vh - 84px)}
+.app{position:relative;z-index:2;display:flex;gap:16px;padding:18px;height:calc(100vh - 84px);padding-bottom:64px}
 .sidebar{width:240px;padding:12px;border-radius:8px;background:rgba(0,0,0,0.25);align-self:flex-start}
 .carousel .dot.active{background:var(--accent);box-shadow:0 0 8px rgba(208,180,123,0.25)}
 
@@ -107,7 +107,18 @@ pre code{white-space:pre-wrap;word-break:break-word;color:#dbeafe}
 .small{width:110px}
 .checkbox{display:flex;align-items:center;gap:6px}
 .muted{color:var(--muted)}
-.footer{padding:12px;text-align:center;color:var(--muted);position:relative;z-index:4}
+.footer{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:12px;
+  z-index:60;
+  display:flex;
+  justify-content:center;
+  pointer-events:auto;
+  background:transparent;
+  padding:6px 0;
+}
 
 /* Inputs + textarea styling so they are not bright white and size correctly */
 .input{
@@ -154,3 +165,30 @@ pre code{white-space:pre-wrap;word-break:break-word;color:#dbeafe}
 
 /* make the JSON modal close X very visible and highlighted inside the code area */
 .json-modal-highlight { position:relative; }
+
+.select-entry{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.select-entry textarea{min-height:64px}
+.preview-select-wrap{margin-top:10px}
+.preview-select{appearance:none;padding:8px;border-radius:6px;background:rgba(255,255,255,0.03);color:#e8eef2;border:0;min-width:220px;margin-top:8px}
+
+/* select builder visuals */
+.select-builder{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;margin-bottom:10px}
+.select-builder-header{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.small{flex:0 0 140px}
+.field.tiny{flex:0 0 90px}
+.field.medium{flex:0 0 180px}
+.field.wide{flex:1 1 320px}
+.field-label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px}
+
+/* option row layout */
+.select-option-row{display:flex;gap:8px;align-items:center}
+.select-option-row .input{min-width:0}
+.select-option-row .opt-label{flex:0 0 160px}
+.select-option-row .opt-value{flex:1 1 260px}
+.select-option-row .opt-desc{flex:0 0 160px}
+.select-option-row .opt-icon{flex:0 0 100px}
+
+/* ensure small controls remain usable */
+.icon-btn{width:34px;height:34px;border-radius:6px;background:rgba(255,255,255,0.03);border:0;color:#fff;cursor:pointer}
+.trash-btn{background:transparent;border:0;color:var(--danger);cursor:pointer;padding:6px}

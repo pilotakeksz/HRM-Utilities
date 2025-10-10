@@ -4,7 +4,7 @@
   function uuid(){ return crypto?.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(36).slice(2,10) }
 
   const State = { sessions: [], idx: 0 };
-  function newSession(){ return { title:"", description:"", color:"", image_url:"", thumbnail_url:"", footer:"", footer_icon:"", fields:[], buttons:[], plain_message:"" } }
+  function newSession(){ return { title:"", description:"", color:"", image_url:"", thumbnail_url:"", footer:"", footer_icon:"", fields:[], buttons:[], selects:[], plain_message:"" } }
   function current(){ return State.sessions[State.idx] }
 
   function renderSessionInfo(){
@@ -92,6 +92,183 @@
       }
       list.append(row);
     })
+  }
+
+  function renderSelects(){
+    const list = qs("select-menus"); if(!list) return;
+    list.innerHTML = "";
+    const storedKeys = typeof getStoredKeys === "function" ? getStoredKeys() : [];
+
+    current().selects.forEach((s, si)=>{
+      const container = document.createElement("div");
+      container.className = "select-builder";
+
+      // header row: placeholder + name + icon + helpers (with visible labels)
+      const header = document.createElement("div"); header.className = "select-builder-header";
+
+      const phField = document.createElement("div"); phField.className="field";
+      const phLabel = document.createElement("label"); phLabel.className="field-label"; phLabel.textContent = "Placeholder";
+      const ph = document.createElement("input"); ph.className="input"; ph.placeholder="Choose an action"; ph.value = s.placeholder||"";
+      phField.append(phLabel, ph);
+
+      const nameField = document.createElement("div"); nameField.className="field";
+      const nameLabel = document.createElement("label"); nameLabel.className="field-label"; nameLabel.textContent = "Name (internal id)";
+      const nameInput = document.createElement("input"); nameInput.className="input"; nameInput.placeholder="select_name"; nameInput.value = s.name||"";
+      nameField.append(nameLabel, nameInput);
+
+      const iconField = document.createElement("div"); iconField.className="field";
+      const iconLabel = document.createElement("label"); iconLabel.className="field-label"; iconLabel.textContent = "Icon (emoji or URL)";
+      const iconInput = document.createElement("input"); iconInput.className="input"; iconInput.placeholder="🛠 or https://..."; iconInput.value = s.icon||"";
+      iconField.append(iconLabel, iconInput);
+
+      const storedSel = document.createElement("select"); storedSel.className="input stored-select";
+      const opt0 = document.createElement("option"); opt0.value=""; opt0.textContent="Insert stored key…"; storedSel.appendChild(opt0);
+      storedKeys.forEach(k=>{ const o=document.createElement("option"); o.value = k.replace(/^embed_/,""); o.textContent = o.value; storedSel.appendChild(o) });
+      const insertStoredBtn = document.createElement("button"); insertStoredBtn.className="btn"; insertStoredBtn.textContent="Insert stored";
+      const importButtonsBtn = document.createElement("button"); importButtonsBtn.className="btn"; importButtonsBtn.textContent="Use buttons";
+      const addJsonBtn = document.createElement("button"); addJsonBtn.className="btn"; addJsonBtn.textContent="Add JSON option";
+
+      header.append(phField, nameField, iconField, storedSel, insertStoredBtn, importButtonsBtn, addJsonBtn);
+      container.appendChild(header);
+
+      // options list (structured rows)
+      const optsWrap = document.createElement("div"); optsWrap.className = "select-options-wrap";
+      (s.options || []).forEach((opt, oi)=> {
+        optsWrap.appendChild(makeOptionRow(si, oi, opt.label||"", opt.value||"", opt.description||"", opt.icon||""));
+      });
+      container.appendChild(optsWrap);
+
+      // controls: add new option + delete select
+      const ctrls = document.createElement("div"); ctrls.className = "select-builder-controls";
+      const addOptBtn = document.createElement("button"); addOptBtn.className="btn"; addOptBtn.textContent = "Add option";
+      const delSelBtn = document.createElement("button"); delSelBtn.className="trash-btn"; delSelBtn.textContent="🗑 Delete select";
+      ctrls.append(addOptBtn, delSelBtn);
+      container.appendChild(ctrls);
+
+      // wire header interactions
+      ph.onchange = ()=>{ current().selects[si].placeholder = ph.value; updatePreview(); }
+      nameInput.onchange = ()=>{ current().selects[si].name = nameInput.value; updatePreview(); }
+      iconInput.onchange = ()=>{ current().selects[si].icon = iconInput.value; updatePreview(); }
+
+      addOptBtn.onclick = ()=>{
+        const idx = (current().selects[si].options||[]).length;
+        const row = makeOptionRow(si, idx, "Label","value","", "");
+        optsWrap.appendChild(row);
+        syncOptionsFromDOM(si, optsWrap);
+        updatePreview();
+      };
+      delSelBtn.onclick = ()=>{
+        if(!confirm("Delete this select?")) return;
+        current().selects.splice(si,1);
+        renderSelects();
+        updatePreview();
+      };
+
+      insertStoredBtn.onclick = ()=>{
+        const key = storedSel.value;
+        if(!key) return alert("Choose a stored key");
+        const line = { label: key, value: `send:${key}`, description: `Send stored ${key}` };
+        (current().selects[si].options = current().selects[si].options||[]).push(line);
+        optsWrap.appendChild(makeOptionRow(si, current().selects[si].options.length-1, line.label, line.value, line.description, ""));
+        updatePreview();
+      };
+
+      importButtonsBtn.onclick = ()=>{
+        const btns = current().buttons || [];
+        if(!btns.length) return alert("No buttons to import");
+        btns.forEach(b=>{
+          if(b.type === "link" && b.url){
+            (current().selects[si].options = current().selects[si].options||[]).push({ label: b.label||b.url, value:`link:${b.url}`, description:"Link", icon: b.icon||"" });
+          } else if(b.type === "send_embed"){
+            (current().selects[si].options = current().selects[si].options||[]).push({ label: b.label||b.target, value:`send:${b.target||""}${b.ephemeral?":e":""}`, description:"Send saved embed", icon: b.icon||"" });
+          }
+        });
+        optsWrap.innerHTML = "";
+        (current().selects[si].options||[]).forEach((opt, oi)=> optsWrap.appendChild(makeOptionRow(si, oi, opt.label, opt.value, opt.description, opt.icon)));
+        updatePreview();
+      };
+
+      addJsonBtn.onclick = ()=>{
+        openJsonOptionModal((jsonText)=>{
+          const b64 = btoa(unescape(encodeURIComponent(jsonText)));
+          const label = "Custom JSON";
+          const value = `send_json:${b64}`;
+          (current().selects[si].options = current().selects[si].options||[]).push({ label, value, description:"Send custom JSON", icon: "" });
+          optsWrap.appendChild(makeOptionRow(si, (current().selects[si].options.length-1), label, value, "Send custom JSON", ""));
+          updatePreview();
+        });
+      };
+
+      list.appendChild(container);
+    });
+
+    // small helpers -------------------------------------------------------
+    function makeOptionRow(selectIndex, optIndex, labelV="", valueV="", descV="", iconV=""){
+      const row = document.createElement("div"); row.className="select-option-row";
+
+      const labelField = document.createElement("div"); labelField.className="field small";
+      const labLabel = document.createElement("label"); labLabel.className="field-label"; labLabel.textContent = "Option label";
+      const l = document.createElement("input"); l.className="input opt-label"; l.placeholder="Visible label"; l.value = labelV;
+      labelField.append(labLabel, l);
+
+      const valueField = document.createElement("div"); valueField.className="field wide";
+      const valLabel = document.createElement("label"); valLabel.className="field-label"; valLabel.textContent = "Value (send:key or link:url)";
+      const v = document.createElement("input"); v.className="input opt-value"; v.placeholder="Value (e.g. send:key or link:https://)"; v.value = valueV;
+      valueField.append(valLabel, v);
+
+      const descField = document.createElement("div"); descField.className="field medium";
+      const descLabel = document.createElement("label"); descLabel.className="field-label"; descLabel.textContent = "Description (optional)";
+      const d = document.createElement("input"); d.className="input opt-desc"; d.placeholder="Short description"; d.value = descV;
+      descField.append(descLabel, d);
+
+      const iconField = document.createElement("div"); iconField.className="field tiny";
+      const iconLabel = document.createElement("label"); iconLabel.className="field-label"; iconLabel.textContent = "Icon";
+      const ic = document.createElement("input"); ic.className="input opt-icon"; ic.placeholder="Emoji or URL"; ic.value = iconV;
+      iconField.append(iconLabel, ic);
+
+      const up = document.createElement("button"); up.className="icon-btn"; up.textContent="↑";
+      const down = document.createElement("button"); down.className="icon-btn"; down.textContent="↓";
+      const del = document.createElement("button"); del.className="trash-btn"; del.textContent="🗑";
+
+      row.append(labelField, valueField, descField, iconField, up, down, del);
+
+      function syncAll(){
+        syncOptionsFromDOM(selectIndex, row.parentElement);
+        updatePreview();
+      }
+      l.onchange = syncAll; v.onchange = syncAll; d.onchange = syncAll; ic.onchange = syncAll;
+
+      up.onclick = ()=>{
+        const parent = row.parentElement;
+        const prev = row.previousElementSibling;
+        if(prev) parent.insertBefore(row, prev);
+        syncAll();
+      };
+      down.onclick = ()=>{
+        const parent = row.parentElement;
+        const next = row.nextElementSibling;
+        if(next) parent.insertBefore(next, row);
+        syncAll();
+      };
+      del.onclick = ()=>{
+        row.remove();
+        syncAll();
+      };
+      return row;
+    }
+
+    function syncOptionsFromDOM(selectIndex, optsContainer){
+      const rows = Array.from(optsContainer.querySelectorAll(".select-option-row"));
+      const arr = rows.map(r=>{
+        return {
+          label: r.querySelector(".opt-label").value || "",
+          value: r.querySelector(".opt-value").value || "",
+          description: r.querySelector(".opt-desc").value || "",
+          icon: r.querySelector(".opt-icon").value || ""
+        };
+      });
+      current().selects[selectIndex].options = arr;
+    }
   }
 
   function updatePreview(){
@@ -213,6 +390,23 @@
       content.appendChild(row);
     }
 
+    // select preview
+    if (s.selects && s.selects.length){
+      s.selects.forEach(sel=>{
+        const wrap = document.createElement("div"); wrap.className="preview-select-wrap";
+        const selEl = document.createElement("select"); selEl.className="preview-select";
+        const phOpt = document.createElement("option"); phOpt.textContent = sel.placeholder || "Choose…"; phOpt.disabled = true; phOpt.selected = true;
+        selEl.appendChild(phOpt);
+        (sel.options||[]).forEach(o=>{
+          const opt = document.createElement("option"); opt.value = o.value || ""; opt.textContent = o.label || o.value || "";
+          selEl.appendChild(opt);
+        });
+        wrap.appendChild(selEl);
+        // no functional onChange in preview
+        preview.appendChild(wrap);
+      })
+    }
+
     // plain message
     if (s.plain_message) {
       const pm = document.createElement("div");
@@ -277,6 +471,7 @@
           return { name: f.name||"", value: f.value||"", inline: !!f.inline };
         }),
         buttons: (e.buttons || []),
+        selects: (e.selects || []),
         plain_message: e.plain_message || ""
       }
     });
@@ -317,8 +512,9 @@
     const footer_icon = el("footer_icon"); if(footer_icon) footer_icon.onchange = ()=>{ current().footer_icon = footer_icon.value; updatePreview() }
     const plain = el("plain_message"); if(plain) plain.oninput = ()=>{ current().plain_message = plain.value; updatePreview() }
 
-    const addField = el("add-field"); if(addField) addField.onclick = ()=>{ current().fields.push({name:"",value:"",inline:false}); renderFields(); updatePreview() }
+    const addField = el("add-embed"); if(addField) addField.onclick = ()=>{ current().fields.push({name:"",value:"",inline:false}); renderFields(); updatePreview() }
     const addLink = el("add-link"); if(addLink) addLink.onclick = ()=>{ current().buttons.push({type:"link",label:"",url:"",icon:"",target:"",ephemeral:false}); renderButtons(); updatePreview() }
+    const addSelect = el("add-select"); if(addSelect) addSelect.onclick = ()=>{ current().selects.push({ placeholder:"", options:[] }); renderSelects(); updatePreview() }
 
     const exportBtn = el("export-json"); if(exportBtn) exportBtn.onclick = ()=>{ const payload = buildPayload(); const s = JSON.stringify(payload, null, 2); const blob = new Blob([s], {type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="embed_export.json"; a.click(); }
     const copyBtn = el("copy-json"); if(copyBtn) copyBtn.onclick = ()=>{ openJsonDisplay(JSON.stringify(buildPayload(), null, 2)) }
