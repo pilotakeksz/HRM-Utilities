@@ -7,13 +7,14 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="particles-js" style="position:fixed;inset:0;z-index:0"></div>
+  <div id="particles-js" aria-hidden="true"></div>
 
   <header class="topbar">
     <div class="brand-left">
       <img src="logo.png" alt="logo" class="logo"/>
-      <div class="brand-title">Maple Cliff National Guard — Embed Editor</div>
+      <div class="brand-title">Maple Cliff — Embed Editor</div>
     </div>
+
     <div class="brand-right">
       <div id="embed-carousel" class="carousel" aria-hidden="false"></div>
       <button id="add-embed" class="btn">➕ Add Embed</button>
@@ -31,9 +32,7 @@
       <div id="session-info">Embed 1 / 1</div>
 
       <!-- stored list (populated from localStorage embed_... keys) -->
-      <div id="stored-list" class="stored-list" aria-live="polite">
-        <!-- populated by app.js -->
-      </div>
+      <div id="stored-list" class="stored-list" aria-live="polite"></div>
 
       <div class="muted" id="last-key"></div>
     </aside>
@@ -110,7 +109,6 @@
   <!-- JSON display / copy overlay -->
   <div id="json-display" class="modal hidden" aria-hidden="true">
     <div class="modal-inner code-modal">
-      <!-- moved inside modal-inner so styling can highlight it -->
       <button id="json-close" class="close-x" title="Close">✕</button>
       <h3>Exported JSON</h3>
       <pre id="json-pre"><code id="json-code"></code></pre>
@@ -122,6 +120,23 @@
   </div>
 
   <script src="particles.js"></script>
+  <script>
+    if (window.particlesJS) {
+      particlesJS('particles-js', {
+        particles: {
+          number: { value: 80, density: { enable: true, value_area: 800 } },
+          color: { value: ["#d0b47b", "#ffffff", "#aaaaaa"] },
+          shape: { type: "circle" },
+          opacity: { value: 0.55 },
+          size: { value: 3 },
+          line_linked: { enable: true, distance: 110, color: "#d0b47b", opacity: 0.12 },
+          move: { enable: true, speed: 1 }
+        },
+        interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } } }
+      });
+    }
+  </script>
+
   <script src="app.js"></script>
 </body>
 </html>
