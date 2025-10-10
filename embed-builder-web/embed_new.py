@@ -2,15 +2,58 @@ import os
 import json
 import base64
 import uuid
+import threading
 from typing import Optional, List, Dict, Any
 
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
 
-EMBED_DIR = os.path.join(os.path.dirname(__file__), "../embed-builder-web/data/embeds")
-LOG_CHANNEL_ID = None  # set if you want
+EMBED_DIR = os.path.join(os.path.dirname(__file__), "data", "embeds")
 os.makedirs(EMBED_DIR, exist_ok=True)
+SEND_MAP_FILE = os.path.join(EMBED_DIR, "send_map.json")
+_SEND_MAP_LOCK = threading.Lock()
+
+LOG_CHANNEL_ID = None  # optional
+
+
+def _load_send_map() -> Dict[str, Any]:
+    with _SEND_MAP_LOCK:
+        try:
+            if os.path.exists(SEND_MAP_FILE):
+                with open(SEND_MAP_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+
+
+def _save_send_map(m: Dict[str, Any]):
+    with _SEND_MAP_LOCK:
+        tmp = SEND_MAP_FILE + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(m, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, SEND_MAP_FILE)
+        except Exception:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
+
+
+def _put_send_map_entry(entry: Dict[str, Any]) -> str:
+    m = _load_send_map()
+    key = uuid.uuid4().hex
+    m[key] = entry
+    _save_send_map(m)
+    return key
+
+
+def _get_send_map_entry(key: str) -> Optional[Dict[str, Any]]:
+    m = _load_send_map()
+    return m.get(key)
 
 
 def _parse_color(val):
@@ -95,10 +138,10 @@ def _build_discord_embed(eobj: Dict[str, Any]) -> discord.Embed:
         description=eobj.get("description") or None,
         color=_parse_color(eobj.get("color"))
     )
-    if (thumb := _get_url(eobj, "thumbnail", "thumbnail_url", "thumbnail.url")):
+    if (thumb := _get_url(eobj, "thumbnail", "thumbnail_url")):
         try: emb.set_thumbnail(url=thumb)
         except Exception: pass
-    if (img := _get_url(eobj, "image", "image_url", "image.url")):
+    if (img := _get_url(eobj, "image", "image_url")):
         try: emb.set_image(url=img)
         except Exception: pass
     if (author := eobj.get("author")) and isinstance(author, dict) and author.get("name"):
@@ -121,15 +164,14 @@ def _build_discord_embed(eobj: Dict[str, Any]) -> discord.Embed:
 
 
 class PayloadView(ui.View):
+    """View which stores long targets persistently and ensures select sends only the referenced embed ephemerally."""
     def __init__(self, payload: Dict[str, Any], bot: commands.Bot, *, timeout: Optional[float] = 300.0):
         super().__init__(timeout=timeout)
         self.payload = payload
         self.bot = bot
-        self.referenced = payload.get("referenced_embeds") or {}
-        # map short keys -> base64 JSON or embed objects for send_json
-        self._send_json_map: Dict[str, str] = {}
+        # local map of keys created for this view (not required but useful)
+        self._local_keys: List[str] = []
 
-        # Build buttons/selects from first embed's actions
         first = (payload.get("embeds") or [None])[0]
         if not first:
             return
@@ -146,69 +188,120 @@ class PayloadView(ui.View):
                 btn = ui.Button(label=label, style=discord.ButtonStyle.secondary)
 
                 async def make_btn_cb(interaction: discord.Interaction, target=target, ephemeral=ephemeral):
-                    if interaction.user is None:
-                        return
                     await interaction.response.defer(ephemeral=ephemeral)
                     await self._handle_target_send(interaction, target, ephemeral)
 
                 btn.callback = make_btn_cb
                 self.add_item(btn)
 
-        # Selects
+        # Selects: convert long targets to send_map:<key> and persist them
         for s in first.get("selects", []) or []:
             options = []
             for o in s.get("options", []) or []:
                 orig_val = o.get("value") or ""
                 use_val = orig_val
 
-                # if it's a send_json:... and too long for Discord, replace with short key
+                # handle send_json: large base64 JSON embedded in option -> persist
                 if orig_val.startswith("send_json:"):
                     b64 = orig_val.split(":", 1)[1]
-                    # if entire value would exceed 100 chars (Discord limit), store a short key
-                    if len(orig_val) > 100:
-                        key = uuid.uuid4().hex  # 32 chars
-                        short_val = f"send_json_key:{key}"
-                        self._send_json_map[key] = b64
-                        use_val = short_val
+                    entry = {"type": "send_json", "b64": b64}
+                    key = _put_send_map_entry(entry)
+                    use_val = f"send_map:{key}"
+                    self._local_keys.append(key)
+
+                # handle send:KEY where KEY is present in payload.referenced_embeds -> persist the referenced embed dict
+                elif orig_val.startswith("send:"):
+                    keyname = orig_val.split(":", 1)[1]
+                    ref = (payload.get("referenced_embeds") or {}).get(keyname)
+                    if ref:
+                        entry = {"type": "ref_embed", "embed": ref}
+                        key = _put_send_map_entry(entry)
+                        use_val = f"send_map:{key}"
+                        self._local_keys.append(key)
                     else:
+                        # leave as send:KEY (will load from EMBED_DIR on demand)
                         use_val = orig_val
 
+                # link: and other short values are left as-is
+                else:
+                    use_val = orig_val
+
+                # create SelectOption (value will be short)
                 options.append(discord.SelectOption(
                     label=o.get("label") or o.get("value") or "Option",
                     value=use_val,
                     description=o.get("description")
                 ))
+
             if not options:
                 continue
+
             sel = ui.Select(placeholder=s.get("placeholder") or "Choose…", min_values=1, max_values=1, options=options)
 
             async def make_sel_cb(interaction: discord.Interaction, select: ui.Select = sel):
-                if interaction.user is None:
-                    return
+                # selection sends only the referenced embed ephemerally
                 await interaction.response.defer(ephemeral=True)
                 val = (select.values or [None])[0]
                 if not val:
                     await interaction.followup.send("No value selected.", ephemeral=True)
                     return
 
-                # If it's a short key, restore original send_json token
-                if isinstance(val, str) and val.startswith("send_json_key:"):
+                # if send_map: lookup persisted entry
+                if isinstance(val, str) and val.startswith("send_map:"):
                     key = val.split(":", 1)[1]
-                    b64 = self._send_json_map.get(key)
-                    if not b64:
-                        await interaction.followup.send("Referenced payload not found.", ephemeral=True)
+                    entry = _get_send_map_entry(key)
+                    if not entry:
+                        await interaction.followup.send("Referenced embed not found (maybe expired or deleted).", ephemeral=True)
                         return
-                    target_val = f"send_json:{b64}"
-                else:
-                    target_val = val
+                    # handle entry types
+                    if entry.get("type") == "send_json":
+                        try:
+                            obj = _decode_base64_json_token(entry.get("b64", ""))
+                        except Exception as ex:
+                            await interaction.followup.send(f"Invalid embedded JSON: {ex}", ephemeral=True)
+                            return
+                        if isinstance(obj, dict) and obj.get("embeds"):
+                            embeds_list = obj.get("embeds", [])
+                        elif isinstance(obj, list):
+                            embeds_list = obj
+                        else:
+                            embeds_list = [obj]
+                    elif entry.get("type") == "ref_embed":
+                        embed_obj = entry.get("embed")
+                        embeds_list = [embed_obj] if isinstance(embed_obj, dict) else (embed_obj or [])
+                    else:
+                        await interaction.followup.send("Unknown mapped entry type.", ephemeral=True)
+                        return
 
-                await self._handle_target_send(interaction, target_val, False)
+                    # send only these embeds ephemerally
+                    sent = 0
+                    for eobj in embeds_list:
+                        try:
+                            em = _build_discord_embed(eobj)
+                            await interaction.followup.send(embed=em, ephemeral=True)
+                            sent += 1
+                        except Exception:
+                            continue
+                    if sent == 0:
+                        await interaction.followup.send("No embeds were sent (empty or invalid).", ephemeral=True)
+                    else:
+                        await interaction.followup.send(f"Sent {sent} embed(s) ephemerally.", ephemeral=True)
+                    return
+
+                # non-mapped targets handled normally (send:KEY loads saved file; link: posts URL)
+                await self._handle_target_send(interaction, val, True)
 
             sel.callback = make_sel_cb
             self.add_item(sel)
 
     async def _handle_target_send(self, interaction: discord.Interaction, target: str, ephemeral: bool):
+        # target may be: send:KEY, send_json:<b64> (rare), link:<url>, or send_map:<key>
         try:
+            if not target:
+                await interaction.followup.send("No target specified.", ephemeral=True)
+                return
+
+            # direct send_json (if present) -> decode and send only those embeds
             if target.startswith("send_json:"):
                 b64 = target.split(":", 1)[1]
                 try:
@@ -223,14 +316,38 @@ class PayloadView(ui.View):
                 else:
                     embeds_list = [obj]
 
+            elif target.startswith("send_map:"):
+                key = target.split(":", 1)[1]
+                entry = _get_send_map_entry(key)
+                if not entry:
+                    await interaction.followup.send("Referenced embed not found.", ephemeral=True)
+                    return
+                if entry.get("type") == "send_json":
+                    try:
+                        obj = _decode_base64_json_token(entry.get("b64", ""))
+                    except Exception as ex:
+                        await interaction.followup.send(f"Invalid embedded JSON: {ex}", ephemeral=True)
+                        return
+                    if isinstance(obj, dict) and obj.get("embeds"):
+                        embeds_list = obj.get("embeds", [])
+                    elif isinstance(obj, list):
+                        embeds_list = obj
+                    else:
+                        embeds_list = [obj]
+                elif entry.get("type") == "ref_embed":
+                    embed_obj = entry.get("embed")
+                    embeds_list = [embed_obj] if isinstance(embed_obj, dict) else (embed_obj or [])
+                else:
+                    await interaction.followup.send("Unknown mapped entry type.", ephemeral=True)
+                    return
+
             elif target.startswith("send:"):
                 key = target.split(":", 1)[1]
-                # try referenced_embeds first
-                ref = self.referenced.get(key)
+                # prefer referenced_embeds inside original payload if provided (not persisted)
+                ref = (self.payload.get("referenced_embeds") or {}).get(key)
                 if ref:
-                    embeds_list = ref if isinstance(ref, list) else [ref]
+                    embeds_list = [ref]
                 else:
-                    # fallback to EMBED_DIR
                     path = os.path.join(EMBED_DIR, f"{key}.json")
                     if not os.path.exists(path):
                         await interaction.followup.send(f"Referenced embed '{key}' not found.", ephemeral=True)
@@ -243,24 +360,26 @@ class PayloadView(ui.View):
                     except Exception as ex:
                         await interaction.followup.send(f"Failed to load saved embed: {ex}", ephemeral=True)
                         return
+
             elif target.startswith("link:"):
                 url = target.split(":", 1)[1]
-                await interaction.followup.send(f"<{url}>", ephemeral=True)
+                await interaction.followup.send(f"<{url}>", ephemeral=ephemeral)
                 return
+
             else:
                 await interaction.followup.send(f"Unknown target: {target}", ephemeral=True)
                 return
 
+            # send only the resolved embeds ephemerally or to channel depending on ephemeral flag
             sent = 0
-            target_channel = interaction.channel
             for eobj in embeds_list:
                 try:
                     em = _build_discord_embed(eobj)
                     if ephemeral:
                         await interaction.followup.send(embed=em, ephemeral=True)
                     else:
-                        if target_channel:
-                            await target_channel.send(embed=em)
+                        if interaction.channel:
+                            await interaction.channel.send(embed=em)
                         else:
                             await interaction.followup.send(embed=em, ephemeral=True)
                     sent += 1
@@ -302,27 +421,11 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send("No embeds found in payload.", ephemeral=True)
             return
 
-        # build primary embeds
+        # build primary embeds only (do not send referenced_embeds by default)
         primary_embeds = []
         for e in embeds_raw:
             try:
                 primary_embeds.append(_build_discord_embed(e))
-            except Exception:
-                continue
-
-        # include referenced_embeds appended so all referenced content is present in the single message
-        referenced = data.get("referenced_embeds") or {}
-        referenced_embeds_objs = []
-        if isinstance(referenced, dict):
-            for key, rval in referenced.items():
-                if isinstance(rval, dict):
-                    referenced_embeds_objs.append(rval)
-
-        # combine
-        all_embed_objs = primary_embeds[:]
-        for r in referenced_embeds_objs:
-            try:
-                all_embed_objs.append(_build_discord_embed(r))
             except Exception:
                 continue
 
@@ -331,15 +434,13 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send("No valid target channel found.", ephemeral=True)
             return
 
-        # attach view built from payload (callbacks inside)
         view = PayloadView(data, self.bot)
-
-        # send single message with all embeds + view
         try:
-            await target.send(embeds=all_embed_objs, view=view if len(view.children) > 0 else None)
-            await interaction.followup.send(f"Posted {len(all_embed_objs)} embed(s) to {target.mention}.", ephemeral=True)
+            await target.send(embeds=primary_embeds, view=view if len(view.children) > 0 else None)
+            await interaction.followup.send(f"Posted {len(primary_embeds)} embed(s) to {target.mention}. Select options send linked embed(s) ephemerally to you.", ephemeral=True)
         except Exception as ex:
             await interaction.followup.send(f"Failed to send embeds: {ex}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(EmbedNewCog(bot))
