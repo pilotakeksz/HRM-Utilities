@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import uuid
 from typing import Optional, List, Dict, Any
 
 import discord
@@ -125,10 +126,14 @@ class PayloadView(ui.View):
         self.payload = payload
         self.bot = bot
         self.referenced = payload.get("referenced_embeds") or {}
+        # map short keys -> base64 JSON or embed objects for send_json
+        self._send_json_map: Dict[str, str] = {}
+
         # Build buttons/selects from first embed's actions
         first = (payload.get("embeds") or [None])[0]
         if not first:
             return
+
         # Buttons
         for b in first.get("buttons", []) or []:
             if b.get("type") == "link" and b.get("url"):
@@ -153,9 +158,24 @@ class PayloadView(ui.View):
         for s in first.get("selects", []) or []:
             options = []
             for o in s.get("options", []) or []:
+                orig_val = o.get("value") or ""
+                use_val = orig_val
+
+                # if it's a send_json:... and too long for Discord, replace with short key
+                if orig_val.startswith("send_json:"):
+                    b64 = orig_val.split(":", 1)[1]
+                    # if entire value would exceed 100 chars (Discord limit), store a short key
+                    if len(orig_val) > 100:
+                        key = uuid.uuid4().hex  # 32 chars
+                        short_val = f"send_json_key:{key}"
+                        self._send_json_map[key] = b64
+                        use_val = short_val
+                    else:
+                        use_val = orig_val
+
                 options.append(discord.SelectOption(
                     label=o.get("label") or o.get("value") or "Option",
-                    value=o.get("value") or "",
+                    value=use_val,
                     description=o.get("description")
                 ))
             if not options:
@@ -170,7 +190,19 @@ class PayloadView(ui.View):
                 if not val:
                     await interaction.followup.send("No value selected.", ephemeral=True)
                     return
-                await self._handle_target_send(interaction, val, False)
+
+                # If it's a short key, restore original send_json token
+                if isinstance(val, str) and val.startswith("send_json_key:"):
+                    key = val.split(":", 1)[1]
+                    b64 = self._send_json_map.get(key)
+                    if not b64:
+                        await interaction.followup.send("Referenced payload not found.", ephemeral=True)
+                        return
+                    target_val = f"send_json:{b64}"
+                else:
+                    target_val = val
+
+                await self._handle_target_send(interaction, target_val, False)
 
             sel.callback = make_sel_cb
             self.add_item(sel)
