@@ -1,8 +1,11 @@
 import os
 import json
+import asyncio
+import re
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord import ui
 from datetime import datetime, timezone
 
 EMBED_DIR = os.path.join(os.path.dirname(__file__), "../embed-builder-web/data/embeds")
@@ -140,14 +143,116 @@ class SendView(discord.ui.View):
             await interaction.followup.send(f"Failed to send ephemeral: {e}", ephemeral=True)
             log(f"ERROR ephemeral posting: {e}")
 
+class KeyModal(ui.Modal, title="Paste embed key or JSON"):
+    key_or_json = ui.TextInput(label="Key or full JSON", style=discord.TextStyle.long, placeholder="Paste key or the JSON payload here", required=True)
+
+    def __init__(self, cog, author):
+        super().__init__()
+        self.cog = cog
+        self.author = author
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # only allow the invoker
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message("You cannot submit this form.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        await self.cog._handle_modal_payload(interaction, self.key_or_json.value)
+
+class ConfirmView(ui.View):
+    def __init__(self, bot, author, payload, target_channel_id):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.author = author
+        self.payload = payload
+        self.target_channel_id = str(target_channel_id)
+
+    async def _do_send(self, interaction: discord.Interaction, ephemeral: bool):
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message("Only the invoker can confirm.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=ephemeral)
+        chan = interaction.guild.get_channel(int(self.target_channel_id))
+        if not chan:
+            await interaction.followup.send("Target channel not found.", ephemeral=True)
+            return
+
+        count = 0
+        try:
+            plain = self.payload.get("plain_message", "") or None
+            for emb in self.payload.get("embeds", []):
+                e = discord.Embed(
+                    title=emb.get("title") or None,
+                    description=emb.get("description") or None,
+                    color=emb.get("color", 0)
+                )
+                if emb.get("thumbnail_url"):
+                    e.set_thumbnail(url=emb.get("thumbnail_url"))
+                if emb.get("image_url"):
+                    e.set_image(url=emb.get("image_url"))
+                if emb.get("footer"):
+                    e.set_footer(text=emb.get("footer"), icon_url=emb.get("footer_icon"))
+                for f in emb.get("fields", []):
+                    try:
+                        name, value, inline = f
+                        e.add_field(name=name[:256], value=value[:1024], inline=bool(inline))
+                    except Exception:
+                        pass
+                view = None
+                if emb.get("buttons"):
+                    view = ui.View()
+                    for b in emb.get("buttons", []):
+                        if b.get("type") == "link" and b.get("url"):
+                            view.add_item(ui.Button(label=b.get("label","link"), style=discord.ButtonStyle.link, url=b.get("url")))
+                        elif b.get("type") == "send_embed":
+                            btn = ui.Button(label=b.get("label","send"), style=discord.ButtonStyle.secondary, custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}")
+                            view.add_item(btn)
+                if ephemeral:
+                    # ephemeral messages can't be posted to other channels, so send ephemeral to invoker
+                    await interaction.followup.send(embed=e, ephemeral=True)
+                else:
+                    await chan.send(content=plain, embed=e, view=view)
+                count += 1
+
+            if ephemeral:
+                await interaction.followup.send(f"Sent {count} ephemeral embed(s).", ephemeral=True)
+            else:
+                await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}.", ephemeral=True)
+
+            log(f"SEND_CONFIRM: {interaction.user} posted key to channel {self.target_channel_id} embeds={count}")
+            try:
+                lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
+                await lc.send(f"`[{datetime.now(timezone.utc).isoformat()}]` {interaction.user} posted embeds to <#{self.target_channel_id}>")
+            except Exception:
+                pass
+        except Exception as e:
+            await interaction.followup.send(f"Failed to post: {e}", ephemeral=True)
+            log(f"ERROR posting in confirm: {e}")
+
+    @ui.button(label="Confirm (Public)", style=discord.ButtonStyle.success)
+    async def confirm_public(self, interaction: discord.Interaction, button: ui.Button):
+        await self._do_send(interaction, ephemeral=False)
+
+    @ui.button(label="Confirm (Ephemeral to you)", style=discord.ButtonStyle.secondary)
+    async def confirm_ephemeral(self, interaction: discord.Interaction, button: ui.Button):
+        await self._do_send(interaction, ephemeral=True)
+
+    @ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message("Only the invoker can cancel.", ephemeral=True)
+            return
+        await interaction.response.send_message("Cancelled.", ephemeral=True)
+        self.stop()
+
 class EmbedNewCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # existing helper kept
     def _load_payload_from_key_or_json(self, key_or_json: str, guild=None):
-        """Return (payload, error_str|None)."""
+        # same as before (no change)
         key_or_json = key_or_json.strip()
-        # JSON string
         if key_or_json.startswith("{") or key_or_json.startswith("["):
             try:
                 data = json.loads(key_or_json)
@@ -155,7 +260,6 @@ class EmbedNewCog(commands.Cog):
                 return payload, None
             except Exception as e:
                 return None, f"Invalid JSON: {e}"
-        # key -> file
         path = os.path.join(EMBED_DIR, f"{key_or_json}.json")
         if not os.path.exists(path):
             return None, "Key not found in embed storage."
@@ -167,35 +271,125 @@ class EmbedNewCog(commands.Cog):
         except Exception as e:
             return None, f"Failed to read key file: {e}"
 
-    @app_commands.command(name="embed_send", description="Interactive send of saved embed(s) by key or JSON")
-    async def slash_embed_send(self, interaction: discord.Interaction, key_or_json: str):
-        """Slash command wrapper for the existing !embed_send flow."""
-        # role check (same as the text command)
+    async def _handle_modal_payload(self, interaction: discord.Interaction, key_or_json: str):
+        # run role check
         if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
-            await interaction.response.send_message("You do not have permission to run this command.", ephemeral=True)
+            await interaction.followup.send("You do not have permission to run this.", ephemeral=True)
             return
 
         payload, err = self._load_payload_from_key_or_json(key_or_json, guild=interaction.guild)
         if err:
-            await interaction.response.send_message(err, ephemeral=True)
+            await interaction.followup.send(err, ephemeral=True)
             return
 
-        # build interactive view (same SendView used by the text command)
-        channels = [c for c in interaction.guild.channels if isinstance(c, discord.TextChannel)]
-        view = SendView(self.bot, interaction.user, payload)
+        # Ask user to paste channel in chat (non-ephemeral) - instruct and wait for message
+        prompt = await interaction.followup.send(f"{interaction.user.mention} — please paste the target channel mention (e.g. #channel) or channel ID in this channel within 60s.", ephemeral=False)
+        def check(m: discord.Message):
+            return m.author.id == interaction.user.id and m.channel.id == prompt.channel.id
 
-        sel = ChannelSelect(channels)
-        async def sel_callback(inter, select):
-            if inter.user.id != interaction.user.id:
-                await inter.response.send_message("Only the invoker can use this.", ephemeral=True)
+        try:
+            msg = await self.bot.wait_for('message', check=check, timeout=60)
+            # parse channel mention or id
+            match = re.search(r"<#(\d+)>", msg.content)
+            if match:
+                chan_id = match.group(1)
+            else:
+                # maybe raw ID
+                content = msg.content.strip()
+                if content.isdigit():
+                    chan_id = content
+                else:
+                    await interaction.followup.send("Couldn't parse channel. Please send a channel mention or channel ID.", ephemeral=True)
+                    return
+        except asyncio.TimeoutError:
+            await interaction.followup.send("Timed out waiting for channel. Cancelled.", ephemeral=True)
+            return
+
+        # show confirmation view
+        conf_view = ConfirmView(self.bot, interaction.user, payload, chan_id)
+        await interaction.followup.send(f"Selected channel: <#{chan_id}> — confirm send below (public or ephemeral to you).", view=conf_view, ephemeral=True)
+        log(f"INTERACTIVE_SEND_STARTED by {interaction.user} key_or_json={key_or_json} target_channel={chan_id}")
+
+    @commands.command(name="embed_send")
+    async def embed_send(self, ctx, *, key_or_json: str = None):
+        """Run interactive flow: show paste form, then ask for channel, then confirm."""
+        # If user passed key/json directly, reuse flow without modal
+        if key_or_json:
+            # run role check
+            if not any(r.id == ALLOWED_ROLE_ID for r in getattr(ctx.author, "roles", [])):
+                await ctx.send("You do not have permission to run this command.")
                 return
-            view.target_channel = select.values[0]
-            await inter.response.edit_message(content=f"Selected channel: <#{view.target_channel}>. Use Send Public or Send Ephemeral.", view=view)
-        sel.callback = sel_callback
-        view.add_item(sel)
+            payload, err = self._load_payload_from_key_or_json(key_or_json, guild=ctx.guild)
+            if err:
+                await ctx.send(err)
+                return
+            await ctx.send("Paste the target channel (mention or ID) in chat within 60s.")
+            def check(m: discord.Message):
+                return m.author.id == ctx.author.id and m.channel.id == ctx.channel.id
+            try:
+                msg = await self.bot.wait_for('message', check=check, timeout=60)
+                match = re.search(r"<#(\d+)>", msg.content)
+                if match:
+                    chan_id = match.group(1)
+                else:
+                    content = msg.content.strip()
+                    if content.isdigit():
+                        chan_id = content
+                    else:
+                        await ctx.send("Couldn't parse channel. Cancelled.")
+                        return
+            except asyncio.TimeoutError:
+                await ctx.send("Timed out waiting for channel. Cancelled.")
+                return
 
-        await interaction.response.send_message("Choose a target channel then press Send Public or Send Ephemeral.", view=view, ephemeral=True)
-        log(f"INTERACTIVE_SEND_STARTED by {interaction.user} key_or_json={key_or_json}")
+            conf_view = ConfirmView(self.bot, ctx.author, payload, chan_id)
+            await ctx.send(f"Selected channel: <#{chan_id}> — confirm send below.", view=conf_view)
+            log(f"INTERACTIVE_SEND_STARTED by {ctx.author} key_or_json={key_or_json} target_channel={chan_id}")
+            return
+
+        # show modal to paste key or JSON
+        modal = KeyModal(self, ctx.author)
+        await ctx.send_modal(modal)
+
+    @app_commands.command(name="embed_send", description="Interactive send of saved embed(s) by key or JSON (modal)")
+    async def slash_embed_send(self, interaction: discord.Interaction, key_or_json: str = None):
+        # Slash wrapper: if key provided, behave like text; otherwise show modal
+        if key_or_json:
+            # once used in slash, behave the same as above but using interaction
+            if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+                await interaction.response.send_message("You do not have permission to run this command.", ephemeral=True)
+                return
+            payload, err = self._load_payload_from_key_or_json(key_or_json, guild=interaction.guild)
+            if err:
+                await interaction.response.send_message(err, ephemeral=True)
+                return
+            await interaction.response.send_message("Please paste the target channel mention or ID in the channel where you invoked the command within 60s.", ephemeral=False)
+            def check(m: discord.Message):
+                return m.author.id == interaction.user.id and m.channel.id == interaction.channel.id
+            try:
+                msg = await self.bot.wait_for('message', check=check, timeout=60)
+                match = re.search(r"<#(\d+)>", msg.content)
+                if match:
+                    chan_id = match.group(1)
+                else:
+                    content = msg.content.strip()
+                    if content.isdigit():
+                        chan_id = content
+                    else:
+                        await interaction.edit_original_response(content="Couldn't parse channel. Cancelled.")
+                        return
+            except asyncio.TimeoutError:
+                await interaction.edit_original_response(content="Timed out waiting for channel. Cancelled.")
+                return
+
+            conf_view = ConfirmView(self.bot, interaction.user, payload, chan_id)
+            await interaction.followup.send(f"Selected channel: <#{chan_id}> — confirm send below.", view=conf_view, ephemeral=True)
+            log(f"INTERACTIVE_SEND_STARTED by {interaction.user} key_or_json={key_or_json} target_channel={chan_id}")
+            return
+
+        # no key — show modal
+        modal = KeyModal(self, interaction.user)
+        await interaction.response.send_modal(modal)
 
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))

@@ -91,23 +91,70 @@
     const preview = qs("preview-area"); if(!preview) return;
     preview.innerHTML = "";
     const s = current();
+
     const card = document.createElement("div"); card.className="preview-card";
-    const title = document.createElement("div"); title.style.color="#d0b47b"; title.textContent = s.title || "(no title)";
+    // color stripe
+    const stripe = document.createElement("div"); stripe.style.width="8px"; stripe.style.height="100%";
+    stripe.style.background = s.color ? `#${String(s.color).padStart(6,'0')}` : "#2f3136";
+    stripe.style.borderRadius = "6px 0 0 6px"; stripe.style.float="left"; stripe.style.marginRight = "12px";
+    card.append(stripe);
+
+    const inner = document.createElement("div"); inner.style.paddingLeft = "12px";
+    const header = document.createElement("div"); header.style.display="flex"; header.style.alignItems="center"; header.style.justifyContent="space-between";
+    const left = document.createElement("div");
+    const title = document.createElement("div"); title.style.color="#d0b47b"; title.style.fontWeight="700"; title.textContent = s.title || "(no title)";
     const desc = document.createElement("div"); desc.textContent = s.description || "";
-    card.append(title,desc);
-    if(s.thumbnail_url){ const th = document.createElement("img"); th.src = s.thumbnail_url; th.style.width="64px"; th.style.float="right"; card.append(th) }
-    if(s.image_url){ const img=document.createElement("img"); img.src=s.image_url; img.style.maxWidth="100%"; card.append(img) }
-    if(s.fields.length){ s.fields.forEach(f=>{ const el=document.createElement("div"); el.innerHTML=`<b>${f.name}</b>: ${f.value}`; card.append(el) }) }
-    if(s.buttons.length){
-      const row=document.createElement("div"); row.style.marginTop="8px";
+    left.append(title, desc);
+    const right = document.createElement("div");
+    if(s.footer_icon){ const ficon = document.createElement("img"); ficon.src = s.footer_icon; ficon.style.width="40px"; ficon.style.height="40px"; ficon.style.borderRadius="6px"; ficon.style.objectFit="cover"; right.append(ficon) }
+    header.append(left, right);
+
+    inner.append(header);
+
+    if(s.thumbnail_url){
+      const th = document.createElement("img"); th.src = s.thumbnail_url; th.style.width="80px"; th.style.float="right"; th.style.marginLeft="10px"; inner.append(th);
+    }
+    if(s.image_url){
+      const img = document.createElement("img"); img.src = s.image_url; img.style.maxWidth="100%"; img.style.marginTop="8px"; inner.append(img);
+    }
+
+    // fields in grid
+    if(s.fields && s.fields.length){
+      const grid = document.createElement("div"); grid.style.display="grid"; grid.style.gridTemplateColumns = "repeat(auto-fit,minmax(180px,1fr))"; grid.style.gap = "8px"; grid.style.marginTop = "8px";
+      s.fields.forEach(f=>{
+        const fb = document.createElement("div"); fb.style.padding = "8px"; fb.style.background = "rgba(255,255,255,0.02)"; fb.style.borderRadius = "6px";
+        const fn = document.createElement("div"); fn.style.fontWeight = "600"; fn.textContent = f.name || "(no name)";
+        const fv = document.createElement("div"); fv.style.marginTop="6px"; fv.textContent = f.value || "";
+        fb.append(fn, fv);
+        grid.append(fb);
+      });
+      inner.append(grid);
+    }
+
+    // buttons with optional icons
+    if(s.buttons && s.buttons.length){
+      const row = document.createElement("div"); row.style.marginTop="12px";
       s.buttons.forEach(b=>{
-        const btn = document.createElement("button"); btn.className="btn"; btn.textContent = b.label || "button";
-        if(b.type==="link" && b.url) btn.onclick = ()=>window.open(b.url,"_blank");
+        const btn = document.createElement("button"); btn.className="btn"; btn.style.display="inline-flex"; btn.style.alignItems="center"; btn.style.gap="8px";
+        if(b.icon){ const bi = document.createElement("img"); bi.src = b.icon; bi.style.width="18px"; bi.style.height="18px"; bi.style.objectFit="cover"; bi.style.borderRadius="4px"; btn.append(bi) }
+        const span = document.createElement("span"); span.textContent = b.label || "button"; btn.append(span);
+        if(b.type==="link" && b.url) btn.onclick = ()=>window.open(b.url, "_blank");
         row.append(btn);
       });
-      card.append(row)
+      inner.append(row);
     }
-    if(s.plain_message){ const m=document.createElement("div"); m.style.marginTop="8px"; m.textContent = s.plain_message; card.append(m) }
+
+    if(s.plain_message){
+      const pm = document.createElement("div"); pm.style.marginTop="12px"; pm.style.padding="8px"; pm.style.background="rgba(255,255,255,0.02)"; pm.style.borderRadius="6px"; pm.textContent = s.plain_message;
+      inner.append(pm);
+    }
+
+    if(s.footer){
+      const footer = document.createElement("div"); footer.style.marginTop="12px"; footer.style.fontSize="12px"; footer.style.color="#9aa3ad"; footer.textContent = s.footer;
+      inner.append(footer);
+    }
+
+    card.append(inner);
     preview.append(card);
   }
 
