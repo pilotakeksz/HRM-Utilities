@@ -474,7 +474,10 @@ class EmbedBuilder {
         this.embeds.forEach((embed, index) => {
             const item = document.createElement('div');
             item.className = `embed-item ${index === this.currentEmbedIndex ? 'active' : ''}`;
-            item.addEventListener('click', () => this.setCurrentEmbed(index));
+
+            const leftSection = document.createElement('div');
+            leftSection.className = 'embed-item-left';
+            leftSection.addEventListener('click', () => this.setCurrentEmbed(index));
 
             const number = document.createElement('div');
             number.className = 'embed-number';
@@ -484,8 +487,20 @@ class EmbedBuilder {
             title.className = 'embed-title';
             title.textContent = embed.title || `Embed ${index + 1}`;
 
-            item.appendChild(number);
-            item.appendChild(title);
+            leftSection.appendChild(number);
+            leftSection.appendChild(title);
+
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'btn btn-sm btn-secondary embed-save-btn';
+            saveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17,21 17,13 7,13 7,21"></polyline><polyline points="7,3 7,8 15,8"></polyline></svg>';
+            saveBtn.title = 'Save this embed';
+            saveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.saveCurrentEmbed(index);
+            });
+
+            item.appendChild(leftSection);
+            item.appendChild(saveBtn);
             container.appendChild(item);
         });
     }
@@ -820,7 +835,7 @@ class EmbedBuilder {
         if (!jsonText) {
             alert('Please enter JSON data');
       return;
-        }
+    }
 
         try {
             const data = JSON.parse(jsonText);
@@ -1062,11 +1077,12 @@ class EmbedBuilder {
         }
     }
 
-    saveCurrentEmbed() {
+    saveCurrentEmbed(embedIndex = null) {
+        const index = embedIndex !== null ? embedIndex : this.currentEmbedIndex;
         const key = prompt('Enter a name for this embed:');
         if (!key) return;
 
-        const embed = this.embeds[this.currentEmbedIndex];
+        const embed = this.embeds[index];
         const data = {
             key,
             embed,

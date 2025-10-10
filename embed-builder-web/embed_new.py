@@ -288,10 +288,6 @@ class ComprehensiveSendView(discord.ui.View):
                 "metadata": self.payload.get("metadata", {})
             }
             
-            # Send the complete JSON as a code block for reference
-            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
-            if len(json_str) <= 2000:
-                await chan.send(f"```json\n{json_str}\n```")
             
             plain = self.payload.get("plain_message", "") or None
             for emb in self.payload.get("embeds", []):
@@ -363,10 +359,6 @@ class ComprehensiveSendView(discord.ui.View):
                 "metadata": self.payload.get("metadata", {})
             }
             
-            # Send the complete JSON as a code block for reference
-            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
-            if len(json_str) <= 2000:
-                await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
             
             for emb in self.payload.get("embeds", []):
                 e = discord.Embed(
@@ -545,13 +537,6 @@ class ConfirmView(ui.View):
                 "metadata": self.payload.get("metadata", {})
             }
             
-            # Send the complete JSON as a code block for reference
-            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
-            if len(json_str) <= 2000:
-                if ephemeral:
-                    await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
-                else:
-                    await chan.send(f"```json\n{json_str}\n```")
 
             plain = self.payload.get("plain_message", "") or None
             for emb in self.payload.get("embeds", []):

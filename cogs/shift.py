@@ -1350,6 +1350,10 @@ class ShiftCog(commands.Cog):
         if not any(r.id == ROLE_ADMIN for r in user.roles):  # type: ignore
             await interaction.response.send_message("You lack admin role.", ephemeral=True)
             return
+        
+        # Defer the response first to prevent timeout
+        await interaction.response.defer(ephemeral=False)
+        
         try:
             num_records, total_seconds = self.store.get_statistics()
             # Count members with manage role
@@ -1362,18 +1366,22 @@ class ShiftCog(commands.Cog):
             except asyncio.TimeoutError:
                 msg_count = 0
                 print("Message counting timed out, using 0 as default")
+            except Exception as e:
+                print(f"Error counting messages: {e}")
+                msg_count = 0
+            
             emb = self.base_embed("Shift Stats (Global)", colour_info())
             emb.add_field(name="Total unique shifts", value=str(num_records), inline=True)
             emb.add_field(name="Total shift time", value=human_td(total_seconds), inline=True)
             emb.add_field(name="Since reset", value=f"<t:{ts_to_int(last_reset)}:F>", inline=True)
             emb.add_field(name="Messages since reset (in personnel-chat channel)", value=str(msg_count), inline=True)
             emb.add_field(name="Members with personnel role", value=str(role_count), inline=True)
-            await interaction.response.send_message(embed=emb, ephemeral=False)
+            await interaction.followup.send(embed=emb, ephemeral=False)
         except Exception as e:
             print(f"Error in shift_stats command: {e}")
             emb = self.base_embed("Shift Stats (Global)", colour_err())
             emb.description = f"Error retrieving statistics: {str(e)}"
-            await interaction.response.send_message(embed=emb, ephemeral=True)
+            await interaction.followup.send(embed=emb, ephemeral=True)
 
     # ---------------- LOGGING TOGGLE ----------------
     @app_commands.command(name="shift_lists", description="Show promotion and infractions lists (admin only).")
