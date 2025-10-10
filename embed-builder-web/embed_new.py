@@ -797,5 +797,177 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send(f"Failed to send webhook: {e}", ephemeral=True)
             log(f"ERROR webhook: {e}")
 
+    @app_commands.command(name="embed_send_json", description="Send embeds directly from complete JSON data")
+    async def embed_send_json(self, interaction: discord.Interaction, json_data: str, channel: discord.TextChannel = None):
+        """Send embeds directly from complete JSON data to a channel."""
+        if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+            await interaction.response.send_message("You do not have permission to run this command.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Parse the JSON data
+            data = json.loads(json_data)
+            
+            # Extract embeds from the data
+            embeds_data = data.get("embeds", [])
+            if not embeds_data:
+                await interaction.followup.send("No embeds found in the JSON data.", ephemeral=True)
+                return
+
+            # Determine target channel
+            target_channel = channel or interaction.channel
+            if not target_channel:
+                await interaction.followup.send("No valid channel found.", ephemeral=True)
+                return
+
+            # Send each embed
+            sent_count = 0
+            for embed_data in embeds_data:
+                try:
+                    # Create Discord embed
+                    embed = discord.Embed(
+                        title=embed_data.get("title"),
+                        description=embed_data.get("description"),
+                        color=_parse_color(embed_data.get("color")),
+                        url=embed_data.get("url")
+                    )
+
+                    # Add author if present
+                    if embed_data.get("author", {}).get("name"):
+                        author = embed_data["author"]
+                        embed.set_author(
+                            name=author["name"],
+                            url=author.get("url"),
+                            icon_url=author.get("icon_url")
+                        )
+
+                    # Add thumbnail if present
+                    if embed_data.get("thumbnail", {}).get("url"):
+                        embed.set_thumbnail(url=embed_data["thumbnail"]["url"])
+
+                    # Add image if present
+                    if embed_data.get("image", {}).get("url"):
+                        embed.set_image(url=embed_data["image"]["url"])
+
+                    # Add fields if present
+                    for field in embed_data.get("fields", []):
+                        embed.add_field(
+                            name=field.get("name", "\u200b"),
+                            value=field.get("value", "\u200b"),
+                            inline=field.get("inline", False)
+                        )
+
+                    # Add footer if present
+                    if embed_data.get("footer", {}).get("text"):
+                        footer = embed_data["footer"]
+                        embed.set_footer(
+                            text=footer["text"],
+                            icon_url=footer.get("icon_url")
+                        )
+
+                    # Create view with buttons and select menus
+                    view = discord.ui.View()
+                    
+                    # Add buttons
+                    for button_data in embed_data.get("buttons", []):
+                        if button_data.get("type") == "link" and button_data.get("url"):
+                            view.add_item(discord.ui.Button(
+                                label=button_data.get("label", "Button"),
+                                style=discord.ButtonStyle.link,
+                                url=button_data["url"]
+                            ))
+
+                    # Add select menus
+                    for select_data in embed_data.get("selects", []):
+                        options = []
+                        for option_data in select_data.get("options", []):
+                            options.append(discord.SelectOption(
+                                label=option_data.get("label", "Option"),
+                                value=option_data.get("value", ""),
+                                description=option_data.get("description", ""),
+                                emoji=option_data.get("icon") if option_data.get("icon", "").startswith((":", "<")) else None
+                            ))
+                        
+                        if options:
+                            select = discord.ui.Select(
+                                placeholder=select_data.get("placeholder", "Choose an option..."),
+                                min_values=1,
+                                max_values=1,
+                                options=options
+                            )
+                            
+                            # Add callback for select menu
+                            async def select_callback(interaction: discord.Interaction, select_data=select_data):
+                                await interaction.response.defer(ephemeral=True)
+                                selected_value = interaction.data["values"][0]
+                                
+                                # Handle different option types
+                                if selected_value.startswith("send:"):
+                                    # Handle send:key format
+                                    key = selected_value.split(":", 1)[1]
+                                    path = os.path.join(EMBED_DIR, f"{key}.json")
+                                    if os.path.exists(path):
+                                        try:
+                                            with open(path, "r", encoding="utf-8") as f:
+                                                saved_data = json.load(f)
+                                            saved_payload = saved_data.get("payload") or saved_data
+                                            
+                                            # Send the saved embed
+                                            for saved_embed_data in saved_payload.get("embeds", []):
+                                                saved_embed = discord.Embed(
+                                                    title=saved_embed_data.get("title"),
+                                                    description=saved_embed_data.get("description"),
+                                                    color=_parse_color(saved_embed_data.get("color"))
+                                                )
+                                                await interaction.followup.send(embed=saved_embed, ephemeral=True)
+                                        except Exception as e:
+                                            await interaction.followup.send(f"Error loading saved embed: {e}", ephemeral=True)
+                                    else:
+                                        await interaction.followup.send(f"Saved embed '{key}' not found.", ephemeral=True)
+                                
+                                elif selected_value.startswith("link:"):
+                                    # Handle link:url format
+                                    url = selected_value.split(":", 1)[1]
+                                    await interaction.followup.send(f"<{url}>", ephemeral=True)
+                                
+                                else:
+                                    # Handle other values
+                                    await interaction.followup.send(f"Selected: {selected_value}", ephemeral=True)
+                            
+                            select.callback = select_callback
+                            view.add_item(select)
+
+                    # Send the embed
+                    await target_channel.send(embed=embed, view=view if view.children else None)
+                    sent_count += 1
+
+                except Exception as e:
+                    log(f"ERROR sending embed: {e}")
+                    continue
+
+            # Send confirmation
+            await interaction.followup.send(
+                f"Successfully sent {sent_count} embed(s) to {target_channel.mention}!", 
+                ephemeral=True
+            )
+            
+            # Log the action
+            log(f"EMBED_SEND_JSON: {interaction.user} sent {sent_count} embeds to {target_channel.id}")
+            
+            # Send to log channel
+            try:
+                lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
+                await lc.send(f"`[{datetime.now(timezone.utc).isoformat()}]` {interaction.user} sent {sent_count} embeds to {target_channel.mention} via JSON")
+            except Exception:
+                pass
+
+        except json.JSONDecodeError as e:
+            await interaction.followup.send(f"Invalid JSON format: {e}", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"Error processing JSON: {e}", ephemeral=True)
+            log(f"ERROR embed_send_json: {e}")
+
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))
