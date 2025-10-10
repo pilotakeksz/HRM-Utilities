@@ -1412,18 +1412,21 @@ class EmbedBuilder {
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   try {
-    window.embedBuilder = new EmbedBuilder();
-    if (typeof window.embedBuilder.init === 'function') {
-      window.embedBuilder.init();
+    // Ensure single initialization
+    if (!window.embedBuilder) {
+      window.embedBuilder = new EmbedBuilder(); // constructor calls init()
     }
 
+    // Bind contextmenu handler once
     const sendBtn = document.getElementById('send-btn');
-    if (sendBtn) {
+    if (sendBtn && !sendBtn._ctxmenuBound) {
       sendBtn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         // existing contextmenu handler code (if any) can go here
       });
+      sendBtn._ctxmenuBound = true;
     }
+
   } catch (err) {
     console.error("EmbedBuilder initialization failed:", err);
   }
