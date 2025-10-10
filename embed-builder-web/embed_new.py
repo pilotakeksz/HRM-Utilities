@@ -33,7 +33,6 @@ def _parse_color(val):
     try:
         if isinstance(val, str):
             v = val.strip().lstrip("#")
-            # sometimes saved as "0xffffff" or with 0x prefix
             if v.startswith("0x"):
                 v = v[2:]
             return int(v, 16)
@@ -42,6 +41,31 @@ def _parse_color(val):
     except Exception:
         return None
     return None
+
+def _iter_fields(field_list):
+    """Yield (name, value, inline) for a variety of stored field shapes."""
+    for f in field_list or []:
+        if isinstance(f, (list, tuple)):
+            # [name, value, inline]
+            try:
+                name, value, inline = f
+            except Exception:
+                # try shorter shapes
+                try:
+                    name, value = f[0], f[1]
+                    inline = False
+                except Exception:
+                    continue
+        elif isinstance(f, dict):
+            name = f.get("name") or f.get("title") or ""
+            value = f.get("value") or f.get("val") or ""
+            inline = bool(f.get("inline"))
+        else:
+            # unknown shape: stringify
+            name = "field"
+            value = str(f)
+            inline = False
+        yield (str(name)[:256], str(value)[:1024], bool(inline))
 
 class ChannelSelect(discord.ui.Select):
     def __init__(self, channels):
@@ -91,21 +115,18 @@ class SendView(discord.ui.View):
                     e.set_image(url=emb.get("image_url"))
                 if emb.get("footer"):
                     e.set_footer(text=emb.get("footer"), icon_url=emb.get("footer_icon"))
-                for f in emb.get("fields", []):
+                for name, value, inline in _iter_fields(emb.get("fields")):
                     try:
-                        name, value, inline = f
-                        e.add_field(name=name[:256], value=value[:1024], inline=bool(inline))
+                        e.add_field(name=name, value=value, inline=inline)
                     except Exception:
                         pass
                 view = None
                 if emb.get("buttons"):
                     view = discord.ui.View()
                     for b in emb.get("buttons", []):
-                        # b = dict with type,label,url,target,icon,ephemeral in our frontend
                         if b.get("type") == "link" and b.get("url"):
                             view.add_item(discord.ui.Button(label=b.get("label","link"), style=discord.ButtonStyle.link, url=b.get("url")))
                         elif b.get("type") == "send_embed":
-                            # create a button that triggers a custom_id handled elsewhere (not implemented here)
                             btn = discord.ui.Button(label=b.get("label","send"), style=discord.ButtonStyle.secondary, custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}")
                             view.add_item(btn)
                 await chan.send(content=plain, embed=e, view=view)
@@ -142,10 +163,9 @@ class SendView(discord.ui.View):
                     e.set_image(url=emb.get("image_url"))
                 if emb.get("footer"):
                     e.set_footer(text=emb.get("footer"), icon_url=emb.get("footer_icon"))
-                for f in emb.get("fields", []):
+                for name, value, inline in _iter_fields(emb.get("fields")):
                     try:
-                        name, value, inline = f
-                        e.add_field(name=name[:256], value=value[:1024], inline=bool(inline))
+                        e.add_field(name=name, value=value, inline=inline)
                     except Exception:
                         pass
                 await interaction.followup.send(embed=e, ephemeral=True)
@@ -210,10 +230,9 @@ class ConfirmView(ui.View):
                     e.set_image(url=emb.get("image_url"))
                 if emb.get("footer"):
                     e.set_footer(text=emb.get("footer"), icon_url=emb.get("footer_icon"))
-                for f in emb.get("fields", []):
+                for name, value, inline in _iter_fields(emb.get("fields")):
                     try:
-                        name, value, inline = f
-                        e.add_field(name=name[:256], value=value[:1024], inline=bool(inline))
+                        e.add_field(name=name, value=value, inline=inline)
                     except Exception:
                         pass
                 view = None

@@ -4,11 +4,7 @@
   function uuid(){ return crypto?.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(36).slice(2,10) }
 
   const State = { sessions: [], idx: 0 };
-  function newSession(){ return {
-    title:"", description:"", color:"", image_url:"", thumbnail_url:"", footer:"", footer_icon:"",
-    fields:[], buttons:[], plain_message:""
-  } }
-
+  function newSession(){ return { title:"", description:"", color:"", image_url:"", thumbnail_url:"", footer:"", footer_icon:"", fields:[], buttons:[], plain_message:"" } }
   function current(){ return State.sessions[State.idx] }
 
   function renderSessionInfo(){
@@ -103,7 +99,6 @@
     preview.innerHTML = "";
     const s = current();
 
-    // build structured preview (no floats)
     const card = document.createElement("div");
     card.className = "preview-card";
 
@@ -116,10 +111,11 @@
     const content = document.createElement("div");
     content.className = "preview-content";
 
-    // header (title + optional footer icon)
+    // header
     const header = document.createElement("div");
     header.className = "preview-header";
     const headerLeft = document.createElement("div");
+    headerLeft.className = "preview-header-left";
     const title = document.createElement("div");
     title.className = "preview-title";
     title.textContent = s.title || "(no title)";
@@ -129,23 +125,26 @@
     headerLeft.appendChild(title);
     headerLeft.appendChild(desc);
     header.appendChild(headerLeft);
-    if (s.footer_icon) {
+
+    // thumbnail (absolute top-right inside header)
+    if (s.thumbnail_url) {
+      const th = document.createElement("img");
+      th.className = "preview-thumbnail";
+      th.src = s.thumbnail_url;
+      header.appendChild(th);
+    }
+
+    // footer/icon on header right (if present)
+    if (s.footer_icon && !s.thumbnail_url) {
       const ficon = document.createElement("img");
       ficon.className = "preview-footer-icon";
       ficon.src = s.footer_icon;
       header.appendChild(ficon);
     }
+
     content.appendChild(header);
 
-    // thumbnail to the right inside header area (if provided)
-    if (s.thumbnail_url) {
-      const th = document.createElement("img");
-      th.className = "preview-thumbnail";
-      th.src = s.thumbnail_url;
-      content.appendChild(th);
-    }
-
-    // main image (full width)
+    // main image
     if (s.image_url) {
       const img = document.createElement("img");
       img.className = "preview-image";
@@ -153,19 +152,37 @@
       content.appendChild(img);
     }
 
-    // fields grid
+    // fields: support array form [name,value,inline] or object {name,value,inline}
     if (s.fields && s.fields.length) {
-      const grid = document.createElement("div");
-      grid.className = "preview-fields-grid";
+      const fieldsWrap = document.createElement("div");
+      fieldsWrap.className = "preview-fields-wrap";
+
       s.fields.forEach(f=>{
+        let name = "", value = "", inline = false;
+        if (Array.isArray(f)) {
+          name = f[0] || "";
+          value = f[1] || "";
+          inline = !!f[2];
+        } else if (f && typeof f === "object") {
+          name = f.name || "";
+          value = f.value || f.val || f.inline === undefined ? (f.value || "") : (f.value || "");
+          inline = !!f.inline;
+        } else {
+          // fallback: try to stringify
+          name = "field";
+          value = String(f);
+        }
+
         const fb = document.createElement("div");
-        fb.className = "preview-field-box";
-        const fn = document.createElement("div"); fn.className = "preview-field-name"; fn.textContent = f.name || "(no name)";
-        const fv = document.createElement("div"); fv.className = "preview-field-value"; fv.textContent = f.value || "";
-        fb.appendChild(fn); fb.appendChild(fv);
-        grid.appendChild(fb);
+        fb.className = "preview-field" + (inline ? " inline" : "");
+        const fn = document.createElement("div"); fn.className = "preview-field-name"; fn.textContent = name || "(no name)";
+        const fv = document.createElement("div"); fv.className = "preview-field-value"; fv.textContent = value || "";
+        fb.appendChild(fn);
+        fb.appendChild(fv);
+        fieldsWrap.appendChild(fb);
       });
-      content.appendChild(grid);
+
+      content.appendChild(fieldsWrap);
     }
 
     // buttons row
@@ -183,24 +200,42 @@
         }
         const span = document.createElement("span"); span.textContent = b.label || "button";
         btn.appendChild(span);
-        if (b.type === "link" && b.url) btn.onclick = ()=>window.open(b.url, "_blank");
+        // small external indicator for links
+        if (b.type === "link" && b.url) {
+          const ext = document.createElement("span");
+          ext.className = "preview-button-ext";
+          ext.textContent = "↗";
+          btn.appendChild(ext);
+          btn.onclick = ()=>window.open(b.url, "_blank");
+        }
         row.appendChild(btn);
       });
       content.appendChild(row);
     }
 
-    // plain message and footer
+    // plain message
     if (s.plain_message) {
       const pm = document.createElement("div");
       pm.className = "preview-plain-message";
       pm.textContent = s.plain_message;
       content.appendChild(pm);
     }
+
+    // footer row (icon + text)
     if (s.footer) {
-      const footer = document.createElement("div");
-      footer.className = "preview-footer-text";
-      footer.textContent = s.footer;
-      content.appendChild(footer);
+      const footerRow = document.createElement("div");
+      footerRow.className = "preview-footer-row";
+      if (s.footer_icon) {
+        const fi = document.createElement("img");
+        fi.className = "preview-footer-icon-left";
+        fi.src = s.footer_icon;
+        footerRow.appendChild(fi);
+      }
+      const ft = document.createElement("div");
+      ft.className = "preview-footer-text";
+      ft.textContent = s.footer;
+      footerRow.appendChild(ft);
+      content.appendChild(footerRow);
     }
 
     card.appendChild(content);
@@ -254,6 +289,8 @@
     State.sessions = [ newSession() ];
     bind();
     renderSessionInfo();
+    renderStoredList();
+    setupSaveLocalHook();
   }
 
   function bind(){
@@ -333,13 +370,108 @@
     });
   }
 
-  // JSON display open/close
+  // --- stored list helpers ---
+  function getStoredKeys(){
+    return Object.keys(localStorage).filter(k=>k.startsWith("embed_")).sort();
+  }
+
+  function renderStoredList(){
+    const container = qs("stored-list");
+    if(!container) return;
+    container.innerHTML = "";
+    const keys = getStoredKeys();
+    if(keys.length === 0){
+      container.innerHTML = '<div class="stored-empty muted">No stored embeds</div>';
+      return;
+    }
+    keys.forEach(key=>{
+      try{
+        const raw = localStorage.getItem(key);
+        const obj = raw ? JSON.parse(raw) : null;
+        const label = (obj && obj.key) ? obj.key : key.replace(/^embed_/,"");
+        const item = document.createElement("div");
+        item.className = "stored-item";
+        item.innerHTML = `
+          <div class="stored-left">
+            <div class="stored-key">${label}</div>
+            <div class="stored-meta muted">saved</div>
+          </div>
+          <div class="stored-actions">
+            <button class="icon-btn copy-key" title="Copy key">📋</button>
+            <button class="icon-btn view-json" title="View JSON">🗎</button>
+            <button class="icon-btn download-json" title="Download JSON">⬇</button>
+            <button class="icon-btn delete-json" title="Delete">🗑</button>
+          </div>
+        `;
+        // wire buttons
+        const copyKeyBtn = item.querySelector(".copy-key");
+        const viewJsonBtn = item.querySelector(".view-json");
+        const downloadBtn = item.querySelector(".download-json");
+        const deleteBtn = item.querySelector(".delete-json");
+
+        copyKeyBtn.onclick = ()=>{
+          const k = (obj && obj.key) ? obj.key : label;
+          navigator.clipboard.writeText(k).then(()=>{ alert("Copied key: "+k) });
+        };
+        viewJsonBtn.onclick = ()=>{
+          // open JSON modal with pretty printed payload (if stored object contains embeds/ payload)
+          const payload = obj && (obj.embeds || obj.payload || obj) ? (obj.payload || obj) : obj;
+          openJsonDisplay(JSON.stringify(payload, null, 2));
+        };
+        downloadBtn.onclick = ()=>{
+          const payload = obj && (obj.embeds || obj.payload || obj) ? (obj.payload || obj) : obj;
+          const text = JSON.stringify(payload, null, 2);
+          const blob = new Blob([text], {type:"application/json"});
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `${label || key}.json`;
+          a.click();
+        };
+        deleteBtn.onclick = ()=>{
+          if(!confirm("Delete stored embed '"+label+"'?")) return;
+          localStorage.removeItem(key);
+          renderStoredList();
+        };
+
+        container.appendChild(item);
+      }catch(e){
+        // skip broken entry
+      }
+    });
+  }
+
+  // override save-local to refresh stored list (hook existing save behavior)
+  function setupSaveLocalHook(){
+    const saveBtn = qs("save-local");
+    if(!saveBtn) return;
+    saveBtn.addEventListener("click", ()=>{
+      // small delay to allow existing handler to set localStorage
+      setTimeout(()=>{ renderStoredList() }, 150);
+    });
+  }
+
+  // JSON display open/close (existing)
   function openJsonDisplay(jsonText){
     const m = qs("json-display"); if(!m) return;
     qs("json-code").textContent = jsonText;
     m.classList.remove("hidden"); m.setAttribute("aria-hidden","false");
   }
   function closeJsonDisplay(){ const m = qs("json-display"); if(!m) return; m.classList.add("hidden"); m.setAttribute("aria-hidden","true"); qs("json-code").textContent = ""; }
+
+  // ensure stored list refresh after init
+  function init(){
+    State.sessions = [ newSession() ];
+    bind();
+    renderSessionInfo();
+    renderStoredList();
+    setupSaveLocalHook();
+  }
+
+  // ensure json modal close button hooked
+  document.addEventListener("DOMContentLoaded", ()=>{
+    const jsonClose = qs("json-close");
+    if(jsonClose) jsonClose.onclick = ()=>{ closeJsonDisplay() };
+  });
 
   init();
 })();

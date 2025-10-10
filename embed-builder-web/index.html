@@ -22,7 +22,6 @@
       <button id="export-json" class="btn">Export JSON</button>
       <button id="import-json" class="btn">Import JSON</button>
       <button id="copy-json" class="btn">Copy JSON</button>
-      <!-- hidden file input for upload -->
       <input id="upload-json-file" type="file" accept=".json,application/json" style="display:none" />
     </div>
   </header>
@@ -30,6 +29,12 @@
   <main class="app" role="main">
     <aside class="sidebar">
       <div id="session-info">Embed 1 / 1</div>
+
+      <!-- stored list (populated from localStorage embed_... keys) -->
+      <div id="stored-list" class="stored-list" aria-live="polite">
+        <!-- populated by app.js -->
+      </div>
+
       <div class="muted" id="last-key"></div>
     </aside>
 
@@ -105,6 +110,7 @@
   <!-- JSON display / copy overlay -->
   <div id="json-display" class="modal hidden" aria-hidden="true">
     <div class="modal-inner code-modal">
+      <!-- moved inside modal-inner so styling can highlight it -->
       <button id="json-close" class="close-x" title="Close">✕</button>
       <h3>Exported JSON</h3>
       <pre id="json-pre"><code id="json-code"></code></pre>
@@ -117,20 +123,5 @@
 
   <script src="particles.js"></script>
   <script src="app.js"></script>
-  <script>
-    // particles init (particles.js file in same folder)
-    particlesJS('particles-js', {
-      particles: {
-        number: { value: 80, density: { enable: true, value_area: 800 } },
-        color: { value: ["#d0b47b", "#ffffff", "#aaaaaa"] },
-        shape: { type: "circle" },
-        opacity: { value: 0.55 },
-        size: { value: 3 },
-        line_linked: { enable: true, distance: 110, color: "#d0b47b", opacity: 0.12 },
-        move: { enable: true, speed: 1 }
-      },
-      interactivity: { events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" } } }
-    });
-  </script>
 </body>
 </html>
