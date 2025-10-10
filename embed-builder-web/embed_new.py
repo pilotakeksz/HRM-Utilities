@@ -846,8 +846,14 @@ class EmbedNewCog(commands.Cog):
             # Parse the JSON data
             data = json.loads(json_data)
             
+            # Debug: Log the parsed data structure
+            log(f"Parsed JSON data: {data}")
+            log(f"Data keys: {list(data.keys())}")
+            
             # Extract embeds from the data
             embeds_data = data.get("embeds", [])
+            log(f"Found {len(embeds_data)} embeds in data")
+            
             if not embeds_data:
                 await interaction.followup.send("No embeds found in the JSON data.", ephemeral=True)
                 return
@@ -860,8 +866,11 @@ class EmbedNewCog(commands.Cog):
 
             # Send each embed
             sent_count = 0
-            for embed_data in embeds_data:
+            for i, embed_data in enumerate(embeds_data):
                 try:
+                    # Debug: Log embed data
+                    log(f"Processing embed {i}: {embed_data}")
+                    
                     # Create Discord embed
                     embed = discord.Embed(
                         title=embed_data.get("title"),
@@ -869,6 +878,21 @@ class EmbedNewCog(commands.Cog):
                         color=_parse_color(embed_data.get("color")),
                         url=embed_data.get("url")
                     )
+                    
+                    # Debug: Check if embed has any content
+                    has_content = any([
+                        embed.title,
+                        embed.description,
+                        embed_data.get("fields"),
+                        embed_data.get("author", {}).get("name"),
+                        embed_data.get("footer", {}).get("text"),
+                        embed_data.get("thumbnail", {}).get("url"),
+                        embed_data.get("image", {}).get("url")
+                    ])
+                    
+                    if not has_content:
+                        log(f"Skipping empty embed {i}")
+                        continue
 
                     # Add author if present
                     if embed_data.get("author", {}).get("name"):
@@ -984,10 +1008,16 @@ class EmbedNewCog(commands.Cog):
                     continue
 
             # Send confirmation
-            await interaction.followup.send(
-                f"Successfully sent {sent_count} embed(s) to {target_channel.mention}!", 
-                ephemeral=True
-            )
+            if sent_count == 0:
+                await interaction.followup.send(
+                    f"No embeds were sent. This might be because all embeds were empty or invalid. Check the logs for details.", 
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    f"Successfully sent {sent_count} embed(s) to {target_channel.mention}!", 
+                    ephemeral=True
+                )
             
             # Log the action
             log(f"EMBED_SEND_JSON: {interaction.user} sent {sent_count} embeds to {target_channel.id}")

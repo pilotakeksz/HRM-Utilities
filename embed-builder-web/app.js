@@ -985,7 +985,7 @@ class EmbedBuilder {
         // Collect all saved embeds that are referenced
         const referencedEmbeds = this.collectReferencedEmbeds();
         
-        return {
+        const payload = {
             embeds: this.embeds.map(embed => ({
                 title: embed.title || undefined,
                 description: embed.description || undefined,
@@ -1051,7 +1051,7 @@ class EmbedBuilder {
                         };
                     })
                 }))
-            })).filter(embed => Object.keys(embed).length > 0),
+            })),
             // Include all referenced embeds as inlined data
             referenced_embeds: referencedEmbeds,
             // Include metadata
@@ -1064,7 +1064,12 @@ class EmbedBuilder {
                 version: '2.0'
             }
         };
-    }
+        
+        // Debug: Log the payload
+        console.log('Generated payload:', payload);
+        console.log('Number of embeds:', payload.embeds.length);
+        
+        return payload;
 
     collectReferencedEmbeds() {
         const referencedEmbeds = {};
