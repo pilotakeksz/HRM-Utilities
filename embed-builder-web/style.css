@@ -749,6 +749,27 @@ label {
     margin-top: 1rem;
 }
 
+/* small credit tag next to Send Webhook */
+.send-credit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 0.6rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    opacity: 0.95;
+    user-select: none;
+    vertical-align: middle;
+}
+.send-credit svg {
+    color: var(--text-muted);
+    opacity: 0.9;
+    transform: translateY(1px);
+}
+.send-credit .send-credit-text {
+    line-height: 1;
+}
+
 /* Responsive Design */
 @media (max-width: 1200px) {
     .container {
