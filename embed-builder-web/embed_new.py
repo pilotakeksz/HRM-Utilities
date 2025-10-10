@@ -82,6 +82,64 @@ class SendView(discord.ui.View):
         self.target_channel = None
         self.add_item(discord.ui.Button(label="Send Public", style=discord.ButtonStyle.primary, custom_id="send_public"))
         self.add_item(discord.ui.Button(label="Send Ephemeral", style=discord.ButtonStyle.secondary, custom_id="send_ephemeral"))
+    
+    def _collect_linked_embeds(self):
+        """Collect all embeds referenced in select menus and buttons."""
+        linked_embeds = []
+        seen_keys = set()
+        
+        for emb in self.payload.get("embeds", []):
+            # Check select menus
+            for select in emb.get("selects", []):
+                for option in select.get("options", []):
+                    value = option.get("value", "")
+                    if value.startswith("send:"):
+                        # Extract key from send:key format
+                        key = value.split(":", 1)[1]
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            # Load the referenced embed
+                            path = os.path.join(EMBED_DIR, f"{key}.json")
+                            if os.path.exists(path):
+                                try:
+                                    with open(path, "r", encoding="utf-8") as f:
+                                        saved = json.load(f)
+                                    ref_payload = saved.get("payload") or saved
+                                    linked_embeds.extend(ref_payload.get("embeds", []))
+                                except Exception:
+                                    pass
+                    elif value.startswith("send_json:"):
+                        # Extract and decode base64 JSON
+                        b64 = value.split(":", 1)[1]
+                        try:
+                            json_text = base64.b64decode(b64).decode("utf-8")
+                            obj = json.loads(json_text)
+                            if isinstance(obj, list):
+                                linked_embeds.extend(obj)
+                            elif isinstance(obj, dict) and obj.get("embeds"):
+                                linked_embeds.extend(obj["embeds"])
+                            else:
+                                linked_embeds.append(obj)
+                        except Exception:
+                            pass
+            
+            # Check buttons for send_embed type
+            for button in emb.get("buttons", []):
+                if button.get("type") == "send_embed":
+                    key = button.get("target", "")
+                    if key and key not in seen_keys:
+                        seen_keys.add(key)
+                        path = os.path.join(EMBED_DIR, f"{key}.json")
+                        if os.path.exists(path):
+                            try:
+                                with open(path, "r", encoding="utf-8") as f:
+                                    saved = json.load(f)
+                                ref_payload = saved.get("payload") or saved
+                                linked_embeds.extend(ref_payload.get("embeds", []))
+                            except Exception:
+                                pass
+        
+        return linked_embeds
 
     # helper to build Select items for a given embed dict and attach callbacks
     def _add_selects_to_view(self, view, emb, ctx_channel=None):
@@ -209,6 +267,21 @@ class SendView(discord.ui.View):
         await interaction.response.defer()
         count = 0
         try:
+            # Collect all linked embeds
+            linked_embeds = self._collect_linked_embeds()
+            
+            # Create complete JSON payload with all embeds
+            complete_payload = {
+                "embeds": self.payload.get("embeds", []) + linked_embeds,
+                "plain_message": self.payload.get("plain_message", ""),
+                "linked_embeds": linked_embeds  # Store linked embeds separately for reference
+            }
+            
+            # Send the complete JSON as a code block for reference
+            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
+            if len(json_str) <= 2000:  # Discord message limit
+                await chan.send(f"```json\n{json_str}\n```")
+            
             plain = self.payload.get("plain_message", "") or None
             for emb in self.payload.get("embeds", []):
                 e = discord.Embed(
@@ -241,9 +314,9 @@ class SendView(discord.ui.View):
                     self._add_selects_to_view(view, emb, ctx_channel=chan)
                 await chan.send(content=plain, embed=e, view=view)
                 count += 1
-            await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}.", ephemeral=True)
+            await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}. Complete JSON with {len(linked_embeds)} linked embeds included.", ephemeral=True)
             # log
-            log(f"SEND: {interaction.user} posted key to channel {chan.id} embeds={count}")
+            log(f"SEND: {interaction.user} posted key to channel {chan.id} embeds={count} linked={len(linked_embeds)}")
             try:
                 lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
                 await lc.send(f"`[{datetime.now(timezone.utc).isoformat()}]` {interaction.user} posted embeds to {chan.mention} (key)")
@@ -261,6 +334,21 @@ class SendView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         count = 0
         try:
+            # Collect all linked embeds
+            linked_embeds = self._collect_linked_embeds()
+            
+            # Create complete JSON payload with all embeds
+            complete_payload = {
+                "embeds": self.payload.get("embeds", []) + linked_embeds,
+                "plain_message": self.payload.get("plain_message", ""),
+                "linked_embeds": linked_embeds  # Store linked embeds separately for reference
+            }
+            
+            # Send the complete JSON as a code block for reference
+            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
+            if len(json_str) <= 2000:  # Discord message limit
+                await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
+            
             for emb in self.payload.get("embeds", []):
                 e = discord.Embed(
                     title=emb.get("title") or None,
@@ -280,8 +368,8 @@ class SendView(discord.ui.View):
                         pass
                 await interaction.followup.send(embed=e, ephemeral=True)
                 count += 1
-            await interaction.followup.send(f"Sent {count} ephemeral embed(s) to you.", ephemeral=True)
-            log(f"SEND_EPHEMERAL: {interaction.user} embeds={count}")
+            await interaction.followup.send(f"Sent {count} ephemeral embed(s) to you. Complete JSON with {len(linked_embeds)} linked embeds included.", ephemeral=True)
+            log(f"SEND_EPHEMERAL: {interaction.user} embeds={count} linked={len(linked_embeds)}")
             try:
                 lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
                 await lc.send(f"`[{datetime.now(timezone.utc).isoformat()}]` {interaction.user} sent ephemeral embeds (key)")
@@ -314,6 +402,64 @@ class ConfirmView(ui.View):
         self.author = author
         self.payload = payload
         self.target_channel_id = str(target_channel_id)
+    
+    def _collect_linked_embeds(self):
+        """Collect all embeds referenced in select menus and buttons."""
+        linked_embeds = []
+        seen_keys = set()
+        
+        for emb in self.payload.get("embeds", []):
+            # Check select menus
+            for select in emb.get("selects", []):
+                for option in select.get("options", []):
+                    value = option.get("value", "")
+                    if value.startswith("send:"):
+                        # Extract key from send:key format
+                        key = value.split(":", 1)[1]
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            # Load the referenced embed
+                            path = os.path.join(EMBED_DIR, f"{key}.json")
+                            if os.path.exists(path):
+                                try:
+                                    with open(path, "r", encoding="utf-8") as f:
+                                        saved = json.load(f)
+                                    ref_payload = saved.get("payload") or saved
+                                    linked_embeds.extend(ref_payload.get("embeds", []))
+                                except Exception:
+                                    pass
+                    elif value.startswith("send_json:"):
+                        # Extract and decode base64 JSON
+                        b64 = value.split(":", 1)[1]
+                        try:
+                            json_text = base64.b64decode(b64).decode("utf-8")
+                            obj = json.loads(json_text)
+                            if isinstance(obj, list):
+                                linked_embeds.extend(obj)
+                            elif isinstance(obj, dict) and obj.get("embeds"):
+                                linked_embeds.extend(obj["embeds"])
+                            else:
+                                linked_embeds.append(obj)
+                        except Exception:
+                            pass
+            
+            # Check buttons for send_embed type
+            for button in emb.get("buttons", []):
+                if button.get("type") == "send_embed":
+                    key = button.get("target", "")
+                    if key and key not in seen_keys:
+                        seen_keys.add(key)
+                        path = os.path.join(EMBED_DIR, f"{key}.json")
+                        if os.path.exists(path):
+                            try:
+                                with open(path, "r", encoding="utf-8") as f:
+                                    saved = json.load(f)
+                                ref_payload = saved.get("payload") or saved
+                                linked_embeds.extend(ref_payload.get("embeds", []))
+                            except Exception:
+                                pass
+        
+        return linked_embeds
 
     async def _do_send(self, interaction: discord.Interaction, ephemeral: bool):
         if interaction.user.id != self.author.id:
@@ -327,6 +473,24 @@ class ConfirmView(ui.View):
 
         count = 0
         try:
+            # Collect all linked embeds
+            linked_embeds = self._collect_linked_embeds()
+            
+            # Create complete JSON payload with all embeds
+            complete_payload = {
+                "embeds": self.payload.get("embeds", []) + linked_embeds,
+                "plain_message": self.payload.get("plain_message", ""),
+                "linked_embeds": linked_embeds  # Store linked embeds separately for reference
+            }
+            
+            # Send the complete JSON as a code block for reference
+            json_str = json.dumps(complete_payload, indent=2, ensure_ascii=False)
+            if len(json_str) <= 2000:  # Discord message limit
+                if ephemeral:
+                    await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
+                else:
+                    await chan.send(f"```json\n{json_str}\n```")
+
             plain = self.payload.get("plain_message", "") or None
             for emb in self.payload.get("embeds", []):
                 e = discord.Embed(
@@ -362,11 +526,11 @@ class ConfirmView(ui.View):
                 count += 1
 
             if ephemeral:
-                await interaction.followup.send(f"Sent {count} ephemeral embed(s).", ephemeral=True)
+                await interaction.followup.send(f"Sent {count} ephemeral embed(s). Complete JSON with {len(linked_embeds)} linked embeds included.", ephemeral=True)
             else:
-                await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}.", ephemeral=True)
+                await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}. Complete JSON with {len(linked_embeds)} linked embeds included.", ephemeral=True)
 
-            log(f"SEND_CONFIRM: {interaction.user} posted key to channel {self.target_channel_id} embeds={count}")
+            log(f"SEND_CONFIRM: {interaction.user} posted key to channel {self.target_channel_id} embeds={count} linked={len(linked_embeds)}")
             try:
                 lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
                 await lc.send(f"`[{datetime.now(timezone.utc).isoformat()}]` {interaction.user} posted embeds to <#{self.target_channel_id}>")
