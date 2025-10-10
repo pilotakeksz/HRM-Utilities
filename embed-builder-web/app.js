@@ -11,16 +11,36 @@
   function current(){ return State.sessions[State.idx] }
 
   function renderSessionInfo(){
-    qs("session-info").textContent = `Embed ${State.idx+1} / ${State.sessions.length}`;
+    const info = qs("session-info");
+    if(info) info.textContent = `Embed ${State.idx+1} / ${State.sessions.length}`;
     const s = current();
-    qs("title").value = s.title; qs("description").value = s.description;
-    qs("color").value = s.color; qs("image_url").value = s.image_url; qs("thumbnail_url").value = s.thumbnail_url;
-    qs("footer").value = s.footer; qs("footer_icon").value = s.footer_icon; qs("plain_message").value = s.plain_message;
-    renderFields(); renderButtons(); updatePreview();
+    if(qs("title")) qs("title").value = s.title;
+    if(qs("description")) qs("description").value = s.description;
+    if(qs("color")) qs("color").value = s.color;
+    if(qs("image_url")) qs("image_url").value = s.image_url;
+    if(qs("thumbnail_url")) qs("thumbnail_url").value = s.thumbnail_url;
+    if(qs("footer")) qs("footer").value = s.footer;
+    if(qs("footer_icon")) qs("footer_icon").value = s.footer_icon;
+    if(qs("plain_message")) qs("plain_message").value = s.plain_message;
+    renderFields(); renderButtons(); updatePreview(); renderCarousel();
+  }
+
+  function renderCarousel(){
+    const c = qs("embed-carousel");
+    if(!c) return;
+    c.innerHTML = "";
+    State.sessions.forEach((s, i)=>{
+      const dot = document.createElement("div");
+      dot.className = "dot" + (i === State.idx ? " active" : "");
+      dot.title = `Embed ${i+1}`;
+      dot.onclick = ()=>{ State.idx = i; renderSessionInfo(); };
+      c.append(dot);
+    });
   }
 
   function renderFields(){
-    const list = qs("fields-list"); list.innerHTML = "";
+    const list = qs("fields-list"); if(!list) return;
+    list.innerHTML = "";
     current().fields.forEach((f,i)=>{
       const row = document.createElement("div"); row.className="field-entry";
       const n = document.createElement("input"); n.placeholder="Name"; n.value=f.name;
@@ -36,7 +56,8 @@
   }
 
   function renderButtons(){
-    const list = qs("link-buttons"); list.innerHTML = "";
+    const list = qs("link-buttons"); if(!list) return;
+    list.innerHTML = "";
     current().buttons.forEach((b,i)=>{
       const row = document.createElement("div"); row.className="link-entry";
       const type = document.createElement("select"); type.innerHTML = `<option value="link">Link</option><option value="send_embed">SendEmbed</option>`; type.value = b.type||"link";
@@ -67,7 +88,8 @@
   }
 
   function updatePreview(){
-    const preview = qs("preview-area"); preview.innerHTML = "";
+    const preview = qs("preview-area"); if(!preview) return;
+    preview.innerHTML = "";
     const s = current();
     const card = document.createElement("div"); card.className="preview-card";
     const title = document.createElement("div"); title.style.color="#d0b47b"; title.textContent = s.title || "(no title)";
@@ -97,27 +119,34 @@
   }
 
   function bind(){
-    qs("add-embed").onclick = ()=>{ State.sessions.push(newSession()); State.idx = State.sessions.length-1; renderSessionInfo() }
-    qs("remove-embed").onclick = ()=>{ if(State.sessions.length>1){ State.sessions.splice(State.idx,1); State.idx = Math.max(0, State.idx-1); renderSessionInfo() } }
-    qs("prev-embed").onclick = ()=>{ if(State.idx>0) State.idx--; renderSessionInfo() }
-    qs("next-embed").onclick = ()=>{ if(State.idx < State.sessions.length-1) State.idx++; renderSessionInfo() }
+    const el = id => { const e = qs(id); return e || null; };
 
-    qs("title").oninput = ()=>{ current().title = qs("title").value; updatePreview() }
-    qs("description").oninput = ()=>{ current().description = qs("description").value; updatePreview() }
-    qs("color").oninput = ()=>{ current().color = qs("color").value.replace("#",""); updatePreview() }
-    qs("image_url").onchange = ()=>{ current().image_url = qs("image_url").value; updatePreview() }
-    qs("thumbnail_url").onchange = ()=>{ current().thumbnail_url = qs("thumbnail_url").value; updatePreview() }
-    qs("footer").onchange = ()=>{ current().footer = qs("footer").value; updatePreview() }
-    qs("footer_icon").onchange = ()=>{ current().footer_icon = qs("footer_icon").value; updatePreview() }
-    qs("plain_message").oninput = ()=>{ current().plain_message = qs("plain_message").value; updatePreview() }
+    const addBtn = el("add-embed"); if(addBtn) addBtn.onclick = ()=>{ State.sessions.push(newSession()); State.idx = State.sessions.length-1; renderSessionInfo() }
+    const prevBtn = el("prev-embed"); if(prevBtn) prevBtn.onclick = ()=>{ if(State.idx>0) State.idx--; renderSessionInfo() }
+    const nextBtn = el("next-embed"); if(nextBtn) nextBtn.onclick = ()=>{ if(State.idx < State.sessions.length-1) State.idx++; renderSessionInfo() }
 
-    qs("add-field").onclick = ()=>{ current().fields.push({name:"",value:"",inline:false}); renderFields(); updatePreview() }
-    qs("add-link").onclick = ()=>{ current().buttons.push({type:"link",label:"",url:"",icon:"",target:"",ephemeral:false}); renderButtons(); updatePreview() }
+    const title = el("title"); if(title) title.oninput = ()=>{ current().title = title.value; updatePreview() }
+    const desc = el("description"); if(desc) desc.oninput = ()=>{ current().description = desc.value; updatePreview() }
+    const color = el("color"); if(color) color.oninput = ()=>{ current().color = color.value.replace("#",""); updatePreview() }
+    const image = el("image_url"); if(image) image.onchange = ()=>{ current().image_url = image.value; updatePreview() }
+    const thumb = el("thumbnail_url"); if(thumb) thumb.onchange = ()=>{ current().thumbnail_url = thumb.value; updatePreview() }
+    const footer = el("footer"); if(footer) footer.onchange = ()=>{ current().footer = footer.value; updatePreview() }
+    const footer_icon = el("footer_icon"); if(footer_icon) footer_icon.onchange = ()=>{ current().footer_icon = footer_icon.value; updatePreview() }
+    const plain = el("plain_message"); if(plain) plain.oninput = ()=>{ current().plain_message = plain.value; updatePreview() }
 
-    qs("export-json").onclick = ()=>{ const payload = { embeds: State.sessions, plain_message: current().plain_message, exported_at: new Date().toISOString() }; const s = JSON.stringify(payload, null, 2); const blob = new Blob([s], {type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="embed_export.json"; a.click(); }
-    qs("copy-json").onclick = ()=>{ const payload = { embeds: State.sessions, plain_message: current().plain_message }; navigator.clipboard.writeText(JSON.stringify(payload)).then(()=>alert("Copied JSON to clipboard")) }
-    qs("generate-key").onclick = ()=>{ const key = uuid(); qs("last-key").textContent = `Key: ${key}`; qs("last-key").dataset.key = key }
-    qs("save-local").onclick = ()=>{ const key = qs("last-key").dataset.key || uuid(); const payload = { key, embeds: State.sessions, plain_message: current().plain_message }; localStorage.setItem(`embed_${key}`, JSON.stringify(payload)); qs("last-key").textContent = `Saved key: ${key}` }
+    const addField = el("add-field"); if(addField) addField.onclick = ()=>{ current().fields.push({name:"",value:"",inline:false}); renderFields(); updatePreview() }
+    const addLink = el("add-link"); if(addLink) addLink.onclick = ()=>{ current().buttons.push({type:"link",label:"",url:"",icon:"",target:"",ephemeral:false}); renderButtons(); updatePreview() }
+
+    const exportBtn = el("export-json"); if(exportBtn) exportBtn.onclick = ()=>{ const payload = { embeds: State.sessions, plain_message: current().plain_message, exported_at: new Date().toISOString() }; const s = JSON.stringify(payload, null, 2); const blob = new Blob([s], {type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="embed_export.json"; a.click(); }
+    const copyBtn = el("copy-json"); if(copyBtn) copyBtn.onclick = ()=>{ const payload = { embeds: State.sessions, plain_message: current().plain_message }; navigator.clipboard.writeText(JSON.stringify(payload)).then(()=>alert("Copied JSON to clipboard")) }
+    const genBtn = el("generate-key"); if(genBtn) genBtn.onclick = ()=>{ const key = uuid(); const lk = qs("last-key"); if(lk){ lk.textContent = `Key: ${key}`; lk.dataset.key = key } }
+    const saveBtn = el("save-local"); if(saveBtn) saveBtn.onclick = ()=>{ const key = (qs("last-key") && qs("last-key").dataset.key) || uuid(); const payload = { key, embeds: State.sessions, plain_message: current().plain_message }; localStorage.setItem(`embed_${key}`, JSON.stringify(payload)); const lk = qs("last-key"); if(lk) lk.textContent = `Saved key: ${key}` }
+
+    // keyboard left/right to navigate carousel
+    document.addEventListener("keydown", (ev)=>{
+      if(ev.key === "ArrowLeft"){ if(State.idx>0){ State.idx--; renderSessionInfo(); } }
+      if(ev.key === "ArrowRight"){ if(State.idx < State.sessions.length-1){ State.idx++; renderSessionInfo(); } }
+    });
   }
 
   init();

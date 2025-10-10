@@ -2,6 +2,7 @@ import os
 import json
 import discord
 from discord.ext import commands
+from discord import app_commands
 from datetime import datetime, timezone
 
 EMBED_DIR = os.path.join(os.path.dirname(__file__), "../embed-builder-web/data/embeds")
@@ -143,53 +144,58 @@ class EmbedNewCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="embed_send")
-    async def embed_send(self, ctx, key_or_json: str):
-        """Interactive send of saved embed(s). Usage: !embed_send <key> or paste JSON string"""
-        # role check
-        if not any(r.id == ALLOWED_ROLE_ID for r in getattr(ctx.author, "roles", [])):
-            await ctx.send("You do not have permission to run this command.", ephemeral=True)
-            return
-
-        # load payload
-        payload = None
-        # detect JSON
-        if key_or_json.strip().startswith("{") or key_or_json.strip().startswith("["):
+    def _load_payload_from_key_or_json(self, key_or_json: str, guild=None):
+        """Return (payload, error_str|None)."""
+        key_or_json = key_or_json.strip()
+        # JSON string
+        if key_or_json.startswith("{") or key_or_json.startswith("["):
             try:
                 data = json.loads(key_or_json)
                 payload = data if isinstance(data, dict) else {"embeds": data}
+                return payload, None
             except Exception as e:
-                await ctx.send(f"Invalid JSON: {e}")
-                return
-        else:
-            path = os.path.join(EMBED_DIR, f"{key_or_json}.json")
-            if not os.path.exists(path):
-                await ctx.send("Key not found in embed storage.")
-                return
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    saved = json.load(f)
-                payload = saved.get("payload") or saved
-            except Exception as e:
-                await ctx.send(f"Failed to read key file: {e}")
-                return
+                return None, f"Invalid JSON: {e}"
+        # key -> file
+        path = os.path.join(EMBED_DIR, f"{key_or_json}.json")
+        if not os.path.exists(path):
+            return None, "Key not found in embed storage."
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            payload = saved.get("payload") or saved
+            return payload, None
+        except Exception as e:
+            return None, f"Failed to read key file: {e}"
 
-        # present interactive view to choose channel and confirm
-        channels = [c for c in ctx.guild.channels if isinstance(c, discord.TextChannel)]
-        view = SendView(self.bot, ctx.author, payload)
-        # replace the placeholder select with a concrete one
+    @app_commands.command(name="embed_send", description="Interactive send of saved embed(s) by key or JSON")
+    async def slash_embed_send(self, interaction: discord.Interaction, key_or_json: str):
+        """Slash command wrapper for the existing !embed_send flow."""
+        # role check (same as the text command)
+        if not any(r.id == ALLOWED_ROLE_ID for r in getattr(interaction.user, "roles", [])):
+            await interaction.response.send_message("You do not have permission to run this command.", ephemeral=True)
+            return
+
+        payload, err = self._load_payload_from_key_or_json(key_or_json, guild=interaction.guild)
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
+            return
+
+        # build interactive view (same SendView used by the text command)
+        channels = [c for c in interaction.guild.channels if isinstance(c, discord.TextChannel)]
+        view = SendView(self.bot, interaction.user, payload)
+
         sel = ChannelSelect(channels)
-        async def sel_callback(interaction, select):
-            if interaction.user.id != ctx.author.id:
-                await interaction.response.send_message("Only the invoker can use this.", ephemeral=True)
+        async def sel_callback(inter, select):
+            if inter.user.id != interaction.user.id:
+                await inter.response.send_message("Only the invoker can use this.", ephemeral=True)
                 return
             view.target_channel = select.values[0]
-            await interaction.response.edit_message(content=f"Selected channel: <#{view.target_channel}>. Use Send Public or Send Ephemeral.", view=view)
+            await inter.response.edit_message(content=f"Selected channel: <#{view.target_channel}>. Use Send Public or Send Ephemeral.", view=view)
         sel.callback = sel_callback
-        # add to view (insert at top)
         view.add_item(sel)
-        await ctx.send("Choose a target channel then press Send Public (posts to channel) or Send Ephemeral (sends only to you).", view=view)
-        log(f"INTERACTIVE_SEND_STARTED by {ctx.author} key_or_json={key_or_json}")
+
+        await interaction.response.send_message("Choose a target channel then press Send Public or Send Ephemeral.", view=view, ephemeral=True)
+        log(f"INTERACTIVE_SEND_STARTED by {interaction.user} key_or_json={key_or_json}")
 
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))
