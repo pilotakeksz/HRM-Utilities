@@ -284,8 +284,7 @@ class PayloadView(ui.View):
                             continue
                     if sent == 0:
                         await interaction.followup.send("No embeds were sent (empty or invalid).", ephemeral=True)
-                    else:
-                        await interaction.followup.send(f"Sent {sent} embed(s) ephemerally.", ephemeral=True)
+                    # NOTE: do NOT send a success confirmation message for ephemeral sends
                     return
 
                 # non-mapped targets handled normally (send:KEY loads saved file; link: posts URL)
