@@ -1070,6 +1070,7 @@ class EmbedBuilder {
         console.log('Number of embeds:', payload.embeds.length);
         
         return payload;
+    }
 
     collectReferencedEmbeds() {
         const referencedEmbeds = {};
@@ -1410,11 +1411,20 @@ class EmbedBuilder {
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+  try {
     window.embedBuilder = new EmbedBuilder();
-    
-    // Add export functionality to send button context menu
-    document.getElementById('send-btn').addEventListener('contextmenu', (e) => {
+    if (typeof window.embedBuilder.init === 'function') {
+      window.embedBuilder.init();
+    }
+
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) {
+      sendBtn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        window.embedBuilder.exportJSON();
-    });
+        // existing contextmenu handler code (if any) can go here
+      });
+    }
+  } catch (err) {
+    console.error("EmbedBuilder initialization failed:", err);
+  }
 });

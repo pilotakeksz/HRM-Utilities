@@ -170,32 +170,33 @@ class ComprehensiveSendView(discord.ui.View):
             "timestamp": embed_data.get("timestamp")
         }
 
-    def _add_selects_to_view(self, view, emb, ctx_channel=None):
-        """Add select menus to a view with proper callbacks."""
+    def _add_selects_to_view(self, view, emb, ctx_channel=None, referenced=None):
+        """
+        Build Select items for the embed dict `emb`.
+        referenced: optional dict of referenced_embeds from payload (key -> embed object)
+        """
+        referenced = referenced or {}
         for si, sel in enumerate(emb.get("selects", []) or []):
             options = []
             for o in sel.get("options", []) or []:
                 options.append(discord.SelectOption(
-                    label=o.get("label") or o.get("value") or "opt", 
-                    value=(o.get("value") or ""), 
+                    label=o.get("label") or o.get("value") or "opt",
+                    value=(o.get("value") or ""),
                     description=o.get("description")
                 ))
             if not options:
                 continue
-            sel_obj = discord.ui.Select(
-                placeholder=sel.get("placeholder") or "Choose…", 
-                min_values=1, 
-                max_values=1, 
-                options=options
-            )
-            
+            sel_obj = discord.ui.Select(placeholder=sel.get("placeholder") or "Choose…", min_values=1, max_values=1, options=options)
+
             async def sel_callback(interaction: discord.Interaction, select: discord.ui.Select, _sel=sel):
+                # restrict to original invoker (change if you want open access)
                 if interaction.user.id != self.author.id:
                     await interaction.response.send_message("Only the original invoker can use this.", ephemeral=True)
                     return
                 await interaction.response.defer(ephemeral=True)
                 val = select.values[0]
                 try:
+                    # send embedded JSON included in payload (send_json:<b64>)
                     if val.startswith("send_json:"):
                         b64 = val.split(":",1)[1]
                         try:
@@ -204,27 +205,29 @@ class ComprehensiveSendView(discord.ui.View):
                         except Exception as ex:
                             await interaction.followup.send(f"Failed to decode JSON option: {ex}", ephemeral=True)
                             return
-                        payload = None
+                        # normalize payload -> ensure {"embeds":[...]}
                         if isinstance(obj, list):
                             payload = {"embeds": obj}
                         elif isinstance(obj, dict) and obj.get("embeds"):
                             payload = obj
                         else:
                             payload = {"embeds": [obj]}
-                        sent = 0
                         target_chan = ctx_channel or interaction.channel
+                        sent = 0
                         for eemb in payload.get("embeds", []):
                             e = discord.Embed(
-                                title=eemb.get("title") or None, 
-                                description=eemb.get("description") or None, 
+                                title=eemb.get("title") or None,
+                                description=eemb.get("description") or None,
                                 color=_parse_color(eemb.get("color"))
                             )
-                            if eemb.get("thumbnail_url"):
-                                e.set_thumbnail(url=eemb.get("thumbnail_url"))
-                            if eemb.get("image_url"):
-                                e.set_image(url=eemb.get("image_url"))
+                            thumb = _get_url(eemb, "thumbnail", "thumbnail_url")
+                            img = _get_url(eemb, "image", "image_url")
+                            if thumb: e.set_thumbnail(url=thumb)
+                            if img: e.set_image(url=img)
                             if eemb.get("footer"):
-                                e.set_footer(text=eemb.get("footer"), icon_url=eemb.get("footer_icon"))
+                                footer_text = eemb.get("footer").get("text") if isinstance(eemb.get("footer"), dict) else eemb.get("footer")
+                                footer_icon = eemb.get("footer").get("icon_url") if isinstance(eemb.get("footer"), dict) else eemb.get("footer_icon")
+                                e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                             for name, value, inline in _iter_fields(eemb.get("fields")):
                                 try:
                                     e.add_field(name=name, value=value, inline=inline)
@@ -238,33 +241,45 @@ class ComprehensiveSendView(discord.ui.View):
                         await interaction.followup.send(f"Posted {sent} embed(s).", ephemeral=True)
                         return
 
+                    # send referenced embed by key if present in payload referenced_embeds
                     elif val.startswith("send:"):
                         parts = val.split(":", 2)
                         key = parts[1] if len(parts) >= 2 else ""
                         eph = False
                         if len(parts) == 3 and parts[2] == "e":
                             eph = True
-                        path = os.path.join(EMBED_DIR, f"{key}.json")
-                        if not os.path.exists(path):
-                            await interaction.followup.send(f"Saved key not found: {key}", ephemeral=True)
-                            return
-                        with open(path, "r", encoding="utf-8") as f:
-                            saved = json.load(f)
-                        payload = saved.get("payload") or saved
-                        sent = 0
+
+                        # prefer referenced_embeds from payload, fallback to local file
+                        ref = (referenced or {}).get(key)
+                        payload = None
+                        if ref:
+                            payload = {"embeds": [ref]} if isinstance(ref, dict) else {"embeds": ref}
+                        else:
+                            # fallback to loading saved file
+                            path = os.path.join(EMBED_DIR, f"{key}.json")
+                            if not os.path.exists(path):
+                                await interaction.followup.send(f"Saved key not found: {key}", ephemeral=True)
+                                return
+                            with open(path, "r", encoding="utf-8") as f:
+                                saved = json.load(f)
+                            payload = saved.get("payload") or saved
+
                         target_chan = ctx_channel or interaction.channel
+                        sent = 0
                         for eemb in payload.get("embeds", []):
                             e = discord.Embed(
-                                title=eemb.get("title") or None, 
-                                description=eemb.get("description") or None, 
+                                title=eemb.get("title") or None,
+                                description=eemb.get("description") or None,
                                 color=_parse_color(eemb.get("color"))
                             )
-                            if eemb.get("thumbnail_url"):
-                                e.set_thumbnail(url=eemb.get("thumbnail_url"))
-                            if eemb.get("image_url"):
-                                e.set_image(url=eemb.get("image_url"))
+                            thumb = _get_url(eemb, "thumbnail", "thumbnail_url")
+                            img = _get_url(eemb, "image", "image_url")
+                            if thumb: e.set_thumbnail(url=thumb)
+                            if img: e.set_image(url=img)
                             if eemb.get("footer"):
-                                e.set_footer(text=eemb.get("footer"), icon_url=eemb.get("footer_icon"))
+                                footer_text = eemb.get("footer").get("text") if isinstance(eemb.get("footer"), dict) else eemb.get("footer")
+                                footer_icon = eemb.get("footer").get("icon_url") if isinstance(eemb.get("footer"), dict) else eemb.get("footer_icon")
+                                e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                             for name, value, inline in _iter_fields(eemb.get("fields")):
                                 try:
                                     e.add_field(name=name, value=value, inline=inline)
@@ -289,9 +304,11 @@ class ComprehensiveSendView(discord.ui.View):
                     else:
                         await interaction.followup.send(f"Selected: {val}", ephemeral=True)
                         return
+
                 except Exception as ex:
                     await interaction.followup.send(f"Select handling failed: {ex}", ephemeral=True)
                     return
+
             sel_obj.callback = sel_callback
             view.add_item(sel_obj)
 
@@ -308,67 +325,90 @@ class ComprehensiveSendView(discord.ui.View):
             await interaction.response.send_message("Invalid channel selected.", ephemeral=True)
             return
         await interaction.response.defer()
-        count = 0
         try:
-            # Collect all linked embeds
-            linked_embeds = self._collect_linked_embeds()
-            
-            # Create complete JSON payload with all embeds
-            complete_payload = {
-                "embeds": self.payload.get("embeds", []) + linked_embeds,
-                "plain_message": self.payload.get("plain_message", ""),
-                "linked_embeds": linked_embeds,
-                "metadata": self.payload.get("metadata", {})
-            }
-            
-            
-            plain = self.payload.get("plain_message", "") or None
-            for emb in self.payload.get("embeds", []):
+            payload = self.payload or {}
+            plain = payload.get("plain_message", "") or None
+
+            # build discord.Embed objects for all primary embeds
+            embeds_to_send = []
+            for emb in payload.get("embeds", []):
                 e = discord.Embed(
                     title=emb.get("title") or None,
                     description=emb.get("description") or None,
                     color=_parse_color(emb.get("color"))
                 )
-                if emb.get("thumbnail_url"):
-                    e.set_thumbnail(url=emb.get("thumbnail_url"))
-                if emb.get("image_url"):
-                    e.set_image(url=emb.get("image_url"))
+                thumb = _get_url(emb, "thumbnail_url", "thumbnail")
+                img = _get_url(emb, "image_url", "image")
+                if thumb: e.set_thumbnail(url=thumb)
+                if img: e.set_image(url=img)
                 if emb.get("footer"):
-                    e.set_footer(text=emb.get("footer"), icon_url=emb.get("footer_icon"))
+                    footer_text = emb.get("footer").get("text") if isinstance(emb.get("footer"), dict) else emb.get("footer")
+                    footer_icon = emb.get("footer").get("icon_url") if isinstance(emb.get("footer"), dict) else emb.get("footer_icon")
+                    e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
                 for name, value, inline in _iter_fields(emb.get("fields")):
                     try:
                         e.add_field(name=name, value=value, inline=inline)
                     except Exception:
                         pass
-                view = None
-                # Build view with both buttons and selects
-                if emb.get("buttons") or emb.get("selects"):
-                    view = discord.ui.View()
-                    for b in emb.get("buttons", []):
-                        if b.get("type") == "link" and b.get("url"):
-                            view.add_item(discord.ui.Button(
-                                label=b.get("label","link"), 
-                                style=discord.ButtonStyle.link, 
-                                url=b.get("url")
-                            ))
-                        elif b.get("type") == "send_embed":
-                            btn = discord.ui.Button(
-                                label=b.get("label","send"), 
-                                style=discord.ButtonStyle.secondary, 
-                                custom_id=f"sendembed:{b.get('target') or ''}:e"
-                            )
-                            view.add_item(btn)
-                    # Add selects and attach callbacks
-                    self._add_selects_to_view(view, emb, ctx_channel=chan)
-                await chan.send(content=plain, embed=e, view=view)
-                count += 1
-            await interaction.followup.send(f"Posted {count} embed(s) to {chan.mention}. Complete JSON with {len(linked_embeds)} linked embeds included.", ephemeral=True)
-            log(f"SEND: {interaction.user} posted key to channel {chan.id} embeds={count} linked={len(linked_embeds)}")
+                embeds_to_send.append(e)
+
+            # append referenced_embeds (if any) so they are sent together with the message that contains the menu
+            for key, ref in (payload.get("referenced_embeds") or {}).items():
+                try:
+                    ref_obj = ref
+                    e = discord.Embed(
+                        title=ref_obj.get("title") or None,
+                        description=ref_obj.get("description") or None,
+                        color=_parse_color(ref_obj.get("color"))
+                    )
+                    thumb = _get_url(ref_obj, "thumbnail", "thumbnail_url")
+                    img = _get_url(ref_obj, "image", "image_url")
+                    if thumb: e.set_thumbnail(url=thumb)
+                    if img: e.set_image(url=img)
+                    if ref_obj.get("footer"):
+                        footer_text = ref_obj.get("footer").get("text") if isinstance(ref_obj.get("footer"), dict) else ref_obj.get("footer")
+                        footer_icon = ref_obj.get("footer").get("icon_url") if isinstance(ref_obj.get("footer"), dict) else ref_obj.get("footer_icon")
+                        e.set_footer(text=footer_text or None, icon_url=footer_icon or None)
+                    for name, value, inline in _iter_fields(ref_obj.get("fields")):
+                        try:
+                            e.add_field(name=name, value=value, inline=inline)
+                        except Exception:
+                            pass
+                    embeds_to_send.append(e)
+                except Exception:
+                    # skip broken referenced embed
+                    continue
+
+            # build view (use first embed's actions)
+            view = None
+            first_emb = payload.get("embeds", [None])[0]
+            if first_emb and (first_emb.get("buttons") or first_emb.get("selects")):
+                view = discord.ui.View()
+                # add buttons
+                for b in first_emb.get("buttons", []):
+                    if b.get("type") == "link" and b.get("url"):
+                        view.add_item(discord.ui.Button(label=b.get("label","link"), style=discord.ButtonStyle.link, url=b.get("url")))
+                    elif b.get("type") == "send_embed":
+                        btn = discord.ui.Button(label=b.get("label","send"), style=discord.ButtonStyle.secondary, custom_id=f"sendembed:{b.get('target') or ''}:{'e' if b.get('ephemeral') else 'p'}")
+                        view.add_item(btn)
+                # add selects, pass referenced_embeds mapping so callbacks can find referenced embeds in payload
+                self._add_selects_to_view(view, first_emb, ctx_channel=chan, referenced=payload.get("referenced_embeds"))
+
+            # send single message with all embeds + view attached
+            if embeds_to_send:
+                await chan.send(content=plain, embeds=embeds_to_send, view=view)
+            else:
+                await interaction.followup.send("No embeds to send.", ephemeral=True)
+                return
+
+            await interaction.followup.send(f"Posted {len(payload.get('embeds', []))} embed(s) to {chan.mention}.", ephemeral=True)
+            log(f"SEND: {interaction.user} posted key to channel {chan.id} embeds={len(payload.get('embeds', []))}")
             try:
                 lc = self.bot.get_channel(LOG_CHANNEL_ID) or await self.bot.fetch_channel(LOG_CHANNEL_ID)
                 await lc.send(f"`[{datetime.now(timezone.utc).isoformat()}]` {interaction.user} posted embeds to {chan.mention} (key)")
             except Exception:
                 pass
+            return
         except Exception as e:
             await interaction.followup.send(f"Failed to post: {e}", ephemeral=True)
             log(f"ERROR posting: {e}")
@@ -1034,6 +1074,18 @@ class EmbedNewCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"Error processing JSON: {e}", ephemeral=True)
             log(f"ERROR embed_send_json: {e}")
+
+def _get_url(obj, *keys):
+    """Helper to find url in nested fields like image.url or image_url."""
+    for k in keys:
+        v = obj.get(k)
+        if isinstance(v, dict):
+            # look for url inside object
+            if v.get("url"):
+                return v.get("url")
+        elif v:
+            return v
+    return None
 
 async def setup(bot):
     await bot.add_cog(EmbedNewCog(bot))
