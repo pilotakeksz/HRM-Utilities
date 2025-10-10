@@ -25,6 +25,24 @@ def log(msg):
     except Exception:
         pass
 
+# new helper to normalize color values (accept hex string or int)
+def _parse_color(val):
+    """Return an int color value or None. Accepts hex string like 'fff700' or '#fff700' or integer."""
+    if val is None or val == "":
+        return None
+    try:
+        if isinstance(val, str):
+            v = val.strip().lstrip("#")
+            # sometimes saved as "0xffffff" or with 0x prefix
+            if v.startswith("0x"):
+                v = v[2:]
+            return int(v, 16)
+        if isinstance(val, (int, float)):
+            return int(val)
+    except Exception:
+        return None
+    return None
+
 class ChannelSelect(discord.ui.Select):
     def __init__(self, channels):
         options = [discord.SelectOption(label=c.name, value=str(c.id)) for c in channels[:25]]
@@ -65,7 +83,7 @@ class SendView(discord.ui.View):
                 e = discord.Embed(
                     title=emb.get("title") or None,
                     description=emb.get("description") or None,
-                    color=emb.get("color", 0)
+                    color=_parse_color(emb.get("color"))
                 )
                 if emb.get("thumbnail_url"):
                     e.set_thumbnail(url=emb.get("thumbnail_url"))
@@ -116,7 +134,7 @@ class SendView(discord.ui.View):
                 e = discord.Embed(
                     title=emb.get("title") or None,
                     description=emb.get("description") or None,
-                    color=emb.get("color", 0)
+                    color=_parse_color(emb.get("color"))
                 )
                 if emb.get("thumbnail_url"):
                     e.set_thumbnail(url=emb.get("thumbnail_url"))
@@ -184,7 +202,7 @@ class ConfirmView(ui.View):
                 e = discord.Embed(
                     title=emb.get("title") or None,
                     description=emb.get("description") or None,
-                    color=emb.get("color", 0)
+                    color=_parse_color(emb.get("color"))
                 )
                 if emb.get("thumbnail_url"):
                     e.set_thumbnail(url=emb.get("thumbnail_url"))

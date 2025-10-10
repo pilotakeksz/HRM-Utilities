@@ -1,3 +1,4 @@
+// Minimal embed builder logic with JSON import and JSON display overlay.
 (function(){
   const qs = id=>document.getElementById(id);
   function uuid(){ return crypto?.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(36).slice(2,10) }
@@ -17,6 +18,16 @@
     if(qs("title")) qs("title").value = s.title;
     if(qs("description")) qs("description").value = s.description;
     if(qs("color")) qs("color").value = s.color;
+    // sync color picker input (expects hex, store without #)
+    const cp = qs("color-picker");
+    try {
+      const hex = (() => {
+        if(!s.color) return "#2f3136";
+        const c = String(s.color).replace("#","").slice(0,6);
+        return `#${c.padStart(6,"0")}`;
+      })();
+      if(cp) cp.value = hex;
+    } catch(e){ if(cp) cp.value = "#2f3136" }
     if(qs("image_url")) qs("image_url").value = s.image_url;
     if(qs("thumbnail_url")) qs("thumbnail_url").value = s.thumbnail_url;
     if(qs("footer")) qs("footer").value = s.footer;
@@ -92,70 +103,150 @@
     preview.innerHTML = "";
     const s = current();
 
-    const card = document.createElement("div"); card.className="preview-card";
-    // color stripe
-    const stripe = document.createElement("div"); stripe.style.width="8px"; stripe.style.height="100%";
-    stripe.style.background = s.color ? `#${String(s.color).padStart(6,'0')}` : "#2f3136";
-    stripe.style.borderRadius = "6px 0 0 6px"; stripe.style.float="left"; stripe.style.marginRight = "12px";
-    card.append(stripe);
+    // build structured preview (no floats)
+    const card = document.createElement("div");
+    card.className = "preview-card";
 
-    const inner = document.createElement("div"); inner.style.paddingLeft = "12px";
-    const header = document.createElement("div"); header.style.display="flex"; header.style.alignItems="center"; header.style.justifyContent="space-between";
-    const left = document.createElement("div");
-    const title = document.createElement("div"); title.style.color="#d0b47b"; title.style.fontWeight="700"; title.textContent = s.title || "(no title)";
-    const desc = document.createElement("div"); desc.textContent = s.description || "";
-    left.append(title, desc);
-    const right = document.createElement("div");
-    if(s.footer_icon){ const ficon = document.createElement("img"); ficon.src = s.footer_icon; ficon.style.width="40px"; ficon.style.height="40px"; ficon.style.borderRadius="6px"; ficon.style.objectFit="cover"; right.append(ficon) }
-    header.append(left, right);
+    const stripe = document.createElement("div");
+    stripe.className = "stripe";
+    if (s.color) stripe.style.background = `#${String(s.color).replace("#","").padStart(6,"0")}`;
+    else stripe.style.background = "#2f3136";
+    card.appendChild(stripe);
 
-    inner.append(header);
+    const content = document.createElement("div");
+    content.className = "preview-content";
 
-    if(s.thumbnail_url){
-      const th = document.createElement("img"); th.src = s.thumbnail_url; th.style.width="80px"; th.style.float="right"; th.style.marginLeft="10px"; inner.append(th);
+    // header (title + optional footer icon)
+    const header = document.createElement("div");
+    header.className = "preview-header";
+    const headerLeft = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "preview-title";
+    title.textContent = s.title || "(no title)";
+    const desc = document.createElement("div");
+    desc.className = "preview-desc";
+    desc.textContent = s.description || "";
+    headerLeft.appendChild(title);
+    headerLeft.appendChild(desc);
+    header.appendChild(headerLeft);
+    if (s.footer_icon) {
+      const ficon = document.createElement("img");
+      ficon.className = "preview-footer-icon";
+      ficon.src = s.footer_icon;
+      header.appendChild(ficon);
     }
-    if(s.image_url){
-      const img = document.createElement("img"); img.src = s.image_url; img.style.maxWidth="100%"; img.style.marginTop="8px"; inner.append(img);
+    content.appendChild(header);
+
+    // thumbnail to the right inside header area (if provided)
+    if (s.thumbnail_url) {
+      const th = document.createElement("img");
+      th.className = "preview-thumbnail";
+      th.src = s.thumbnail_url;
+      content.appendChild(th);
     }
 
-    // fields in grid
-    if(s.fields && s.fields.length){
-      const grid = document.createElement("div"); grid.style.display="grid"; grid.style.gridTemplateColumns = "repeat(auto-fit,minmax(180px,1fr))"; grid.style.gap = "8px"; grid.style.marginTop = "8px";
+    // main image (full width)
+    if (s.image_url) {
+      const img = document.createElement("img");
+      img.className = "preview-image";
+      img.src = s.image_url;
+      content.appendChild(img);
+    }
+
+    // fields grid
+    if (s.fields && s.fields.length) {
+      const grid = document.createElement("div");
+      grid.className = "preview-fields-grid";
       s.fields.forEach(f=>{
-        const fb = document.createElement("div"); fb.style.padding = "8px"; fb.style.background = "rgba(255,255,255,0.02)"; fb.style.borderRadius = "6px";
-        const fn = document.createElement("div"); fn.style.fontWeight = "600"; fn.textContent = f.name || "(no name)";
-        const fv = document.createElement("div"); fv.style.marginTop="6px"; fv.textContent = f.value || "";
-        fb.append(fn, fv);
-        grid.append(fb);
+        const fb = document.createElement("div");
+        fb.className = "preview-field-box";
+        const fn = document.createElement("div"); fn.className = "preview-field-name"; fn.textContent = f.name || "(no name)";
+        const fv = document.createElement("div"); fv.className = "preview-field-value"; fv.textContent = f.value || "";
+        fb.appendChild(fn); fb.appendChild(fv);
+        grid.appendChild(fb);
       });
-      inner.append(grid);
+      content.appendChild(grid);
     }
 
-    // buttons with optional icons
-    if(s.buttons && s.buttons.length){
-      const row = document.createElement("div"); row.style.marginTop="12px";
+    // buttons row
+    if (s.buttons && s.buttons.length) {
+      const row = document.createElement("div");
+      row.className = "preview-buttons-row";
       s.buttons.forEach(b=>{
-        const btn = document.createElement("button"); btn.className="btn"; btn.style.display="inline-flex"; btn.style.alignItems="center"; btn.style.gap="8px";
-        if(b.icon){ const bi = document.createElement("img"); bi.src = b.icon; bi.style.width="18px"; bi.style.height="18px"; bi.style.objectFit="cover"; bi.style.borderRadius="4px"; btn.append(bi) }
-        const span = document.createElement("span"); span.textContent = b.label || "button"; btn.append(span);
-        if(b.type==="link" && b.url) btn.onclick = ()=>window.open(b.url, "_blank");
-        row.append(btn);
+        const btn = document.createElement("button");
+        btn.className = "preview-button";
+        if (b.icon) {
+          const bi = document.createElement("img");
+          bi.className = "preview-button-icon";
+          bi.src = b.icon;
+          btn.appendChild(bi);
+        }
+        const span = document.createElement("span"); span.textContent = b.label || "button";
+        btn.appendChild(span);
+        if (b.type === "link" && b.url) btn.onclick = ()=>window.open(b.url, "_blank");
+        row.appendChild(btn);
       });
-      inner.append(row);
+      content.appendChild(row);
     }
 
-    if(s.plain_message){
-      const pm = document.createElement("div"); pm.style.marginTop="12px"; pm.style.padding="8px"; pm.style.background="rgba(255,255,255,0.02)"; pm.style.borderRadius="6px"; pm.textContent = s.plain_message;
-      inner.append(pm);
+    // plain message and footer
+    if (s.plain_message) {
+      const pm = document.createElement("div");
+      pm.className = "preview-plain-message";
+      pm.textContent = s.plain_message;
+      content.appendChild(pm);
+    }
+    if (s.footer) {
+      const footer = document.createElement("div");
+      footer.className = "preview-footer-text";
+      footer.textContent = s.footer;
+      content.appendChild(footer);
     }
 
-    if(s.footer){
-      const footer = document.createElement("div"); footer.style.marginTop="12px"; footer.style.fontSize="12px"; footer.style.color="#9aa3ad"; footer.textContent = s.footer;
-      inner.append(footer);
-    }
+    card.appendChild(content);
+    preview.appendChild(card);
+  }
 
-    card.append(inner);
-    preview.append(card);
+  // JSON payload builder
+  function buildPayload(){
+    return { embeds: State.sessions, plain_message: current().plain_message || "" };
+  }
+
+  // Import logic
+  function openImportModal(){ const m = qs("import-modal"); if(m){ m.classList.remove("hidden"); m.setAttribute("aria-hidden","false"); } }
+  function closeImportModal(){ const m = qs("import-modal"); if(m){ m.classList.add("hidden"); m.setAttribute("aria-hidden","true"); qs("import-text").value = ""; qs("import-status").textContent = ""; } }
+
+  function importFromObject(obj){
+    // Expect {embeds: [...] } or array
+    let embeds = [];
+    if(Array.isArray(obj)) embeds = obj;
+    else if(obj && obj.embeds && Array.isArray(obj.embeds)) embeds = obj.embeds;
+    else {
+      alert("Invalid structure: expected an array of embeds or { embeds: [...] }");
+      return;
+    }
+    // replace sessions
+    State.sessions = embeds.map(e=>{
+      // Normalize shape to fields/buttons arrays if necessary
+      return {
+        title: e.title || "",
+        description: e.description || "",
+        color: (typeof e.color === "number") ? e.color.toString(16).padStart(6,"0") : (e.color||""),
+        image_url: e.image_url || e.image || "",
+        thumbnail_url: e.thumbnail_url || e.thumbnail || "",
+        footer: e.footer || "",
+        footer_icon: e.footer_icon || "",
+        fields: (e.fields || []).map(f=>{
+          // support either [name,value,inline] or {name,value,inline}
+          if(Array.isArray(f)) return { name: f[0]||"", value: f[1]||"", inline: !!f[2] };
+          return { name: f.name||"", value: f.value||"", inline: !!f.inline };
+        }),
+        buttons: (e.buttons || []),
+        plain_message: e.plain_message || ""
+      }
+    });
+    State.idx = 0;
+    renderSessionInfo();
   }
 
   // wire UI
@@ -175,6 +266,14 @@
     const title = el("title"); if(title) title.oninput = ()=>{ current().title = title.value; updatePreview() }
     const desc = el("description"); if(desc) desc.oninput = ()=>{ current().description = desc.value; updatePreview() }
     const color = el("color"); if(color) color.oninput = ()=>{ current().color = color.value.replace("#",""); updatePreview() }
+    const colorPicker = el("color-picker");
+    if(colorPicker) colorPicker.oninput = ()=>{
+      const v = colorPicker.value.replace("#","");
+      const txt = qs("color");
+      if(txt) txt.value = v;
+      current().color = v;
+      updatePreview();
+    }
     const image = el("image_url"); if(image) image.onchange = ()=>{ current().image_url = image.value; updatePreview() }
     const thumb = el("thumbnail_url"); if(thumb) thumb.onchange = ()=>{ current().thumbnail_url = thumb.value; updatePreview() }
     const footer = el("footer"); if(footer) footer.onchange = ()=>{ current().footer = footer.value; updatePreview() }
@@ -184,10 +283,48 @@
     const addField = el("add-field"); if(addField) addField.onclick = ()=>{ current().fields.push({name:"",value:"",inline:false}); renderFields(); updatePreview() }
     const addLink = el("add-link"); if(addLink) addLink.onclick = ()=>{ current().buttons.push({type:"link",label:"",url:"",icon:"",target:"",ephemeral:false}); renderButtons(); updatePreview() }
 
-    const exportBtn = el("export-json"); if(exportBtn) exportBtn.onclick = ()=>{ const payload = { embeds: State.sessions, plain_message: current().plain_message, exported_at: new Date().toISOString() }; const s = JSON.stringify(payload, null, 2); const blob = new Blob([s], {type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="embed_export.json"; a.click(); }
-    const copyBtn = el("copy-json"); if(copyBtn) copyBtn.onclick = ()=>{ const payload = { embeds: State.sessions, plain_message: current().plain_message }; navigator.clipboard.writeText(JSON.stringify(payload)).then(()=>alert("Copied JSON to clipboard")) }
+    const exportBtn = el("export-json"); if(exportBtn) exportBtn.onclick = ()=>{ const payload = buildPayload(); const s = JSON.stringify(payload, null, 2); const blob = new Blob([s], {type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="embed_export.json"; a.click(); }
+    const copyBtn = el("copy-json"); if(copyBtn) copyBtn.onclick = ()=>{ openJsonDisplay(JSON.stringify(buildPayload(), null, 2)) }
+
+    const importBtn = el("import-json"); if(importBtn) importBtn.onclick = ()=>{ openImportModal() }
+    const uploadInput = el("upload-json-file"); if(uploadInput) uploadInput.onchange = async (ev)=>{
+      const f = ev.target.files && ev.target.files[0];
+      if(!f) return;
+      try{
+        const txt = await f.text();
+        const obj = JSON.parse(txt);
+        importFromObject(obj);
+        closeImportModal();
+        alert("Imported JSON file.");
+      }catch(e){
+        qs("import-status").textContent = "Failed to parse uploaded file: "+e;
+      } finally {
+        uploadInput.value = "";
+      }
+    }
+
+    const importCancel = el("import-cancel"); if(importCancel) importCancel.onclick = ()=>closeImportModal();
+    const importUploadBtn = el("import-upload-btn"); if(importUploadBtn) importUploadBtn.onclick = ()=>{ const up = qs("upload-json-file"); if(up) up.click(); }
+    const importPasteBtn = el("import-paste-btn"); if(importPasteBtn) importPasteBtn.onclick = ()=>{
+      const txt = qs("import-text").value.trim();
+      if(!txt){ qs("import-status").textContent = "Paste JSON into the box first."; return; }
+      try{
+        const obj = JSON.parse(txt);
+        importFromObject(obj);
+        closeImportModal();
+        alert("Imported JSON from paste.");
+      }catch(e){
+        qs("import-status").textContent = "Failed to parse JSON: "+e;
+      }
+    }
+
     const genBtn = el("generate-key"); if(genBtn) genBtn.onclick = ()=>{ const key = uuid(); const lk = qs("last-key"); if(lk){ lk.textContent = `Key: ${key}`; lk.dataset.key = key } }
     const saveBtn = el("save-local"); if(saveBtn) saveBtn.onclick = ()=>{ const key = (qs("last-key") && qs("last-key").dataset.key) || uuid(); const payload = { key, embeds: State.sessions, plain_message: current().plain_message }; localStorage.setItem(`embed_${key}`, JSON.stringify(payload)); const lk = qs("last-key"); if(lk) lk.textContent = `Saved key: ${key}` }
+
+    // JSON display modal handlers
+    const jsonClose = el("json-close"); if(jsonClose) jsonClose.onclick = ()=>{ closeJsonDisplay() }
+    const jsonCopy = el("json-copy-btn"); if(jsonCopy) jsonCopy.onclick = ()=>{ const text = qs("json-code").textContent; navigator.clipboard.writeText(text).then(()=>{ alert("Copied to clipboard"); }) }
+    const jsonDownload = el("json-download-btn"); if(jsonDownload) jsonDownload.onclick = ()=>{ const text = qs("json-code").textContent; const blob = new Blob([text], {type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="embed_export.json"; a.click(); }
 
     // keyboard left/right to navigate carousel
     document.addEventListener("keydown", (ev)=>{
@@ -195,6 +332,14 @@
       if(ev.key === "ArrowRight"){ if(State.idx < State.sessions.length-1){ State.idx++; renderSessionInfo(); } }
     });
   }
+
+  // JSON display open/close
+  function openJsonDisplay(jsonText){
+    const m = qs("json-display"); if(!m) return;
+    qs("json-code").textContent = jsonText;
+    m.classList.remove("hidden"); m.setAttribute("aria-hidden","false");
+  }
+  function closeJsonDisplay(){ const m = qs("json-display"); if(!m) return; m.classList.add("hidden"); m.setAttribute("aria-hidden","true"); qs("json-code").textContent = ""; }
 
   init();
 })();
