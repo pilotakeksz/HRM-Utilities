@@ -5,6 +5,8 @@ import asyncio
 import os
 import random
 import pickle
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 SUGGESTION_CHANNEL_ID = 1329910476171378769
 SUGGESTION_MANAGER_ROLE = 1355842403134603275
@@ -37,6 +39,34 @@ def progress_bar(yes, no):
     percent_num = int((yes / total) * 100)
     return f"{bar} {percent_num}%"
 
+def progress_bar_image(yes, no):
+    width, height = 300, 38
+    bar_height = 18
+    total = yes + no
+    percent = int((yes / total) * 100) if total > 0 else 0
+
+    img = Image.new("RGB", (width, height), color=(32, 34, 37))
+    draw = ImageDraw.Draw(img)
+
+    green_width = int(width * (percent / 100)) if total > 0 else 0
+    if green_width > 0:
+        draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))
+    if green_width < width:
+        draw.rectangle([green_width, 0, width, bar_height], fill=(237, 66, 69))
+
+    try:
+        font = ImageFont.truetype("arial.ttf", 16)
+    except Exception:
+        font = ImageFont.load_default()
+    percent_text = f"{percent}%"
+    text_width, text_height = draw.textsize(percent_text, font=font)
+    draw.text(((width - text_width) // 2, bar_height + 8), percent_text, font=font, fill=(255, 255, 255))
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
 class SuggestionView(discord.ui.View):
     def __init__(self, suggestion_id, yes=0, no=0, disabled=False):
         super().__init__(timeout=None)
@@ -59,19 +89,20 @@ class SuggestionView(discord.ui.View):
         user_id = interaction.user.id
         if suggestion_id not in cog.votes:
             cog.votes[suggestion_id] = {"yes": set(), "no": set()}
-        # Remove from both sets to allow changing vote
         cog.votes[suggestion_id]["yes"].discard(user_id)
         cog.votes[suggestion_id]["no"].discard(user_id)
         cog.votes[suggestion_id][vote_type].add(user_id)
         yes = len(cog.votes[suggestion_id]["yes"])
         no = len(cog.votes[suggestion_id]["no"])
-        # Update embed
         channel = interaction.channel
         message = await channel.fetch_message(interaction.message.id)
         embed = message.embeds[0]
-        embed.set_field_at(2, name="Votes", value=progress_bar(yes, no), inline=False)
+        embed.set_image(url=None)
+        votes_img = progress_bar_image(yes, no)
+        file = discord.File(votes_img, filename="votes.png")
+        embed.set_image(url="attachment://votes.png")
         new_view = SuggestionView(self.suggestion_id, yes=yes, no=no)
-        await message.edit(embed=embed, view=new_view)
+        await message.edit(embed=embed, view=new_view, attachments=[file])
         cog.save_votes()
         await interaction.response.defer()
 
@@ -128,19 +159,20 @@ class SuggestionView(discord.ui.View):
         user_id = interaction.user.id
         if suggestion_id not in cog.votes:
             cog.votes[suggestion_id] = {"yes": set(), "no": set()}
-        # Remove from both sets to allow changing vote
         cog.votes[suggestion_id]["yes"].discard(user_id)
         cog.votes[suggestion_id]["no"].discard(user_id)
         cog.votes[suggestion_id][vote_type].add(user_id)
         yes = len(cog.votes[suggestion_id]["yes"])
         no = len(cog.votes[suggestion_id]["no"])
-        # Update embed
         channel = interaction.channel
         message = await channel.fetch_message(interaction.message.id)
         embed = message.embeds[0]
-        embed.set_field_at(2, name="Votes", value=progress_bar(yes, no), inline=False)
+        embed.set_image(url=None)
+        votes_img = progress_bar_image(yes, no)
+        file = discord.File(votes_img, filename="votes.png")
+        embed.set_image(url="attachment://votes.png")
         new_view = SuggestionView(self.suggestion_id, yes=yes, no=no)
-        await message.edit(embed=embed, view=new_view)
+        await message.edit(embed=embed, view=new_view, attachments=[file])
         cog.save_votes()
         await interaction.response.defer() #test
 
@@ -188,7 +220,10 @@ class Suggestion(commands.Cog):
 
         view = SuggestionView(suggestion_id)
         try:
-            msg = await channel.send(embed=embed, view=view)
+            votes_img = progress_bar_image(0, 0)
+            file = discord.File(votes_img, filename="votes.png")
+            embed.set_image(url="attachment://votes.png")
+            msg = await channel.send(embed=embed, view=view, file=file)
         except Exception as e:
             await interaction.followup.send(f"Failed to send suggestion: {e}", ephemeral=True)
             return
