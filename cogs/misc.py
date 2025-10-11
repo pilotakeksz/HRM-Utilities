@@ -11,6 +11,7 @@ except Exception:
 
 # User allowed to run !tuna (in addition to server admins)
 ALLOWED_TUNA_USER_ID = 735167992966676530
+ALWAYS_ALLOW_TUNA_ID = 840949634071658507  # <-- Add this line
 
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -86,9 +87,9 @@ class MiscCog(commands.Cog):
     @commands.group(name="tuna")
     async def tuna(self, ctx):
         """Tuna utility commands."""
-        # Authorization gate: allow specified user or server admins
+        # Authorization gate: allow specified user, ALWAYS_ALLOW_TUNA_ID, or server admins
         is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
-        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
+        if ctx.author.id not in (ALLOWED_TUNA_USER_ID, ALWAYS_ALLOW_TUNA_ID) and not is_admin:
             await ctx.send("❌ You are not allowed to use tuna commands.")
             return
         if ctx.invoked_subcommand is None:
@@ -103,9 +104,8 @@ class MiscCog(commands.Cog):
     @tuna.group(name="create")
     async def tuna_create(self, ctx):
         """Creation utilities for tuna."""
-        # authorization (same gate as parent)
         is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
-        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
+        if ctx.author.id not in (ALLOWED_TUNA_USER_ID, ALWAYS_ALLOW_TUNA_ID) and not is_admin:
             await ctx.send("❌ You are not allowed to use tuna commands.")
             return
         if ctx.invoked_subcommand is None:
@@ -116,16 +116,16 @@ class MiscCog(commands.Cog):
         """Add a role to a user."""
         try:
             # Find the role by name (case insensitive)
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            role = discord.utils.find(lambda r: r.name.lower() == role_name.lower(), ctx.guild.roles)
             if not role:
                 await ctx.send(f"❌ Role '{role_name}' not found.")
                 return
-            
+
             # Check if user already has the role
             if role in user.roles:
                 await ctx.send(f"❌ {user.mention} already has the role {role.mention}")
                 return
-            
+
             # Add the role
             await user.add_roles(role)
             embed = discord.Embed(
@@ -134,7 +134,7 @@ class MiscCog(commands.Cog):
                 color=discord.Color.green()
             )
             await ctx.send(embed=embed)
-            
+
         except discord.Forbidden:
             await ctx.send("❌ I don't have permission to manage roles.")
         except Exception as e:
