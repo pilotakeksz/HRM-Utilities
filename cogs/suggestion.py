@@ -59,11 +59,17 @@ def progress_bar_image(yes, no):
     except Exception:
         font = ImageFont.load_default()
     percent_text = f"{percent}%"
-    # FIX: Use font.getbbox for text size
+    # Overlay the percent text centered on the bar
     bbox = font.getbbox(percent_text)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
-    draw.text(((width - text_width) // 2, bar_height + 8), percent_text, font=font, fill=(255, 255, 255))
+    # Center vertically on the bar
+    draw.text(
+        ((width - text_width) // 2, (bar_height - text_height) // 2),
+        percent_text,
+        font=font,
+        fill=(255, 255, 255)
+    )
 
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -213,7 +219,7 @@ class Suggestion(commands.Cog):
         embed.set_thumbnail(url=THUMBNAIL_URL)
         embed.add_field(name="**Suggestor:**", value=interaction.user.mention, inline=False)
         embed.add_field(name="**Suggestion:**", value=suggestion, inline=False)
-        embed.add_field(name="Votes", value=progress_bar(0, 0), inline=False)
+        # REMOVE the emoji bar field entirely
         embed.set_footer(text=f"Suggestion ID: {suggestion_id}")
 
         channel = interaction.guild.get_channel(SUGGESTION_CHANNEL_ID)
