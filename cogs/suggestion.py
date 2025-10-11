@@ -41,30 +41,44 @@ def progress_bar(yes, no):
 
 def progress_bar_image(yes, no):
     width, height = 300, 38
-    bar_height = 32  # Make the bar much thicker
+    bar_height = 32
     total = yes + no
     percent = int((yes / total) * 100) if total > 0 else 0
 
     img = Image.new("RGB", (width, height), color=(32, 34, 37))
     draw = ImageDraw.Draw(img)
 
-    green_width = int(width * (percent / 100)) if total > 0 else 0
-    # Draw green part
-    if green_width > 0:
-        draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))
-    # Draw grey part
-    if green_width < width:
-        draw.rectangle([green_width, 0, width, bar_height], fill=(54, 57, 63))
+    # Draw green/red bar
+    if total == 0:
+        draw.rectangle([0, 0, width, bar_height], fill=(54, 57, 63))
+    else:
+        green_width = int(width * (percent / 100))
+        if green_width > 0:
+            draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))
+        if green_width < width:
+            draw.rectangle([green_width, 0, width, bar_height], fill=(237, 66, 69))
 
-    try:
-        font = ImageFont.truetype("arial.ttf", 24)  # Make text bigger
-    except Exception:
-        font = ImageFont.load_default()
+    # Draw dark blue background for percent text
+    text_bg_height = bar_height
+    text_bg_width = width
+    draw.rectangle(
+        [0, 0, text_bg_width, text_bg_height],
+        fill=(22, 34, 56, 220)
+    )
+
+    # Draw big, bold percent text centered
     percent_text = f"{percent}%"
+    try:
+        # Try to use a bold font if available
+        font = ImageFont.truetype("arialbd.ttf", 32)
+    except Exception:
+        try:
+            font = ImageFont.truetype("arial.ttf", 32)
+        except Exception:
+            font = ImageFont.load_default()
     bbox = font.getbbox(percent_text)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
-    # Center text vertically and horizontally on the bar
     draw.text(
         ((width - text_width) // 2, (bar_height - text_height) // 2),
         percent_text,
