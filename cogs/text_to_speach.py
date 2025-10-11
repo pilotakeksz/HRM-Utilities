@@ -5,8 +5,14 @@ import asyncio
 import pyttsx3
 import tempfile
 import os
+import logging
 
 TTS_NICKNAMES_FILE = "tts_nicknames.json"
+LOG_CHANNEL_ID = 1343686645815181382
+LOGS_DIR = "logs"
+DATA_DIR = "data"
+os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 
 def ensure_nicknames():
     import json
@@ -133,5 +139,22 @@ class TextToSpeech(commands.Cog):
         save_nicknames(self.nicknames)
         await interaction.response.send_message(f"Cleared TTS nickname for {user.mention}.", ephemeral=True)
 
+def log_action(msg):
+    # Log to file
+    with open(os.path.join(LOGS_DIR, "tts.log"), "a", encoding="utf-8") as f:
+        f.write(f"{msg}\n")
+    # Log to Discord channel if available
+    async def send_log(bot):
+        channel = bot.get_channel(LOG_CHANNEL_ID)
+        if channel:
+            await channel.send(msg)
+    return send_log
+
 async def setup(bot: commands.Bot):
-    await bot.add_cog(TextToSpeech(bot))
+    cog = TextToSpeech(bot)
+    await bot.add_cog(cog)
+    bot.tree.add_command(cog.tts_join)
+    bot.tree.add_command(cog.tts_set_nickname)
+    bot.tree.add_command(cog.tts_admin_set_nickname)
+    bot.tree.add_command(cog.tts_admin_clear_nickname)
+    await bot.tree.sync()
