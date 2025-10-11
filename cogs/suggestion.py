@@ -45,40 +45,44 @@ def progress_bar_image(yes, no):
     total = yes + no
     percent = int((yes / total) * 100) if total > 0 else 0
 
-    # Draw green/red bar first
     img = Image.new("RGB", (width, height), color=(32, 34, 37))
     draw = ImageDraw.Draw(img)
 
     if total == 0:
-        # Full grey bar if no votes
         draw.rectangle([0, 0, width, bar_height], fill=(54, 57, 63))
     else:
         green_width = int(width * (percent / 100))
         if green_width > 0:
-            draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))  # green
+            draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))
         if green_width < width:
-            draw.rectangle([green_width, 0, width, bar_height], fill=(237, 66, 69))  # red
+            draw.rectangle([green_width, 0, width, bar_height], fill=(237, 66, 69))
 
-    # Draw dark blue background for percent text (overlay, but only behind text)
     percent_text = f"{percent}%"
+    # Try bold font, fallback to Arial, then default
     try:
-        # Try bold font, fallback to Arial, then default
-        font = ImageFont.truetype("arialbd.ttf", 40)
+        font = ImageFont.truetype("arialbd.ttf", 44)
     except Exception:
         try:
-            font = ImageFont.truetype("arial.ttf", 40)
+            font = ImageFont.truetype("arial.ttf", 44)
         except Exception:
             font = ImageFont.load_default()
+    # Get text bounding box
     bbox = font.getbbox(percent_text)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
     text_x = (width - text_width) // 2
     text_y = (bar_height - text_height) // 2
 
-    # Draw a dark blue rectangle just behind the text for contrast
-    pad_x, pad_y = 8, 4
-    draw.rectangle(
-        [text_x - pad_x, text_y - pad_y, text_x + text_width + pad_x, text_y + text_height + pad_y],
+    # Draw a dark blue background in the exact shape of the text
+    # Use the bounding box to draw a rounded rectangle behind the text
+    pad_x, pad_y = 10, 6
+    rect_x0 = text_x - pad_x
+    rect_y0 = text_y - pad_y
+    rect_x1 = text_x + text_width + pad_x
+    rect_y1 = text_y + text_height + pad_y
+    draw.rounded_rectangle(
+        [rect_x0, rect_y0, rect_x1, rect_y1],
+        radius=12,
         fill=(22, 34, 56)
     )
 
