@@ -12,8 +12,8 @@ EMBED_COLOR = 0xd0b47b
 APPROVED_COLOR = 0x43b581  # green
 DENIED_COLOR = 0xed4245    # red
 THUMBNAIL_URL = "https://cdn.discordapp.com/attachments/1376647403712675991/1376652854391083269/image-141.png?ex=685cffa1&is=685bae21&hm=db6b95d431e55f76eca4e55ca48b7709d7f8bdf1ec1ef77e949b1d0beaa50f42&"
-YES_EMOJI = "<:tick1:1330953719344402584>"
-NO_EMOJI = "<:xmark1:1330953708766363821>"
+YES_EMOJI = "<:utils_tick:1426625947729137754>"
+NO_EMOJI = "<:utils_cross:1426625759291904061>"
 
 VOTES_FILE = "suggestion_votes.pkl"
 MESSAGE_MAP_FILE = "suggestion_message_map.pkl"
