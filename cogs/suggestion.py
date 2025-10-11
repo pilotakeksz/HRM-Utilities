@@ -80,12 +80,13 @@ class SuggestionYesButton(discord.ui.Button):
         super().__init__(
             label=str(yes),
             style=discord.ButtonStyle.green,
-            emoji=YES_EMOJI, #test
+            emoji=YES_EMOJI,
             custom_id=f"suggest_yes_{suggestion_id}",
             disabled=disabled
         )
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # <-- Move this to the top
         view: SuggestionView = self.view
         await view.handle_vote(interaction, "yes")
 
@@ -100,6 +101,7 @@ class SuggestionNoButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # <-- Move this to the top
         view: SuggestionView = self.view
         await view.handle_vote(interaction, "no")
 
