@@ -168,6 +168,8 @@ class Suggestion(commands.Cog):
     @app_commands.command(name="suggestion-submit", description="Submit a suggestion")
     @app_commands.describe(title="Title of your suggestion", suggestion="Your suggestion text")
     async def suggestion_submit(self, interaction: discord.Interaction, title: str, suggestion: str):
+        await interaction.response.defer(ephemeral=True)  # Respond immediately to avoid timeout
+
         suggestion_id = random.randint(100000, 999999)
         embed = discord.Embed(
             title=title,
@@ -181,19 +183,23 @@ class Suggestion(commands.Cog):
 
         channel = interaction.guild.get_channel(SUGGESTION_CHANNEL_ID)
         if not channel:
-            await interaction.response.send_message("Suggestion channel not found.", ephemeral=True)
+            await interaction.followup.send("Suggestion channel not found or bot lacks permissions.", ephemeral=True)
             return
 
         view = SuggestionView(suggestion_id)
-        msg = await channel.send(embed=embed, view=view)
+        try:
+            msg = await channel.send(embed=embed, view=view)
+        except Exception as e:
+            await interaction.followup.send(f"Failed to send suggestion: {e}", ephemeral=True)
+            return
+
         self.votes[suggestion_id] = {"yes": set(), "no": set()}
         self.message_map[suggestion_id] = msg.id
-        self.save_votes() # test
+        self.save_votes()
 
-        # Register persistent view for this suggestion
         self.bot.add_view(SuggestionView.from_votes(suggestion_id, self.votes[suggestion_id]))
 
-        await interaction.response.send_message(f"Suggestion submitted to {channel.mention}!", ephemeral=True)
+        await interaction.followup.send(f"Suggestion submitted to {channel.mention}!", ephemeral=True)
 
     @app_commands.command(name="suggestion-approve", description="Approve a suggestion (managers only)")
     @app_commands.describe(suggestion_id="Suggestion ID to approve")
