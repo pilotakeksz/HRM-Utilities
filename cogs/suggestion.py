@@ -41,7 +41,7 @@ def progress_bar(yes, no):
 
 def progress_bar_image(yes, no):
     width, height = 300, 38
-    bar_height = 18
+    bar_height = 32  # Make the bar much thicker
     total = yes + no
     percent = int((yes / total) * 100) if total > 0 else 0
 
@@ -49,21 +49,22 @@ def progress_bar_image(yes, no):
     draw = ImageDraw.Draw(img)
 
     green_width = int(width * (percent / 100)) if total > 0 else 0
+    # Draw green part
     if green_width > 0:
         draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))
+    # Draw grey part
     if green_width < width:
-        draw.rectangle([green_width, 0, width, bar_height], fill=(237, 66, 69))
+        draw.rectangle([green_width, 0, width, bar_height], fill=(54, 57, 63))
 
     try:
-        font = ImageFont.truetype("arial.ttf", 16)
+        font = ImageFont.truetype("arial.ttf", 24)  # Make text bigger
     except Exception:
         font = ImageFont.load_default()
     percent_text = f"{percent}%"
-    # Overlay the percent text centered on the bar
     bbox = font.getbbox(percent_text)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
-    # Center vertically on the bar
+    # Center text vertically and horizontally on the bar
     draw.text(
         ((width - text_width) // 2, (bar_height - text_height) // 2),
         percent_text,
