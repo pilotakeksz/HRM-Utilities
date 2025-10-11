@@ -59,8 +59,10 @@ def progress_bar_image(yes, no):
     except Exception:
         font = ImageFont.load_default()
     percent_text = f"{percent}%"
-    # FIX: Use font.getsize instead of draw.textsize
-    text_width, text_height = font.getsize(percent_text)
+    # FIX: Use font.getbbox for text size
+    bbox = font.getbbox(percent_text)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
     draw.text(((width - text_width) // 2, bar_height + 8), percent_text, font=font, fill=(255, 255, 255))
 
     buf = BytesIO()
