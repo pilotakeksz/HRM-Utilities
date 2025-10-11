@@ -360,7 +360,8 @@ async def main():
             "cogs.loa",
             "cogs.version",
             "cogs.trainings",
-            "embed-builder-web.embed_new"
+            "embed-builder-web.embed_new",
+            "cogs.tts_cog"
         ]
         
         for cog in cogs:
