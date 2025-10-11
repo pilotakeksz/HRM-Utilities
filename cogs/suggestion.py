@@ -52,13 +52,26 @@ def progress_bar_image(yes, no):
         draw.rectangle([0, 0, width, bar_height], fill=(54, 57, 63))
     else:
         green_width = int(width * (percent / 100))
+        # Draw green part
         if green_width > 0:
             draw.rectangle([0, 0, green_width, bar_height], fill=(67, 181, 129))
+        # Draw red part
         if green_width < width:
             draw.rectangle([green_width, 0, width, bar_height], fill=(237, 66, 69))
+        # Blend at the border between green and red
+        if 0 < green_width < width:
+            blend_width = 12  # pixels for blending
+            for x in range(blend_width):
+                alpha = x / blend_width
+                # Blend green and red
+                r = int((1 - alpha) * 67 + alpha * 237)
+                g = int((1 - alpha) * 181 + alpha * 66)
+                b = int((1 - alpha) * 129 + alpha * 69)
+                xpos = green_width - blend_width // 2 + x
+                if 0 <= xpos < width:
+                    draw.line([(xpos, 0), (xpos, bar_height)], fill=(r, g, b))
 
     percent_text = f"{percent}%"
-    # Try bold font, fallback to Arial, then default
     try:
         font = ImageFont.truetype("arialbd.ttf", 44)
     except Exception:
@@ -66,15 +79,12 @@ def progress_bar_image(yes, no):
             font = ImageFont.truetype("arial.ttf", 44)
         except Exception:
             font = ImageFont.load_default()
-    # Get text bounding box
     bbox = font.getbbox(percent_text)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
     text_x = (width - text_width) // 2
     text_y = (bar_height - text_height) // 2
 
-    # Draw a dark blue background in the exact shape of the text
-    # Use the bounding box to draw a rounded rectangle behind the text
     pad_x, pad_y = 10, 6
     rect_x0 = text_x - pad_x
     rect_y0 = text_y - pad_y
@@ -86,7 +96,6 @@ def progress_bar_image(yes, no):
         fill=(22, 34, 56)
     )
 
-    # Draw big, bold percent text centered
     draw.text(
         (text_x, text_y),
         percent_text,
