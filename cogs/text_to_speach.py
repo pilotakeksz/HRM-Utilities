@@ -148,4 +148,9 @@ class TextToSpeech(commands.Cog):
         log_action(self.bot, f"{interaction.user} cleared TTS nickname for {user}.")
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(TextToSpeech(bot))
+    cog = TextToSpeech(bot)
+    await bot.add_cog(cog)
+    bot.tree.add_command(cog.tts_join)
+    bot.tree.add_command(cog.tts_set_nickname)
+    bot.tree.add_command(cog.tts_admin_set_nickname)
+    bot.tree.add_command(cog.tts_admin_clear_nickname)
