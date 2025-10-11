@@ -9,7 +9,7 @@ class TTSCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="say", description="Speak a message in your current voice channel.")
+    @commands.hybrid_command(name="tts", description="Speak a message in your current voice channel.")
     async def say(self, ctx, *, message: str):
         """Generate TTS and play it in the user's voice channel."""
         # Check if user is in a voice channel
