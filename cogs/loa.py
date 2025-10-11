@@ -13,6 +13,7 @@ LOGS_DIR = "logs"
 LOA_DATA_FILE = os.path.join(DATA_DIR, "loa_requests.json")
 LOA_LOG_FILE = os.path.join(LOGS_DIR, "loa.log")
 ACTIVE_LOAS_FILE = os.path.join(DATA_DIR, "active_loas.json")
+GUILD_ID = 1329908357812981882  # <-- Replace with your actual guild/server ID
 
 def ensure_dirs():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -514,7 +515,15 @@ class LOACog(commands.Cog):
                 active_loas = json.load(f)
         except Exception:
             active_loas = {}
-        guild = self.bot.get_guild(LOA_REVIEW_CHANNEL // 10000000000 * 10000000000)  # Replace with your guild ID if needed
+
+        # Use correct guild lookup
+        guild = self.bot.get_guild(GUILD_ID)
+        if guild is None:
+            try:
+                guild = await self.bot.fetch_guild(GUILD_ID)
+            except Exception:
+                guild = None
+
         loa_role = guild.get_role(LOA_ACTIVE_ROLE) if guild else None
         expired_users = []
         for user_id, end_date_str in active_loas.items():
