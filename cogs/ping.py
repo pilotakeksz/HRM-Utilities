@@ -1,8 +1,8 @@
 import discord
 from discord.ext import commands, tasks
 
-PING_USER_ID = 735167992966676530
-PING_CHANNEL_ID = 735167992966676530
+PING_USER_ID = 670646167448584192
+PING_CHANNEL_ID = 123456789012345678  # Replace with your actual channel ID
 PING_CHANNEL_MESSAGE = "https://tenor.com/view/borzoi-siren-dawg-with-the-light-on-him-sailorzoop-dog-gif-2844905554045249724"
 
 class PingLoop(commands.Cog):
@@ -26,7 +26,7 @@ class PingLoop(commands.Cog):
         
         if user:
             try:
-                await user.send("""https://discord.gg/ecu4HVVV""")
+                await user.send("""general squared""")
             except Exception:
                 pass
 
