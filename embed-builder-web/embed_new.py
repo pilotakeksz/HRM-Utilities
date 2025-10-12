@@ -3,6 +3,7 @@ import json
 import base64
 import uuid
 import threading
+import asyncio
 from typing import Optional, List, Dict, Any
 
 import discord
@@ -435,45 +436,99 @@ class PayloadView(ui.View):
                 pass
 
 
-class FileUploadModal(ui.Modal, title="Upload JSON File"):
+class JSONCollectorView(ui.View):
     def __init__(self, cog, channel=None):
-        super().__init__()
+        super().__init__(timeout=300)  # 5 minute timeout
         self.cog = cog
         self.channel = channel
+        self.waiting_for_json = True
 
-    json_content = ui.TextInput(
-        label="JSON Content",
-        placeholder="Paste your JSON content here or upload a file...",
-        style=discord.TextStyle.paragraph,
-        required=True,
-        max_length=4000
-    )
+    @ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel_button(self, interaction: discord.Interaction, button: ui.Button):
+        self.waiting_for_json = False
+        await interaction.response.edit_message(content="JSON collection cancelled.", view=None)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            data = json.loads(self.json_content.value)
-        except Exception as ex:
-            await interaction.followup.send(f"Invalid JSON: {ex}", ephemeral=True)
-            return
-
-        await self.cog._process_and_send_messages(interaction, data, self.channel)
-
-    async def on_error(self, interaction: discord.Interaction, error: Exception):
-        await interaction.followup.send(f"An error occurred: {error}", ephemeral=True)
+    async def on_timeout(self):
+        self.waiting_for_json = False
 
 
 class EmbedNewCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="send_json", description="Send a complete message JSON from file upload (messages with embeds + referenced_messages + actions)")
+    @app_commands.command(name="send_json", description="Send a complete message JSON (messages with embeds + referenced_messages + actions)")
     @app_commands.describe(channel="Optional target channel")
     async def send_json(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
-        # Create a modal for file upload
-        modal = FileUploadModal(self, channel)
-        await interaction.response.send_modal(modal)
+        # Create a view to collect JSON from chat
+        view = JSONCollectorView(self, channel)
+        
+        embed = discord.Embed(
+            title="JSON Collection",
+            description="Please send your JSON data in this chat. You can either:\n"
+                       "• Send the JSON as a message (if short enough)\n"
+                       "• Upload a `.txt` file with the JSON content (for large data)\n\n"
+                       "I'll wait for 5 minutes for your response.",
+            color=0x7289da
+        )
+        
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
+        # Start waiting for the user's JSON
+        await self._wait_for_json(interaction, view, channel)
+
+    async def _wait_for_json(self, interaction: discord.Interaction, view: JSONCollectorView, channel: Optional[discord.TextChannel] = None):
+        """Wait for user to send JSON data in chat."""
+        def check(message):
+            return (message.author == interaction.user and 
+                   message.channel == interaction.channel and
+                   view.waiting_for_json)
+        
+        try:
+            # Wait for a message from the user
+            message = await self.bot.wait_for('message', check=check, timeout=300)
+            
+            # Check if it's a file attachment
+            if message.attachments:
+                attachment = message.attachments[0]
+                if attachment.filename.endswith('.txt'):
+                    try:
+                        # Read the file content
+                        content = await attachment.read()
+                        json_text = content.decode('utf-8')
+                    except Exception as e:
+                        await interaction.followup.send(f"Error reading file: {e}", ephemeral=True)
+                        return
+                else:
+                    await interaction.followup.send("Please upload a `.txt` file with your JSON content.", ephemeral=True)
+                    return
+            else:
+                # Use the message content directly
+                json_text = message.content
+            
+            # Parse the JSON
+            try:
+                data = json.loads(json_text)
+            except json.JSONDecodeError as e:
+                await interaction.followup.send(f"Invalid JSON: {e}", ephemeral=True)
+                return
+            
+            # Process and send the messages
+            await self._process_and_send_messages(interaction, data, channel)
+            
+            # Update the original message to show completion
+            embed = discord.Embed(
+                title="JSON Processed Successfully",
+                description="Your JSON data has been processed and sent!",
+                color=0x00ff00
+            )
+            await interaction.edit_original_response(embed=embed, view=None)
+            
+        except asyncio.TimeoutError:
+            await interaction.followup.send("Timeout: No JSON data received within 5 minutes.", ephemeral=True)
+            view.waiting_for_json = False
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+            view.waiting_for_json = False
 
     async def _process_and_send_messages(self, interaction: discord.Interaction, data: dict, channel: Optional[discord.TextChannel] = None):
         """Process JSON data and send messages with embeds."""

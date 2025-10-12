@@ -349,13 +349,16 @@
     </div>
 
     <!-- Help Section -->
-    <div class="help-section" style="position: fixed; bottom: 20px; right: 20px; background: var(--background-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000;">
+    <div class="help-section" style="position: fixed; bottom: 20px; right: 20px; background: var(--background-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000;">
         <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 0.9rem;">Discord Bot Usage</h4>
         <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.8rem;">
             Use <code style="background: var(--background-tertiary); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.75rem;">/send_json</code> command
         </p>
+        <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.75rem;">
+            Then send your JSON in chat or upload a <code style="background: var(--background-tertiary); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.7rem;">.txt</code> file
+        </p>
         <p style="margin: 0; color: var(--text-secondary); font-size: 0.75rem;">
-            Upload your exported JSON file via the modal form. Large files are now supported!
+            No more character limits - works with any size!
         </p>
         <button onclick="this.parentElement.style.display='none'" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem;">×</button>
     </div>

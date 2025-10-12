@@ -1,0 +1,32 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Test from .txt file",
+          "description": "This embed was sent from a .txt file upload!",
+          "color": 3447003,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "fields": [
+            {
+              "name": "File Upload Test",
+              "value": "This works with large JSON files!",
+              "inline": false
+            }
+          ],
+          "footer": {
+            "text": "Uploaded via .txt file"
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 1,
+    "total_embeds": 1,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}
