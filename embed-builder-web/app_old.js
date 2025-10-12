@@ -1,7 +1,7 @@
-// Discohook-style Embed Builder with Message Support
+// Discohook-style Embed Builder
 class EmbedBuilder {
     constructor() {
-        this.messages = []; // Array of messages, each containing multiple embeds
+        this.messages = []; // Changed from embeds to messages
         this.currentMessageIndex = 0;
         this.currentEmbedIndex = 0;
         this.init();
@@ -25,7 +25,6 @@ class EmbedBuilder {
         document.getElementById('add-embed-btn').addEventListener('click', () => this.addMessage());
 
         // Editor buttons
-        document.getElementById('add-embed-to-message-btn').addEventListener('click', () => this.addEmbed());
         document.getElementById('duplicate-embed-btn').addEventListener('click', () => this.duplicateEmbed());
         document.getElementById('delete-embed-btn').addEventListener('click', () => this.deleteEmbed());
         document.getElementById('add-field-btn').addEventListener('click', () => this.addField());
@@ -105,7 +104,7 @@ class EmbedBuilder {
             switch (e.key) {
                 case 's':
                     e.preventDefault();
-                    this.saveCurrentMessage();
+                    this.saveCurrentEmbed();
                     break;
                 case 'n':
                     e.preventDefault();
@@ -195,8 +194,6 @@ class EmbedBuilder {
         if (this.messages.length === 0) return;
         
         const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-        
         const currentEmbed = JSON.parse(JSON.stringify(currentMessage.embeds[this.currentEmbedIndex]));
         currentMessage.embeds.splice(this.currentEmbedIndex + 1, 0, currentEmbed);
         this.currentEmbedIndex++;
@@ -262,7 +259,7 @@ class EmbedBuilder {
         embed.footer.icon_url = document.getElementById('footer-icon').value;
 
         this.renderPreview();
-        this.renderMessageList();
+        this.renderEmbedList();
     }
 
     addField() {
@@ -332,12 +329,9 @@ class EmbedBuilder {
     }
 
     updateAction(actionIndex, property, value) {
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        const action = currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex];
+        const action = this.embeds[this.currentEmbedIndex].actions[actionIndex];
         if (property === 'ephemeral') {
             action[property] = value === 'true';
         } else if (property === 'buttonType') {
@@ -353,21 +347,15 @@ class EmbedBuilder {
     }
 
     deleteAction(actionIndex) {
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        currentMessage.embeds[this.currentEmbedIndex].actions.splice(actionIndex, 1);
+        this.embeds[this.currentEmbedIndex].actions.splice(actionIndex, 1);
         this.renderActions();
         this.renderPreview();
     }
 
     addActionOption(actionIndex) {
-        if (this.messages.length === 0) return;
-
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
+        if (this.embeds.length === 0) return;
 
         const option = {
             label: '',
@@ -376,64 +364,62 @@ class EmbedBuilder {
             icon: ''
         };
 
-        currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options.push(option);
+        this.embeds[this.currentEmbedIndex].actions[actionIndex].options.push(option);
         this.renderActions();
     }
 
-    addSavedMessageOption(actionIndex, optionIndex) {
-        const savedMessages = this.getSavedMessages();
-        if (savedMessages.length === 0) {
-            alert('No saved messages available');
+    addSavedEmbedOption(actionIndex, optionIndex) {
+        const savedEmbeds = this.getSavedEmbeds();
+        if (savedEmbeds.length === 0) {
+            alert('No saved embeds available');
             return;
         }
 
-        // Create a modal for message selection
-        this.createMessageSelectionModal(savedMessages, (selectedKey) => {
+        // Create a modal for embed selection
+        this.createEmbedSelectionModal(savedEmbeds, (selectedKey) => {
             if (!selectedKey) return;
 
-            const selectedMessage = savedMessages.find(msg => msg.key === selectedKey);
-            if (!selectedMessage) {
-                alert('Message not found');
+            const selectedEmbed = savedEmbeds.find(embed => embed.key === selectedKey);
+            if (!selectedEmbed) {
+                alert('Embed not found');
                 return;
             }
 
-            // Update the option with the saved message reference
-            const currentMessage = this.messages[this.currentMessageIndex];
-            currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].label = selectedKey;
-            currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].value = `send:${selectedKey}`;
-            currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].description = `Send saved message: ${selectedKey}`;
+            // Update the option with the saved embed reference
+            this.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].label = selectedKey;
+            this.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].value = `send:${selectedKey}`;
+            this.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].description = `Send saved embed: ${selectedKey}`;
             
             this.renderActions();
             this.renderPreview();
         });
     }
 
-    addSavedMessageToButton(actionIndex) {
-        const savedMessages = this.getSavedMessages();
-        if (savedMessages.length === 0) {
-            alert('No saved messages available');
+    addSavedEmbedToButton(actionIndex) {
+        const savedEmbeds = this.getSavedEmbeds();
+        if (savedEmbeds.length === 0) {
+            alert('No saved embeds available');
             return;
         }
 
-        // Create a modal for message selection
-        this.createMessageSelectionModal(savedMessages, (selectedKey) => {
+        // Create a modal for embed selection
+        this.createEmbedSelectionModal(savedEmbeds, (selectedKey) => {
             if (!selectedKey) return;
 
-            const selectedMessage = savedMessages.find(msg => msg.key === selectedKey);
-            if (!selectedMessage) {
-                alert('Message not found');
+            const selectedEmbed = savedEmbeds.find(embed => embed.key === selectedKey);
+            if (!selectedEmbed) {
+                alert('Embed not found');
                 return;
             }
 
-            // Update the button with the saved message reference
-            const currentMessage = this.messages[this.currentMessageIndex];
-            currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].target = `send:${selectedKey}`;
+            // Update the button with the saved embed reference
+            this.embeds[this.currentEmbedIndex].actions[actionIndex].target = `send:${selectedKey}`;
             this.renderActions();
             this.renderPreview();
         });
     }
 
-    createMessageSelectionModal(savedMessages, callback) {
+    createEmbedSelectionModal(savedEmbeds, callback) {
         // Create modal overlay
         const modal = document.createElement('div');
         modal.className = 'modal active';
@@ -448,8 +434,8 @@ class EmbedBuilder {
         const header = document.createElement('div');
         header.className = 'modal-header';
         header.innerHTML = `
-            <h2>Select Saved Message</h2>
-            <button class="modal-close" id="message-selection-close">
+            <h2>Select Saved Embed</h2>
+            <button class="modal-close" id="embed-selection-close">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -457,74 +443,73 @@ class EmbedBuilder {
             </button>
         `;
 
-        // Create body with message list
+        // Create body with embed list
         const body = document.createElement('div');
         body.className = 'modal-body';
         body.style.maxHeight = '400px';
         body.style.overflowY = 'auto';
 
-        const messageList = document.createElement('div');
-        messageList.className = 'message-selection-list';
-        messageList.style.display = 'flex';
-        messageList.style.flexDirection = 'column';
-        messageList.style.gap = '0.5rem';
+        const embedList = document.createElement('div');
+        embedList.className = 'embed-selection-list';
+        embedList.style.display = 'flex';
+        embedList.style.flexDirection = 'column';
+        embedList.style.gap = '0.5rem';
 
-        savedMessages.forEach(message => {
-            const messageItem = document.createElement('div');
-            messageItem.className = 'message-selection-item';
-            messageItem.style.display = 'flex';
-            messageItem.style.alignItems = 'center';
-            messageItem.style.gap = '1rem';
-            messageItem.style.padding = '1rem';
-            messageItem.style.border = '1px solid var(--border)';
-            messageItem.style.borderRadius = '8px';
-            messageItem.style.cursor = 'pointer';
-            messageItem.style.transition = 'all 0.2s ease';
+        savedEmbeds.forEach(embed => {
+            const embedItem = document.createElement('div');
+            embedItem.className = 'embed-selection-item';
+            embedItem.style.display = 'flex';
+            embedItem.style.alignItems = 'center';
+            embedItem.style.gap = '1rem';
+            embedItem.style.padding = '1rem';
+            embedItem.style.border = '1px solid var(--border)';
+            embedItem.style.borderRadius = '8px';
+            embedItem.style.cursor = 'pointer';
+            embedItem.style.transition = 'all 0.2s ease';
 
-            messageItem.addEventListener('mouseenter', () => {
-                messageItem.style.background = 'var(--background-tertiary)';
-                messageItem.style.borderColor = 'var(--primary)';
+            embedItem.addEventListener('mouseenter', () => {
+                embedItem.style.background = 'var(--background-tertiary)';
+                embedItem.style.borderColor = 'var(--primary)';
             });
 
-            messageItem.addEventListener('mouseleave', () => {
-                messageItem.style.background = 'transparent';
-                messageItem.style.borderColor = 'var(--border)';
+            embedItem.addEventListener('mouseleave', () => {
+                embedItem.style.background = 'transparent';
+                embedItem.style.borderColor = 'var(--border)';
             });
 
-            messageItem.addEventListener('click', () => {
-                callback(message.key);
+            embedItem.addEventListener('click', () => {
+                callback(embed.key);
                 document.body.removeChild(modal);
             });
 
-            const messageInfo = document.createElement('div');
-            messageInfo.style.flex = '1';
+            const embedInfo = document.createElement('div');
+            embedInfo.style.flex = '1';
 
-            const messageName = document.createElement('div');
-            messageName.style.fontWeight = '600';
-            messageName.style.color = 'var(--text-primary)';
-            messageName.style.marginBottom = '0.25rem';
-            messageName.textContent = message.key;
+            const embedName = document.createElement('div');
+            embedName.style.fontWeight = '600';
+            embedName.style.color = 'var(--text-primary)';
+            embedName.style.marginBottom = '0.25rem';
+            embedName.textContent = embed.key;
 
-            const messagePreview = document.createElement('div');
-            messagePreview.style.fontSize = '0.875rem';
-            messagePreview.style.color = 'var(--text-secondary)';
-            const firstEmbed = message.data.embeds?.[0];
-            messagePreview.textContent = firstEmbed?.title || firstEmbed?.description || `${message.data.embeds?.length || 0} embeds`;
+            const embedPreview = document.createElement('div');
+            embedPreview.style.fontSize = '0.875rem';
+            embedPreview.style.color = 'var(--text-secondary)';
+            embedPreview.textContent = embed.data.embed?.title || embed.data.embed?.description || 'No title or description';
 
-            messageInfo.appendChild(messageName);
-            messageInfo.appendChild(messagePreview);
-            messageItem.appendChild(messageInfo);
+            embedInfo.appendChild(embedName);
+            embedInfo.appendChild(embedPreview);
+            embedItem.appendChild(embedInfo);
 
-            messageList.appendChild(messageItem);
+            embedList.appendChild(embedItem);
         });
 
-        body.appendChild(messageList);
+        body.appendChild(embedList);
 
         // Create footer
         const footer = document.createElement('div');
         footer.className = 'modal-footer';
         footer.innerHTML = `
-            <button class="btn btn-secondary" id="message-selection-cancel">Cancel</button>
+            <button class="btn btn-secondary" id="embed-selection-cancel">Cancel</button>
         `;
 
         modalContent.appendChild(header);
@@ -534,11 +519,11 @@ class EmbedBuilder {
         document.body.appendChild(modal);
 
         // Add event listeners
-        document.getElementById('message-selection-close').addEventListener('click', () => {
+        document.getElementById('embed-selection-close').addEventListener('click', () => {
             document.body.removeChild(modal);
         });
 
-        document.getElementById('message-selection-cancel').addEventListener('click', () => {
+        document.getElementById('embed-selection-cancel').addEventListener('click', () => {
             document.body.removeChild(modal);
         });
 
@@ -549,169 +534,86 @@ class EmbedBuilder {
         });
     }
 
-    getSavedMessages() {
-        const savedMessages = [];
+    getSavedEmbeds() {
+        const savedEmbeds = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && key.startsWith('message_')) {
+            if (key && key.startsWith('embed_')) {
                 try {
                     const data = JSON.parse(localStorage.getItem(key));
-                    savedMessages.push({ key: key.replace('message_', ''), data });
+                    savedEmbeds.push({ key: key.replace('embed_', ''), data });
                 } catch (e) {
                     // Skip invalid entries
                 }
             }
         }
-        return savedMessages;
+        return savedEmbeds;
     }
 
     updateActionOption(actionIndex, optionIndex, property, value) {
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        const option = currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex];
+        const option = this.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex];
         option[property] = value;
         this.renderPreview();
     }
 
     deleteActionOption(actionIndex, optionIndex) {
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options.splice(optionIndex, 1);
+        this.embeds[this.currentEmbedIndex].actions[actionIndex].options.splice(optionIndex, 1);
         this.renderActions();
     }
 
     render() {
-        this.renderMessageList();
+        this.renderEmbedList();
         this.renderForm();
         this.renderPreview();
         this.updateCounter();
     }
 
-    renderMessageList() {
+    renderEmbedList() {
         const container = document.getElementById('embed-list');
         container.innerHTML = '';
 
-        this.messages.forEach((message, messageIndex) => {
-            const messageItem = document.createElement('div');
-            messageItem.className = `message-item ${messageIndex === this.currentMessageIndex ? 'active' : ''}`;
-            messageItem.style.marginBottom = '1rem';
-            messageItem.style.border = '1px solid var(--border)';
-            messageItem.style.borderRadius = '8px';
-            messageItem.style.padding = '0.75rem';
+        this.embeds.forEach((embed, index) => {
+            const item = document.createElement('div');
+            item.className = `embed-item ${index === this.currentEmbedIndex ? 'active' : ''}`;
 
-            const messageHeader = document.createElement('div');
-            messageHeader.className = 'message-header';
-            messageHeader.style.display = 'flex';
-            messageHeader.style.alignItems = 'center';
-            messageHeader.style.justifyContent = 'space-between';
-            messageHeader.style.marginBottom = '0.5rem';
-            messageHeader.addEventListener('click', () => this.setCurrentMessage(messageIndex));
+            const leftSection = document.createElement('div');
+            leftSection.className = 'embed-item-left';
+            leftSection.addEventListener('click', () => this.setCurrentEmbed(index));
 
-            const messageTitle = document.createElement('div');
-            messageTitle.className = 'message-title';
-            messageTitle.style.fontWeight = '600';
-            messageTitle.style.color = 'var(--text-primary)';
-            messageTitle.textContent = `Message ${messageIndex + 1} (${message.embeds.length} embed${message.embeds.length !== 1 ? 's' : ''})`;
+            const number = document.createElement('div');
+            number.className = 'embed-number';
+            number.textContent = index + 1;
 
-            const messageActions = document.createElement('div');
-            messageActions.className = 'message-actions';
-            messageActions.style.display = 'flex';
-            messageActions.style.gap = '0.5rem';
+            const title = document.createElement('div');
+            title.className = 'embed-title';
+            title.textContent = embed.title || `Embed ${index + 1}`;
 
-            const addEmbedBtn = document.createElement('button');
-            addEmbedBtn.className = 'btn btn-sm btn-secondary';
-            addEmbedBtn.innerHTML = '+';
-            addEmbedBtn.title = 'Add embed to this message';
-            addEmbedBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.setCurrentMessage(messageIndex);
-                this.addEmbed();
-            });
+            leftSection.appendChild(number);
+            leftSection.appendChild(title);
 
             const saveBtn = document.createElement('button');
-            saveBtn.className = 'btn btn-sm btn-secondary';
+            saveBtn.className = 'btn btn-sm btn-secondary embed-save-btn';
             saveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17,21 17,13 7,13 7,21"></polyline><polyline points="7,3 7,8 15,8"></polyline></svg>';
-            saveBtn.title = 'Save this message';
+            saveBtn.title = 'Save this embed';
             saveBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.setCurrentMessage(messageIndex);
-                this.saveCurrentMessage();
+                this.saveCurrentEmbed(index);
             });
 
-            messageActions.appendChild(addEmbedBtn);
-            messageActions.appendChild(saveBtn);
-            messageHeader.appendChild(messageTitle);
-            messageHeader.appendChild(messageActions);
-
-            // Embed list within message
-            const embedList = document.createElement('div');
-            embedList.className = 'embed-list';
-            embedList.style.marginLeft = '1rem';
-
-            message.embeds.forEach((embed, embedIndex) => {
-                const embedItem = document.createElement('div');
-                embedItem.className = `embed-item ${messageIndex === this.currentMessageIndex && embedIndex === this.currentEmbedIndex ? 'active' : ''}`;
-                embedItem.style.display = 'flex';
-                embedItem.style.alignItems = 'center';
-                embedItem.style.justifyContent = 'space-between';
-                embedItem.style.gap = '0.75rem';
-                embedItem.style.padding = '0.5rem';
-                embedItem.style.borderRadius = '6px';
-                embedItem.style.cursor = 'pointer';
-                embedItem.style.transition = 'all 0.2s ease';
-                embedItem.style.marginBottom = '0.25rem';
-                embedItem.style.border = '1px solid transparent';
-
-                embedItem.addEventListener('click', () => {
-                    this.setCurrentMessage(messageIndex);
-                    this.setCurrentEmbed(embedIndex);
-                });
-
-                const embedInfo = document.createElement('div');
-                embedInfo.className = 'embed-info';
-                embedInfo.style.display = 'flex';
-                embedInfo.style.alignItems = 'center';
-                embedInfo.style.gap = '0.5rem';
-
-                const embedNumber = document.createElement('div');
-                embedNumber.className = 'embed-number';
-                embedNumber.style.fontSize = '0.75rem';
-                embedNumber.style.fontWeight = '600';
-                embedNumber.style.color = 'var(--text-secondary)';
-                embedNumber.textContent = embedIndex + 1;
-
-                const embedTitle = document.createElement('div');
-                embedTitle.className = 'embed-title';
-                embedTitle.style.fontSize = '0.875rem';
-                embedTitle.style.color = 'var(--text-primary)';
-                embedTitle.textContent = embed.title || `Embed ${embedIndex + 1}`;
-
-                embedInfo.appendChild(embedNumber);
-                embedInfo.appendChild(embedTitle);
-                embedItem.appendChild(embedInfo);
-
-                embedList.appendChild(embedItem);
-            });
-
-            messageItem.appendChild(messageHeader);
-            messageItem.appendChild(embedList);
-            container.appendChild(messageItem);
+            item.appendChild(leftSection);
+            item.appendChild(saveBtn);
+            container.appendChild(item);
         });
     }
 
     renderForm() {
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        const embed = currentMessage.embeds[this.currentEmbedIndex];
+        const embed = this.embeds[this.currentEmbedIndex];
 
         document.getElementById('embed-title').value = embed.title || '';
         document.getElementById('embed-description').value = embed.description || '';
@@ -740,12 +642,9 @@ class EmbedBuilder {
         const container = document.getElementById('fields-list');
         container.innerHTML = '';
 
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        const fields = currentMessage.embeds[this.currentEmbedIndex].fields;
+        const fields = this.embeds[this.currentEmbedIndex].fields;
 
         fields.forEach((field, index) => {
             const fieldItem = document.createElement('div');
@@ -810,12 +709,9 @@ class EmbedBuilder {
         const container = document.getElementById('actions-list');
         container.innerHTML = '';
 
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
-
-        const actions = currentMessage.embeds[this.currentEmbedIndex].actions;
+        const actions = this.embeds[this.currentEmbedIndex].actions;
 
         actions.forEach((action, actionIndex) => {
             const actionItem = document.createElement('div');
@@ -856,7 +752,7 @@ class EmbedBuilder {
                 typeSelect.className = 'form-input';
                 typeSelect.innerHTML = `
                     <option value="link" ${action.buttonType === 'link' ? 'selected' : ''}>Link Button</option>
-                    <option value="send_embed" ${action.buttonType === 'send_embed' ? 'selected' : ''}>Send Message</option>
+                    <option value="send_embed" ${action.buttonType === 'send_embed' ? 'selected' : ''}>Send Embed</option>
                 `;
                 typeSelect.addEventListener('change', (e) => this.updateAction(actionIndex, 'buttonType', e.target.value));
 
@@ -868,31 +764,31 @@ class EmbedBuilder {
                 urlInput.style.display = action.buttonType === 'link' ? 'block' : 'none';
                 urlInput.addEventListener('input', (e) => this.updateAction(actionIndex, 'url', e.target.value));
 
-                // Message selection for send_embed type
-                const messageSelect = document.createElement('div');
-                messageSelect.className = 'message-select-container';
-                messageSelect.style.display = action.buttonType === 'send_embed' ? 'block' : 'none';
+                // Embed selection for send_embed type
+                const embedSelect = document.createElement('div');
+                embedSelect.className = 'embed-select-container';
+                embedSelect.style.display = action.buttonType === 'send_embed' ? 'block' : 'none';
 
-                const messageSelectInput = document.createElement('input');
-                messageSelectInput.type = 'text';
-                messageSelectInput.className = 'form-input';
-                messageSelectInput.placeholder = 'Saved message key or send_json:b64';
-                messageSelectInput.value = action.target || '';
-                messageSelectInput.addEventListener('input', (e) => this.updateAction(actionIndex, 'target', e.target.value));
+                const embedSelectInput = document.createElement('input');
+                embedSelectInput.type = 'text';
+                embedSelectInput.className = 'form-input';
+                embedSelectInput.placeholder = 'Saved embed key or send_json:b64';
+                embedSelectInput.value = action.target || '';
+                embedSelectInput.addEventListener('input', (e) => this.updateAction(actionIndex, 'target', e.target.value));
 
-                const useSavedMessageBtn = document.createElement('button');
-                useSavedMessageBtn.className = 'btn btn-sm btn-primary';
-                useSavedMessageBtn.textContent = 'Use Saved Message';
-                useSavedMessageBtn.addEventListener('click', () => this.addSavedMessageToButton(actionIndex));
+                const useSavedEmbedBtn = document.createElement('button');
+                useSavedEmbedBtn.className = 'btn btn-sm btn-primary';
+                useSavedEmbedBtn.textContent = 'Use Saved Embed';
+                useSavedEmbedBtn.addEventListener('click', () => this.addSavedEmbedToButton(actionIndex));
 
-                messageSelect.appendChild(messageSelectInput);
-                messageSelect.appendChild(useSavedMessageBtn);
+                embedSelect.appendChild(embedSelectInput);
+                embedSelect.appendChild(useSavedEmbedBtn);
 
                 content.appendChild(labelInput);
                 content.appendChild(typeSelect);
                 content.appendChild(urlInput);
-                content.appendChild(messageSelect);
-            } else {
+                content.appendChild(embedSelect);
+        } else {
                 const placeholderInput = document.createElement('input');
                 placeholderInput.type = 'text';
                 placeholderInput.className = 'form-input';
@@ -919,17 +815,17 @@ class EmbedBuilder {
                 addOptionBtn.textContent = 'Add Option';
                 addOptionBtn.addEventListener('click', () => this.addActionOption(actionIndex));
 
-                const addSavedMessageBtn = document.createElement('button');
-                addSavedMessageBtn.className = 'btn btn-sm btn-primary';
-                addSavedMessageBtn.textContent = 'Add Saved Message';
-                addSavedMessageBtn.addEventListener('click', () => {
+                const addSavedEmbedBtn = document.createElement('button');
+                addSavedEmbedBtn.className = 'btn btn-sm btn-primary';
+                addSavedEmbedBtn.textContent = 'Add Saved Embed';
+                addSavedEmbedBtn.addEventListener('click', () => {
                     const optionIndex = action.options.length;
                     this.addActionOption(actionIndex);
-                    this.addSavedMessageOption(actionIndex, optionIndex);
+                    this.addSavedEmbedOption(actionIndex, optionIndex);
                 });
 
                 optionsHeader.appendChild(addOptionBtn);
-                optionsHeader.appendChild(addSavedMessageBtn);
+                optionsHeader.appendChild(addSavedEmbedBtn);
                 optionsContainer.appendChild(optionsHeader);
 
                 action.options.forEach((option, optionIndex) => {
@@ -964,8 +860,8 @@ class EmbedBuilder {
                     const useSavedBtn = document.createElement('button');
                     useSavedBtn.className = 'btn btn-sm btn-primary';
                     useSavedBtn.textContent = 'Use Saved';
-                    useSavedBtn.title = 'Use a saved message as this option';
-                    useSavedBtn.addEventListener('click', () => this.addSavedMessageOption(actionIndex, optionIndex));
+                    useSavedBtn.title = 'Use a saved embed as this option';
+                    useSavedBtn.addEventListener('click', () => this.addSavedEmbedOption(actionIndex, optionIndex));
 
                     const deleteOptionBtn = document.createElement('button');
                     deleteOptionBtn.className = 'btn btn-sm btn-danger';
@@ -975,11 +871,11 @@ class EmbedBuilder {
                     buttonsContainer.appendChild(useSavedBtn);
                     buttonsContainer.appendChild(deleteOptionBtn);
 
-                    // Add description if value contains message reference
+                    // Add description if value contains embed reference
                     if (option.value && (option.value.startsWith('send:') || option.value.startsWith('send_json:'))) {
                         const description = document.createElement('div');
                         description.className = 'option-description';
-                        description.textContent = 'This option will send a message';
+                        description.textContent = 'This option will send an embed';
                         optionItem.appendChild(description);
                     }
 
@@ -1001,94 +897,80 @@ class EmbedBuilder {
         const container = document.getElementById('preview-content');
         container.innerHTML = '';
 
-        if (this.messages.length === 0) return;
+        if (this.embeds.length === 0) return;
 
-        const currentMessage = this.messages[this.currentMessageIndex];
-        if (currentMessage.embeds.length === 0) return;
+        const embed = this.embeds[this.currentEmbedIndex];
+        const previewEmbed = document.createElement('div');
+        previewEmbed.className = 'preview-embed';
 
-        // Show all embeds in the current message
-        currentMessage.embeds.forEach((embed, index) => {
-            const previewEmbed = document.createElement('div');
-            previewEmbed.className = 'preview-embed';
-            if (index > 0) {
-                previewEmbed.style.marginTop = '1rem';
-            }
+        if (embed.title) {
+            const title = document.createElement('div');
+            title.className = 'preview-embed-title';
+            title.textContent = embed.title;
+            previewEmbed.appendChild(title);
+        }
 
-            if (embed.title) {
-                const title = document.createElement('div');
-                title.className = 'preview-embed-title';
-                title.textContent = embed.title;
-                previewEmbed.appendChild(title);
-            }
+        if (embed.description) {
+            const description = document.createElement('div');
+            description.className = 'preview-embed-description';
+            description.textContent = embed.description;
+            previewEmbed.appendChild(description);
+        }
 
-            if (embed.description) {
-                const description = document.createElement('div');
-                description.className = 'preview-embed-description';
-                description.textContent = embed.description;
-                previewEmbed.appendChild(description);
-            }
+        if (embed.fields && embed.fields.length > 0) {
+            const fieldsContainer = document.createElement('div');
+            fieldsContainer.className = 'preview-embed-fields';
 
-            if (embed.fields && embed.fields.length > 0) {
-                const fieldsContainer = document.createElement('div');
-                fieldsContainer.className = 'preview-embed-fields';
+            embed.fields.forEach(field => {
+                const fieldDiv = document.createElement('div');
+                fieldDiv.className = `preview-field ${field.inline ? 'inline' : ''}`;
 
-                embed.fields.forEach(field => {
-                    const fieldDiv = document.createElement('div');
-                    fieldDiv.className = `preview-field ${field.inline ? 'inline' : ''}`;
-
-                    if (field.name) {
-                        const name = document.createElement('div');
-                        name.className = 'preview-field-name';
-                        name.textContent = field.name;
-                        fieldDiv.appendChild(name);
-                    }
-
-                    if (field.value) {
-                        const value = document.createElement('div');
-                        value.className = 'preview-field-value';
-                        value.textContent = field.value;
-                        fieldDiv.appendChild(value);
-                    }
-
-                    fieldsContainer.appendChild(fieldDiv);
-                });
-
-                previewEmbed.appendChild(fieldsContainer);
-            }
-
-            if (embed.footer.text) {
-                const footer = document.createElement('div');
-                footer.className = 'preview-embed-footer';
-
-                if (embed.footer.icon_url) {
-                    const icon = document.createElement('img');
-                    icon.className = 'preview-footer-icon';
-                    icon.src = embed.footer.icon_url;
-                    icon.alt = 'Footer icon';
-                    footer.appendChild(icon);
+                if (field.name) {
+                    const name = document.createElement('div');
+                    name.className = 'preview-field-name';
+                    name.textContent = field.name;
+                    fieldDiv.appendChild(name);
                 }
 
-                const text = document.createElement('div');
-                text.className = 'preview-footer-text';
-                text.textContent = embed.footer.text;
-                footer.appendChild(text);
+                if (field.value) {
+                    const value = document.createElement('div');
+                    value.className = 'preview-field-value';
+                    value.textContent = field.value;
+                    fieldDiv.appendChild(value);
+                }
 
-                previewEmbed.appendChild(footer);
+                fieldsContainer.appendChild(fieldDiv);
+            });
+
+            previewEmbed.appendChild(fieldsContainer);
+        }
+
+        if (embed.footer.text) {
+            const footer = document.createElement('div');
+            footer.className = 'preview-embed-footer';
+
+            if (embed.footer.icon_url) {
+                const icon = document.createElement('img');
+                icon.className = 'preview-footer-icon';
+                icon.src = embed.footer.icon_url;
+                icon.alt = 'Footer icon';
+                footer.appendChild(icon);
             }
 
-            container.appendChild(previewEmbed);
-        });
+            const text = document.createElement('div');
+            text.className = 'preview-footer-text';
+            text.textContent = embed.footer.text;
+            footer.appendChild(text);
+
+            previewEmbed.appendChild(footer);
+        }
+
+        container.appendChild(previewEmbed);
     }
 
     updateCounter() {
         const counter = document.getElementById('embed-counter');
-        if (this.messages.length === 0) {
-            counter.textContent = 'No messages';
-            return;
-        }
-        
-        const currentMessage = this.messages[this.currentMessageIndex];
-        counter.textContent = `Message ${this.currentMessageIndex + 1} of ${this.messages.length} - Embed ${this.currentEmbedIndex + 1} of ${currentMessage.embeds.length}`;
+        counter.textContent = `Embed ${this.currentEmbedIndex + 1} of ${this.embeds.length}`;
     }
 
     openImportModal() {
@@ -1106,64 +988,49 @@ class EmbedBuilder {
 
         if (!jsonText) {
             alert('Please enter JSON data');
-            return;
-        }
+      return;
+    }
 
         try {
             const data = JSON.parse(jsonText);
-            let messages = [];
+            let embeds = [];
 
             if (Array.isArray(data)) {
-                // If it's an array, treat each item as a message
-                messages = data.map(item => {
-                    if (item.embeds) {
-                        return item; // Already a message
-                    } else {
-                        return { embeds: [item] }; // Convert single embed to message
-                    }
-                });
+                embeds = data;
             } else if (data.embeds && Array.isArray(data.embeds)) {
-                // If it has embeds array, treat as a single message
-                messages = [data];
-            } else if (data.messages && Array.isArray(data.messages)) {
-                // If it has messages array, use that
-                messages = data.messages;
+                embeds = data.embeds;
             } else {
-                // Single embed object
-                messages = [{ embeds: [data] }];
+                embeds = [data];
             }
 
-            this.messages = messages.map(message => ({
-                embeds: message.embeds.map(embed => ({
-                    title: embed.title || '',
-                    description: embed.description || '',
-                    color: embed.color ? embed.color.toString(16).padStart(6, '0') : '7289da',
-                    url: embed.url || '',
-                    author: {
-                        name: embed.author?.name || '',
-                        url: embed.author?.url || '',
-                        icon_url: embed.author?.icon_url || ''
-                    },
-                    thumbnail: {
-                        url: embed.thumbnail?.url || ''
-                    },
-                    image: {
-                        url: embed.image?.url || ''
-                    },
-                    fields: (embed.fields || []).map(field => ({
-                        name: field.name || '',
-                        value: field.value || '',
-                        inline: field.inline || false
-                    })),
-                    footer: {
-                        text: embed.footer?.text || '',
-                        icon_url: embed.footer?.icon_url || ''
-                    },
-                    actions: []
-                }))
+            this.embeds = embeds.map(embed => ({
+                title: embed.title || '',
+                description: embed.description || '',
+                color: embed.color ? embed.color.toString(16).padStart(6, '0') : '7289da',
+                url: embed.url || '',
+                author: {
+                    name: embed.author?.name || '',
+                    url: embed.author?.url || '',
+                    icon_url: embed.author?.icon_url || ''
+                },
+                thumbnail: {
+                    url: embed.thumbnail?.url || ''
+                },
+                image: {
+                    url: embed.image?.url || ''
+                },
+                fields: (embed.fields || []).map(field => ({
+                    name: field.name || '',
+                    value: field.value || '',
+                    inline: field.inline || false
+                })),
+                footer: {
+                    text: embed.footer?.text || '',
+                    icon_url: embed.footer?.icon_url || ''
+                },
+                actions: []
             }));
 
-            this.currentMessageIndex = 0;
             this.currentEmbedIndex = 0;
             this.closeModal('import-modal');
             this.render();
@@ -1190,129 +1057,124 @@ class EmbedBuilder {
     }
 
     buildCompletePayload() {
-        // Collect all saved messages that are referenced
-        const referencedMessages = this.collectReferencedMessages();
+        // Collect all saved embeds that are referenced
+        const referencedEmbeds = this.collectReferencedEmbeds();
         
         const payload = {
-            messages: this.messages.map(message => ({
-                embeds: message.embeds.map(embed => ({
-                    title: embed.title || undefined,
-                    description: embed.description || undefined,
-                    color: embed.color ? parseInt(embed.color, 16) : undefined,
-                    url: embed.url || undefined,
-                    author: embed.author.name ? {
-                        name: embed.author.name,
-                        url: embed.author.url || undefined,
-                        icon_url: embed.author.icon_url || undefined
-                    } : undefined,
-                    thumbnail: embed.thumbnail.url ? {
-                        url: embed.thumbnail.url
-                    } : undefined,
-                    image: embed.image.url ? {
-                        url: embed.image.url
-                    } : undefined,
-                    fields: embed.fields.filter(field => field.name || field.value).map(field => ({
-                        name: field.name || '\u200b',
-                        value: field.value || '\u200b',
-                        inline: field.inline
-                    })),
-                    footer: embed.footer.text ? {
-                        text: embed.footer.text,
-                        icon_url: embed.footer.icon_url || undefined
-                    } : undefined,
-                    // Include actions (buttons and select menus) with inlined message data
-                    buttons: embed.actions.filter(action => action.type === 'button').map(button => {
-                        if (button.buttonType === 'send_embed') {
-                            return {
-                                type: 'send_embed',
-                                label: button.label,
-                                target: button.target,
-                                ephemeral: button.ephemeral || false
-                            };
-                        } else {
-                            return {
-                                type: 'link',
-                                label: button.label,
-                                url: button.url
-                            };
-                        }
-                    }),
-                    selects: embed.actions.filter(action => action.type === 'select').map(select => ({
-                        placeholder: select.placeholder,
-                        name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),
-                        options: select.options.map(option => {
-                            const resolvedOption = { ...option };
-                            
-                            // If this option references a saved message, inline the message data
-                            if (option.value && option.value.startsWith('send:')) {
-                                const messageKey = option.value.substring(5); // Remove 'send:' prefix
-                                const referencedMessage = referencedMessages[messageKey];
-                                if (referencedMessage) {
-                                    resolvedOption.value = `send_json:${btoa(JSON.stringify(referencedMessage))}`;
-                                }
+            embeds: this.embeds.map(embed => ({
+                title: embed.title || undefined,
+                description: embed.description || undefined,
+                color: embed.color ? parseInt(embed.color, 16) : undefined,
+                url: embed.url || undefined,
+                author: embed.author.name ? {
+                    name: embed.author.name,
+                    url: embed.author.url || undefined,
+                    icon_url: embed.author.icon_url || undefined
+                } : undefined,
+                thumbnail: embed.thumbnail.url ? {
+                    url: embed.thumbnail.url
+                } : undefined,
+                image: embed.image.url ? {
+                    url: embed.image.url
+                } : undefined,
+                fields: embed.fields.filter(field => field.name || field.value).map(field => ({
+                    name: field.name || '\u200b',
+                    value: field.value || '\u200b',
+                    inline: field.inline
+                })),
+                footer: embed.footer.text ? {
+                    text: embed.footer.text,
+                    icon_url: embed.footer.icon_url || undefined
+                } : undefined,
+                // Include actions (buttons and select menus) with inlined embed data
+                buttons: embed.actions.filter(action => action.type === 'button').map(button => {
+                    if (button.buttonType === 'send_embed') {
+                        return {
+                            type: 'send_embed',
+                            label: button.label,
+                            target: button.target,
+                            ephemeral: button.ephemeral || false
+                        };
+                    } else {
+                        return {
+                            type: 'link',
+                            label: button.label,
+                            url: button.url
+                        };
+                    }
+                }),
+                selects: embed.actions.filter(action => action.type === 'select').map(select => ({
+                    placeholder: select.placeholder,
+                    name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),
+                    options: select.options.map(option => {
+                        const resolvedOption = { ...option };
+                        
+                        // If this option references a saved embed, inline the embed data
+                        if (option.value && option.value.startsWith('send:')) {
+                            const embedKey = option.value.substring(5); // Remove 'send:' prefix
+                            const referencedEmbed = referencedEmbeds[embedKey];
+                            if (referencedEmbed) {
+                                resolvedOption.value = `send_json:${btoa(JSON.stringify(referencedEmbed))}`;
                             }
-                            
-                            return {
-                                label: resolvedOption.label,
-                                value: resolvedOption.value,
-                                description: resolvedOption.description || '',
-                                icon: resolvedOption.icon || ''
-                            };
-                        })
-                    }))
+                        }
+                        
+                        return {
+                            label: resolvedOption.label,
+                            value: resolvedOption.value,
+                            description: resolvedOption.description || '',
+                            icon: resolvedOption.icon || ''
+                        };
+                    })
                 }))
             })),
-            // Include all referenced messages as inlined data
-            referenced_messages: referencedMessages,
+            // Include all referenced embeds as inlined data
+            referenced_embeds: referencedEmbeds,
             // Include metadata
             metadata: {
-                total_messages: this.messages.length,
-                total_embeds: this.messages.reduce((sum, msg) => sum + msg.embeds.length, 0),
-                has_actions: this.messages.some(msg => msg.embeds.some(embed => embed.actions.length > 0)),
-                has_buttons: this.messages.some(msg => msg.embeds.some(embed => embed.actions.some(action => action.type === 'button'))),
-                has_selects: this.messages.some(msg => msg.embeds.some(embed => embed.actions.some(action => action.type === 'select'))),
+                total_embeds: this.embeds.length,
+                has_actions: this.embeds.some(embed => embed.actions.length > 0),
+                has_buttons: this.embeds.some(embed => embed.actions.some(action => action.type === 'button')),
+                has_selects: this.embeds.some(embed => embed.actions.some(action => action.type === 'select')),
                 generated_at: new Date().toISOString(),
-                version: '3.0'
+                version: '2.0'
             }
         };
         
         // Debug: Log the payload
         console.log('Generated payload:', payload);
-        console.log('Number of messages:', payload.messages.length);
+        console.log('Number of embeds:', payload.embeds.length);
         
         return payload;
     }
 
-    collectReferencedMessages() {
-        const referencedMessages = {};
+    collectReferencedEmbeds() {
+        const referencedEmbeds = {};
         
-        // Find all references to saved messages in select menu options
-        this.messages.forEach(message => {
-            message.embeds.forEach(embed => {
-                embed.actions.forEach(action => {
-                    if (action.type === 'select') {
-                        action.options.forEach(option => {
-                            if (option.value && option.value.startsWith('send:')) {
-                                const messageKey = option.value.substring(5); // Remove 'send:' prefix
-                                
-                                // Get the saved message data from localStorage
-                                const savedData = localStorage.getItem(`message_${messageKey}`);
-                                if (savedData) {
-                                    try {
-                                        const parsed = JSON.parse(savedData);
-                                        referencedMessages[messageKey] = parsed;
-                                    } catch (e) {
-                                        console.warn(`Failed to parse saved message ${messageKey}:`, e);
-                                    }
+        // Find all references to saved embeds in select menu options
+        this.embeds.forEach(embed => {
+            embed.actions.forEach(action => {
+                if (action.type === 'select') {
+                    action.options.forEach(option => {
+                        if (option.value && option.value.startsWith('send:')) {
+                            const embedKey = option.value.substring(5); // Remove 'send:' prefix
+                            
+                            // Get the saved embed data from localStorage
+                            const savedData = localStorage.getItem(`embed_${embedKey}`);
+                            if (savedData) {
+                                try {
+                                    const parsed = JSON.parse(savedData);
+                                    referencedEmbeds[embedKey] = parsed.embed;
+                                } catch (e) {
+                                    console.warn(`Failed to parse saved embed ${embedKey}:`, e);
                                 }
                             }
-                        });
-                    }
-                });
+                        }
+                    });
+                }
             });
         });
         
-        return referencedMessages;
+        return referencedEmbeds;
     }
 
     async copyJSONToClipboard() {
@@ -1352,45 +1214,72 @@ class EmbedBuilder {
 
         if (!url) {
             alert('Please enter a webhook URL');
-            return;
-        }
+      return;
+    }
 
         // Create comprehensive payload with all data including actions
         const payload = {
-            embeds: this.messages.flatMap(message => 
-                message.embeds.map(embed => ({
-                    title: embed.title || undefined,
-                    description: embed.description || undefined,
-                    color: embed.color ? parseInt(embed.color, 16) : undefined,
-                    url: embed.url || undefined,
-                    author: embed.author.name ? {
-                        name: embed.author.name,
-                        url: embed.author.url || undefined,
-                        icon_url: embed.author.icon_url || undefined
-                    } : undefined,
-                    thumbnail: embed.thumbnail.url ? {
-                        url: embed.thumbnail.url
-                    } : undefined,
-                    image: embed.image.url ? {
-                        url: embed.image.url
-                    } : undefined,
-                    fields: embed.fields.filter(field => field.name || field.value).map(field => ({
-                        name: field.name || '\u200b',
-                        value: field.value || '\u200b',
-                        inline: field.inline
-                    })),
-                    footer: embed.footer.text ? {
-                        text: embed.footer.text,
-                        icon_url: embed.footer.icon_url || undefined
-                    } : undefined
+            embeds: this.embeds.map(embed => ({
+                title: embed.title || undefined,
+                description: embed.description || undefined,
+                color: embed.color ? parseInt(embed.color, 16) : undefined,
+                url: embed.url || undefined,
+                author: embed.author.name ? {
+                    name: embed.author.name,
+                    url: embed.author.url || undefined,
+                    icon_url: embed.author.icon_url || undefined
+                } : undefined,
+                thumbnail: embed.thumbnail.url ? {
+                    url: embed.thumbnail.url
+                } : undefined,
+                image: embed.image.url ? {
+                    url: embed.image.url
+                } : undefined,
+                fields: embed.fields.filter(field => field.name || field.value).map(field => ({
+                    name: field.name || '\u200b',
+                    value: field.value || '\u200b',
+                    inline: field.inline
+                })),
+                footer: embed.footer.text ? {
+                    text: embed.footer.text,
+                    icon_url: embed.footer.icon_url || undefined
+                } : undefined,
+                // Include actions (buttons and select menus)
+                buttons: embed.actions.filter(action => action.type === 'button').map(button => {
+                    if (button.buttonType === 'send_embed') {
+                        return {
+                            type: 'send_embed',
+                            label: button.label,
+                            target: button.target,
+                            ephemeral: button.ephemeral || false
+                        };
+                    } else {
+                        return {
+                            type: 'link',
+                            label: button.label,
+                            url: button.url
+                        };
+                    }
+                }),
+                selects: embed.actions.filter(action => action.type === 'select').map(select => ({
+                    placeholder: select.placeholder,
+                    name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),
+                    options: select.options.map(option => ({
+                        label: option.label,
+                        value: option.value,
+                        description: option.description || '',
+                        icon: option.icon || ''
+                    }))
                 }))
-            ).filter(embed => Object.keys(embed).length > 0),
+            })).filter(embed => Object.keys(embed).length > 0),
             // Include metadata
             metadata: {
-                total_messages: this.messages.length,
-                total_embeds: this.messages.reduce((sum, msg) => sum + msg.embeds.length, 0),
+                total_embeds: this.embeds.length,
+                has_actions: this.embeds.some(embed => embed.actions.length > 0),
+                has_buttons: this.embeds.some(embed => embed.actions.some(action => action.type === 'button')),
+                has_selects: this.embeds.some(embed => embed.actions.some(action => action.type === 'select')),
                 generated_at: new Date().toISOString(),
-                version: '3.0'
+                version: '2.0'
             }
         };
 
@@ -1418,120 +1307,180 @@ class EmbedBuilder {
         }
     }
 
-    saveCurrentMessage(messageIndex = null) {
-        const index = messageIndex !== null ? messageIndex : this.currentMessageIndex;
-        const key = prompt('Enter a name for this message:');
+    saveCurrentEmbed(embedIndex = null) {
+        const index = embedIndex !== null ? embedIndex : this.currentEmbedIndex;
+        const key = prompt('Enter a name for this embed:');
         if (!key) return;
 
-        const message = this.messages[index];
+        const embed = this.embeds[index];
         const data = {
             key,
-            embeds: message.embeds,
+            embed,
             timestamp: Date.now()
         };
 
-        localStorage.setItem(`message_${key}`, JSON.stringify(data));
-        this.loadSavedMessages();
-        alert(`Message "${key}" saved!`);
+        localStorage.setItem(`embed_${key}`, JSON.stringify(data));
+        this.loadSavedEmbeds();
+        alert(`Embed "${key}" saved!`);
     }
 
-    loadSavedMessages() {
+    loadSavedEmbeds() {
         const container = document.getElementById('saved-list');
         container.innerHTML = '';
 
-        const savedMessages = [];
+        const savedEmbeds = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && key.startsWith('message_')) {
+            if (key && key.startsWith('embed_')) {
                 try {
                     const data = JSON.parse(localStorage.getItem(key));
-                    savedMessages.push({ key: key.replace('message_', ''), data });
+                    savedEmbeds.push({ key: key.replace('embed_', ''), data });
                 } catch (e) {
                     // Skip invalid entries
                 }
             }
         }
 
-        if (savedMessages.length === 0) {
-            container.innerHTML = '<div class="text-muted">No saved messages</div>';
-            return;
-        }
+        if (savedEmbeds.length === 0) {
+            container.innerHTML = '<div class="text-muted">No saved embeds</div>';
+      return;
+    }
 
-        savedMessages.forEach(({ key, data }) => {
+        savedEmbeds.forEach(({ key, data }) => {
             const item = document.createElement('div');
             item.className = 'saved-item';
-            item.addEventListener('click', () => this.loadMessage(data));
+            item.addEventListener('click', () => this.loadEmbed(data.embed));
 
             const name = document.createElement('div');
             name.className = 'saved-item-name';
             name.textContent = key;
 
             item.appendChild(name);
-            container.appendChild(item);
+        container.appendChild(item);
         });
     }
 
-    loadMessage(messageData) {
-        this.messages[this.currentMessageIndex] = { embeds: messageData.embeds };
-        this.currentEmbedIndex = 0;
+    loadEmbed(embed) {
+        this.embeds[this.currentEmbedIndex] = { ...embed };
         this.render();
     }
 
     exportJSON() {
         const data = {
-            messages: this.messages.map(message => ({
-                embeds: message.embeds.map(embed => ({
-                    title: embed.title || undefined,
-                    description: embed.description || undefined,
-                    color: embed.color ? parseInt(embed.color, 16) : undefined,
-                    url: embed.url || undefined,
-                    author: embed.author.name ? {
-                        name: embed.author.name,
-                        url: embed.author.url || undefined,
-                        icon_url: embed.author.icon_url || undefined
-                    } : undefined,
-                    thumbnail: embed.thumbnail.url ? {
-                        url: embed.thumbnail.url
-                    } : undefined,
-                    image: embed.image.url ? {
-                        url: embed.image.url
-                    } : undefined,
-                    fields: embed.fields.filter(field => field.name || field.value).map(field => ({
-                        name: field.name || '\u200b',
-                        value: field.value || '\u200b',
-                        inline: field.inline
-                    })),
-                    footer: embed.footer.text ? {
-                        text: embed.footer.text,
-                        icon_url: embed.footer.icon_url || undefined
-                    } : undefined
-                }))
-            }))
+            embeds: this.embeds.map(embed => ({
+                title: embed.title || undefined,
+                description: embed.description || undefined,
+                color: embed.color ? parseInt(embed.color, 16) : undefined,
+                url: embed.url || undefined,
+                author: embed.author.name ? {
+                    name: embed.author.name,
+                    url: embed.author.url || undefined,
+                    icon_url: embed.author.icon_url || undefined
+                } : undefined,
+                thumbnail: embed.thumbnail.url ? {
+                    url: embed.thumbnail.url
+                } : undefined,
+                image: embed.image.url ? {
+                    url: embed.image.url
+                } : undefined,
+                fields: embed.fields.filter(field => field.name || field.value).map(field => ({
+                    name: field.name || '\u200b',
+                    value: field.value || '\u200b',
+                    inline: field.inline
+                })),
+                footer: embed.footer.text ? {
+                    text: embed.footer.text,
+                    icon_url: embed.footer.icon_url || undefined
+                } : undefined
+            })).filter(embed => Object.keys(embed).length > 0)
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'messages.json';
+        a.download = 'embeds.json';
         a.click();
         URL.revokeObjectURL(url);
     }
 
     exportCompleteJSON() {
         // Create comprehensive payload with all data including actions
-        const payload = this.buildCompletePayload();
+        const payload = {
+            embeds: this.embeds.map(embed => ({
+                title: embed.title || undefined,
+                description: embed.description || undefined,
+                color: embed.color ? parseInt(embed.color, 16) : undefined,
+                url: embed.url || undefined,
+                author: embed.author.name ? {
+                    name: embed.author.name,
+                    url: embed.author.url || undefined,
+                    icon_url: embed.author.icon_url || undefined
+                } : undefined,
+                thumbnail: embed.thumbnail.url ? {
+                    url: embed.thumbnail.url
+                } : undefined,
+                image: embed.image.url ? {
+                    url: embed.image.url
+                } : undefined,
+                fields: embed.fields.filter(field => field.name || field.value).map(field => ({
+                    name: field.name || '\u200b',
+                    value: field.value || '\u200b',
+                    inline: field.inline
+                })),
+                footer: embed.footer.text ? {
+                    text: embed.footer.text,
+                    icon_url: embed.footer.icon_url || undefined
+                } : undefined,
+                // Include actions (buttons and select menus)
+                buttons: embed.actions.filter(action => action.type === 'button').map(button => {
+                    if (button.buttonType === 'send_embed') {
+                        return {
+                            type: 'send_embed',
+                            label: button.label,
+                            target: button.target,
+                            ephemeral: button.ephemeral || false
+                        };
+                    } else {
+                        return {
+                            type: 'link',
+                            label: button.label,
+                            url: button.url
+                        };
+                    }
+                }),
+                selects: embed.actions.filter(action => action.type === 'select').map(select => ({
+                    placeholder: select.placeholder,
+                    name: select.placeholder.toLowerCase().replace(/\s+/g, '_'),
+                    options: select.options.map(option => ({
+                        label: option.label,
+                        value: option.value,
+                        description: option.description || '',
+                        icon: option.icon || ''
+                    }))
+                }))
+            })).filter(embed => Object.keys(embed).length > 0),
+            // Include metadata
+            metadata: {
+                total_embeds: this.embeds.length,
+                has_actions: this.embeds.some(embed => embed.actions.length > 0),
+                has_buttons: this.embeds.some(embed => embed.actions.some(action => action.type === 'button')),
+                has_selects: this.embeds.some(embed => embed.actions.some(action => action.type === 'select')),
+                generated_at: new Date().toISOString(),
+                version: '2.0'
+            }
+        };
 
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `complete_message_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+        a.download = `complete_embed_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
         a.click();
         URL.revokeObjectURL(url);
         
         // Show success message
-        alert('Complete JSON exported successfully! This includes all messages, embeds, buttons, select menus, and metadata.');
+        alert('Complete JSON exported successfully! This includes all embeds, buttons, select menus, and metadata.');
     }
 }
 

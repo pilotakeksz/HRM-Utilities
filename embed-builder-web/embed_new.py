@@ -209,12 +209,12 @@ class PayloadView(ui.View):
                     use_val = f"send_map:{key}"
                     self._local_keys.append(key)
 
-                # handle send:KEY where KEY is present in payload.referenced_embeds -> persist the referenced embed dict
+                # handle send:KEY where KEY is present in payload.referenced_messages -> persist the referenced message dict
                 elif orig_val.startswith("send:"):
                     keyname = orig_val.split(":", 1)[1]
-                    ref = (payload.get("referenced_embeds") or {}).get(keyname)
+                    ref = (payload.get("referenced_messages") or {}).get(keyname)
                     if ref:
-                        entry = {"type": "ref_embed", "embed": ref}
+                        entry = {"type": "ref_message", "message": ref}
                         key = _put_send_map_entry(entry)
                         use_val = f"send_map:{key}"
                         self._local_keys.append(key)
@@ -262,10 +262,21 @@ class PayloadView(ui.View):
                             return
                         if isinstance(obj, dict) and obj.get("embeds"):
                             embeds_list = obj.get("embeds", [])
+                        elif isinstance(obj, dict) and obj.get("messages"):
+                            # Handle new message format - flatten all embeds from all messages
+                            embeds_list = []
+                            for message in obj.get("messages", []):
+                                embeds_list.extend(message.get("embeds", []))
                         elif isinstance(obj, list):
                             embeds_list = obj
                         else:
                             embeds_list = [obj]
+                    elif entry.get("type") == "ref_message":
+                        message_obj = entry.get("message")
+                        if isinstance(message_obj, dict) and message_obj.get("embeds"):
+                            embeds_list = message_obj.get("embeds", [])
+                        else:
+                            embeds_list = [message_obj] if isinstance(message_obj, dict) else (message_obj or [])
                     elif entry.get("type") == "ref_embed":
                         embed_obj = entry.get("embed")
                         embeds_list = [embed_obj] if isinstance(embed_obj, dict) else (embed_obj or [])
@@ -310,6 +321,11 @@ class PayloadView(ui.View):
                     return
                 if isinstance(obj, dict) and obj.get("embeds"):
                     embeds_list = obj.get("embeds", [])
+                elif isinstance(obj, dict) and obj.get("messages"):
+                    # Handle new message format - flatten all embeds from all messages
+                    embeds_list = []
+                    for message in obj.get("messages", []):
+                        embeds_list.extend(message.get("embeds", []))
                 elif isinstance(obj, list):
                     embeds_list = obj
                 else:
@@ -329,10 +345,21 @@ class PayloadView(ui.View):
                         return
                     if isinstance(obj, dict) and obj.get("embeds"):
                         embeds_list = obj.get("embeds", [])
+                    elif isinstance(obj, dict) and obj.get("messages"):
+                        # Handle new message format - flatten all embeds from all messages
+                        embeds_list = []
+                        for message in obj.get("messages", []):
+                            embeds_list.extend(message.get("embeds", []))
                     elif isinstance(obj, list):
                         embeds_list = obj
                     else:
                         embeds_list = [obj]
+                elif entry.get("type") == "ref_message":
+                    message_obj = entry.get("message")
+                    if isinstance(message_obj, dict) and message_obj.get("embeds"):
+                        embeds_list = message_obj.get("embeds", [])
+                    else:
+                        embeds_list = [message_obj] if isinstance(message_obj, dict) else (message_obj or [])
                 elif entry.get("type") == "ref_embed":
                     embed_obj = entry.get("embed")
                     embeds_list = [embed_obj] if isinstance(embed_obj, dict) else (embed_obj or [])
@@ -342,22 +369,33 @@ class PayloadView(ui.View):
 
             elif target.startswith("send:"):
                 key = target.split(":", 1)[1]
-                # prefer referenced_embeds inside original payload if provided (not persisted)
-                ref = (self.payload.get("referenced_embeds") or {}).get(key)
+                # prefer referenced_messages inside original payload if provided (not persisted)
+                ref = (self.payload.get("referenced_messages") or {}).get(key)
                 if ref:
-                    embeds_list = [ref]
+                    if isinstance(ref, dict) and ref.get("embeds"):
+                        embeds_list = ref.get("embeds", [])
+                    else:
+                        embeds_list = [ref]
                 else:
                     path = os.path.join(EMBED_DIR, f"{key}.json")
                     if not os.path.exists(path):
-                        await interaction.followup.send(f"Referenced embed '{key}' not found.", ephemeral=True)
+                        await interaction.followup.send(f"Referenced message '{key}' not found.", ephemeral=True)
                         return
                     try:
                         with open(path, "r", encoding="utf-8") as f:
                             saved = json.load(f)
                         payload = saved.get("payload") or saved
-                        embeds_list = payload.get("embeds", [])
+                        # Handle both old embed format and new message format
+                        if payload.get("embeds"):
+                            embeds_list = payload.get("embeds", [])
+                        elif payload.get("messages"):
+                            embeds_list = []
+                            for message in payload.get("messages", []):
+                                embeds_list.extend(message.get("embeds", []))
+                        else:
+                            embeds_list = []
                     except Exception as ex:
-                        await interaction.followup.send(f"Failed to load saved embed: {ex}", ephemeral=True)
+                        await interaction.followup.send(f"Failed to load saved message: {ex}", ephemeral=True)
                         return
 
             elif target.startswith("link:"):
@@ -401,7 +439,7 @@ class EmbedNewCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="send_json", description="Send a complete embed JSON (embeds + referenced_embeds + actions)")
+    @app_commands.command(name="send_json", description="Send a complete message JSON (messages with embeds + referenced_messages + actions)")
     @app_commands.describe(json_payload="The full JSON payload (as string)", channel="Optional target channel")
     async def send_json(self, interaction: discord.Interaction, json_payload: str, channel: Optional[discord.TextChannel] = None):
         await interaction.response.defer(ephemeral=True)
@@ -412,33 +450,65 @@ class EmbedNewCog(commands.Cog):
             return
 
         if not isinstance(data, dict):
-            await interaction.followup.send("JSON must be an object with an 'embeds' array.", ephemeral=True)
+            await interaction.followup.send("JSON must be an object with 'messages' or 'embeds' array.", ephemeral=True)
             return
 
+        # Handle both new message format and legacy embed format
+        messages_data = data.get("messages", [])
         embeds_raw = data.get("embeds", [])
-        if not isinstance(embeds_raw, list) or not embeds_raw:
-            await interaction.followup.send("No embeds found in payload.", ephemeral=True)
+        
+        if messages_data:
+            # New message format
+            if not isinstance(messages_data, list) or not messages_data:
+                await interaction.followup.send("No messages found in payload.", ephemeral=True)
+                return
+        elif embeds_raw:
+            # Legacy embed format - convert to message format
+            if not isinstance(embeds_raw, list) or not embeds_raw:
+                await interaction.followup.send("No embeds found in payload.", ephemeral=True)
+                return
+            messages_data = [{"embeds": embeds_raw}]
+        else:
+            await interaction.followup.send("No messages or embeds found in payload.", ephemeral=True)
             return
-
-        # build primary embeds only (do not send referenced_embeds by default)
-        primary_embeds = []
-        for e in embeds_raw:
-            try:
-                primary_embeds.append(_build_discord_embed(e))
-            except Exception:
-                continue
 
         target = channel or (interaction.channel if interaction.channel else None)
         if not target:
             await interaction.followup.send("No valid target channel found.", ephemeral=True)
             return
 
-        view = PayloadView(data, self.bot)
-        try:
-            await target.send(embeds=primary_embeds, view=view if len(view.children) > 0 else None)
-            await interaction.followup.send(f"Posted {len(primary_embeds)} embed(s) to {target.mention}. Select options send linked embed(s) ephemerally to you.", ephemeral=True)
-        except Exception as ex:
-            await interaction.followup.send(f"Failed to send embeds: {ex}", ephemeral=True)
+        # Send each message
+        total_embeds_sent = 0
+        for message_data in messages_data:
+            embeds_raw = message_data.get("embeds", [])
+            if not embeds_raw:
+                continue
+                
+            # Build embeds for this message
+            primary_embeds = []
+            for e in embeds_raw:
+                try:
+                    primary_embeds.append(_build_discord_embed(e))
+                except Exception:
+                    continue
+
+            if not primary_embeds:
+                continue
+
+            # Create view for this message (only the first message gets the view)
+            view = PayloadView(data, self.bot) if total_embeds_sent == 0 else None
+            
+            try:
+                await target.send(embeds=primary_embeds, view=view if view and len(view.children) > 0 else None)
+                total_embeds_sent += len(primary_embeds)
+            except Exception as ex:
+                await interaction.followup.send(f"Failed to send message: {ex}", ephemeral=True)
+                return
+
+        if total_embeds_sent > 0:
+            await interaction.followup.send(f"Posted {total_embeds_sent} embed(s) across {len(messages_data)} message(s) to {target.mention}. Select options send linked message(s) ephemerally to you.", ephemeral=True)
+        else:
+            await interaction.followup.send("No valid embeds found to send.", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

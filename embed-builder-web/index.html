@@ -73,25 +73,25 @@
             <!-- Sidebar -->
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h2>Embeds</h2>
+                    <h2>Messages</h2>
                     <button class="btn btn-sm btn-primary" id="add-embed-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                        Add Embed
+                        Add Message
                     </button>
                 </div>
                 
                 <div class="embed-list" id="embed-list">
-                    <!-- Embed items will be dynamically added here -->
+                    <!-- Message items will be dynamically added here -->
                 </div>
 
                 <div class="sidebar-footer">
                     <div class="saved-embeds">
-                        <h3>Saved Embeds</h3>
+                        <h3>Saved Messages</h3>
                         <div class="saved-list" id="saved-list">
-                            <!-- Saved embeds will be added here -->
+                            <!-- Saved messages will be added here -->
                         </div>
                     </div>
                 </div>
@@ -101,9 +101,16 @@
             <section class="editor">
                 <div class="editor-header">
                     <div class="embed-counter">
-                        <span id="embed-counter">Embed 1 of 1</span>
+                        <span id="embed-counter">Message 1 of 1 - Embed 1 of 1</span>
                     </div>
                     <div class="editor-actions">
+                        <button class="btn btn-sm btn-secondary" id="add-embed-to-message-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            Add Embed
+                        </button>
                         <button class="btn btn-sm btn-secondary" id="duplicate-embed-btn">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>

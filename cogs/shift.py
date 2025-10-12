@@ -1362,7 +1362,7 @@ class ShiftCog(commands.Cog):
             # Messages since last reset with timeout
             last_reset = int_to_ts(self.store.meta.get("last_reset_ts", ts_to_int(utcnow())))
             try:
-                msg_count = await asyncio.wait_for(self.count_messages_since(guild, last_reset), timeout=10.0)
+                msg_count = await asyncio.wait_for(self.count_messages_since(guild, last_reset), timeout=5.0)
             except asyncio.TimeoutError:
                 msg_count = 0
                 print("Message counting timed out, using 0 as default")

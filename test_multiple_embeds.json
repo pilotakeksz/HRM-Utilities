@@ -1,0 +1,42 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Welcome Message",
+          "description": "This is the first embed with just a picture",
+          "color": 3447003,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          }
+        },
+        {
+          "title": "Information",
+          "description": "This is the second embed with information",
+          "color": 15158332,
+          "fields": [
+            {
+              "name": "Field 1",
+              "value": "Value 1",
+              "inline": true
+            },
+            {
+              "name": "Field 2", 
+              "value": "Value 2",
+              "inline": true
+            }
+          ],
+          "footer": {
+            "text": "Footer text"
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 1,
+    "total_embeds": 2,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}
