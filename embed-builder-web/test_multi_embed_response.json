@@ -1,0 +1,40 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Test Message with Multi-Embed Response",
+          "description": "This embed has a select menu that will send multiple embeds as one message",
+          "color": 3447003,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "selects": [
+            {
+              "placeholder": "Choose a multi-embed response",
+              "options": [
+                {
+                  "label": "Send 3 Embeds Together",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IkZpcnN0IEVtYmVkIiwiZGVzY3JpcHRpb24iOiJUaGlzIGlzIHRoZSBmaXJzdCBlbWJlZCBpbiBhIG11bHRpLWVtYmVkIG1lc3NhZ2UiLCJjb2xvciI6MzQ0NzAzfSx7InRpdGxlIjoiU2Vjb25kIEVtYmVkIiwiZGVzY3JpcHRpb24iOiJUaGlzIGlzIHRoZSBzZWNvbmQgZW1iZWQgaW4gdGhlIHNhbWUgbWVzc2FnZSIsImNvbG9yIjoxNTE1ODMzMn0seyJ0aXRsZSI6IlRoaXJkIEVtYmVkIiwiZGVzY3JpcHRpb24iOiJUaGlzIGlzIHRoZSB0aGlyZCBhbmQgZmluYWwgZW1iZWQgaW4gdGhlIG1lc3NhZ2UiLCJjb2xvciI6MzA2Njk5M31dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+                  "description": "This will send 3 embeds as one message"
+                },
+                {
+                  "label": "Send 2 Embeds with Images",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IkltYWdlIEVtYmVkIDEiLCJkZXNjcmlwdGlvbiI6IlRoaXMgZW1iZWQgaGFzIGFuIGltYWdlIiwiY29sb3IiOjU3NjM3MTksImltYWdlIjp7InVybCI6Imh0dHBzOi8vY2RuLmRpc2NvcmRhcHAuY29tL2F0dGFjaG1lbnRzLzE0MDkyNTI3NzE5NzgyODA5NzMvMTQwOTMwODgxMzgzNTg5NDg3NS9ib3R0b20ucG5nIn19LHsidGl0bGUiOiJJbWFnZSBFbWJlZCAyIiwiZGVzY3JpcHRpb24iOiJUaGlzIGVtYmVkIGFsc28gaGFzIGFuIGltYWdlIiwiY29sb3IiOjE1MTU4MzMyLCJpbWFnZSI6eyJ1cmwiOiJodHRwczovL2Nkbi5kaXNjb3JkYXBwLmNvbS9hdHRhY2htZW50cy8xNDA5MjUyNzcxOTc4MjgwOTczLzE0MDkzMDg4MTM4MzU4OTQ4NzUvYm90dG9tLnBuZyJ9fV19XSwibWV0YWRhdGEiOnsidmVyc2lvbiI6IjMuMCJ9fQ==",
+                  "description": "This will send 2 embeds with images as one message"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 1,
+    "total_embeds": 1,
+    "has_selects": true,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}

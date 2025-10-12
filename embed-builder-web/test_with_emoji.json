@@ -1,0 +1,54 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Test with Emoji Icons",
+          "description": "This embed has select menu options with emoji icons and descriptions",
+          "color": 3447003,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "selects": [
+            {
+              "placeholder": "Choose an option with emoji",
+              "options": [
+                {
+                  "label": "Success Response",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IuKdpOKdpOKdpCBTdWNjZXNzISIsImRlc2NyaXB0aW9uIjoiWW91IHNlbGVjdGVkIHRoZSBzdWNjZXNzIG9wdGlvbiEiLCJjb2xvciI6NTc2MzcxOX1dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+                  "description": "This will send a success message",
+                  "emoji": "✅"
+                },
+                {
+                  "label": "Error Response",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IuKdpOKdpOKdpCBFcnJvciEiLCJkZXNjcmlwdGlvbiI6IllvdSBzZWxlY3RlZCB0aGUgZXJyb3Igb3B0aW9uISIsImNvbG9yIjoxNTE1ODMzMn1dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+                  "description": "This will send an error message",
+                  "emoji": "❌"
+                },
+                {
+                  "label": "Info Response",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IuKdpOKdpOKdpIEluZm8iLCJkZXNjcmlwdGlvbiI6IllvdSBzZWxlY3RlZCB0aGUgaW5mbyBvcHRpb24hIiwiY29sb3IiOjM0NDcwM31dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+                  "description": "This will send an info message",
+                  "emoji": "ℹ️"
+                },
+                {
+                  "label": "Warning Response",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IuKdpOKdpOKdpFdhcm5pbmciLCJkZXNjcmlwdGlvbiI6IllvdSBzZWxlY3RlZCB0aGUgd2FybmluZyBvcHRpb24hIiwiY29sb3IiOjE2NzY2OTYwfV19XSwibWV0YWRhdGEiOnsidmVyc2lvbiI6IjMuMCJ9fQ==",
+                  "description": "This will send a warning message",
+                  "emoji": "⚠️"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 1,
+    "total_embeds": 1,
+    "has_selects": true,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}

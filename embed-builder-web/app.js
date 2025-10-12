@@ -954,8 +954,24 @@ class EmbedBuilder {
                     valueInput.value = option.value;
                     valueInput.addEventListener('input', (e) => this.updateActionOption(actionIndex, optionIndex, 'value', e.target.value));
 
+                    const descriptionInput = document.createElement('input');
+                    descriptionInput.type = 'text';
+                    descriptionInput.className = 'form-input';
+                    descriptionInput.placeholder = 'Option description (optional)';
+                    descriptionInput.value = option.description || '';
+                    descriptionInput.addEventListener('input', (e) => this.updateActionOption(actionIndex, optionIndex, 'description', e.target.value));
+
+                    const iconInput = document.createElement('input');
+                    iconInput.type = 'text';
+                    iconInput.className = 'form-input';
+                    iconInput.placeholder = 'Emoji/icon (e.g., 🔥, ⭐, :fire:)';
+                    iconInput.value = option.icon || '';
+                    iconInput.addEventListener('input', (e) => this.updateActionOption(actionIndex, optionIndex, 'icon', e.target.value));
+
                     inputsContainer.appendChild(labelInput);
                     inputsContainer.appendChild(valueInput);
+                    inputsContainer.appendChild(descriptionInput);
+                    inputsContainer.appendChild(iconInput);
 
                     // Create buttons container
                     const buttonsContainer = document.createElement('div');

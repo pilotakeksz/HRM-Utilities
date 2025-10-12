@@ -166,10 +166,12 @@ def _build_discord_embed(eobj: Dict[str, Any]) -> discord.Embed:
 
 class PayloadView(ui.View):
     """View which stores long targets persistently and ensures select sends only the referenced embed ephemerally."""
-    def __init__(self, payload: Dict[str, Any], bot: commands.Bot, *, timeout: Optional[float] = 300.0):
-        super().__init__(timeout=timeout)
+    def __init__(self, payload: Dict[str, Any], bot: commands.Bot, *, timeout: Optional[float] = None, persistent: bool = False):
+        # If persistent, set timeout to None to prevent expiration
+        super().__init__(timeout=timeout if not persistent else None)
         self.payload = payload
         self.bot = bot
+        self.persistent = persistent
         # local map of keys created for this view (not required but useful)
         self._local_keys: List[str] = []
 
@@ -238,11 +240,17 @@ class PayloadView(ui.View):
                     use_val = orig_val
 
                 # create SelectOption (value will be short)
-                options.append(discord.SelectOption(
-                    label=o.get("label") or o.get("value") or "Option",
-                    value=use_val,
-                    description=o.get("description")
-                ))
+                option_kwargs = {
+                    "label": o.get("label") or o.get("value") or "Option",
+                    "value": use_val,
+                    "description": o.get("description")
+                }
+                
+                # Add emoji if provided
+                if o.get("emoji"):
+                    option_kwargs["emoji"] = o.get("emoji")
+                
+                options.append(discord.SelectOption(**option_kwargs))
 
             if not options:
                 continue
@@ -295,17 +303,26 @@ class PayloadView(ui.View):
                         await interaction.followup.send("Unknown mapped entry type.", ephemeral=True)
                         return
 
-                    # send only these embeds ephemerally
-                    sent = 0
-                    for eobj in embeds_list:
+                    # send all embeds as a single message ephemerally
+                    if embeds_list:
                         try:
-                            em = _build_discord_embed(eobj)
-                            await interaction.followup.send(embed=em, ephemeral=True)
-                            sent += 1
-                        except Exception:
-                            continue
-                    if sent == 0:
-                        await interaction.followup.send("No embeds were sent (empty or invalid).", ephemeral=True)
+                            # Build all embeds
+                            discord_embeds = []
+                            for eobj in embeds_list:
+                                try:
+                                    em = _build_discord_embed(eobj)
+                                    discord_embeds.append(em)
+                                except Exception:
+                                    continue
+                            
+                            if discord_embeds:
+                                await interaction.followup.send(embeds=discord_embeds, ephemeral=True)
+                            else:
+                                await interaction.followup.send("No valid embeds were found.", ephemeral=True)
+                        except Exception as e:
+                            await interaction.followup.send(f"Error sending embeds: {e}", ephemeral=True)
+                    else:
+                        await interaction.followup.send("No embeds were found.", ephemeral=True)
                     # NOTE: do NOT send a success confirmation message for ephemeral sends
                     return
 
@@ -418,26 +435,32 @@ class PayloadView(ui.View):
                 await interaction.followup.send(f"Unknown target: {target}", ephemeral=True)
                 return
 
-            # send only the resolved embeds ephemerally or to channel depending on ephemeral flag
-            sent = 0
-            for eobj in embeds_list:
+            # send all resolved embeds as a single message
+            if embeds_list:
                 try:
-                    em = _build_discord_embed(eobj)
-                    if ephemeral:
-                        await interaction.followup.send(embed=em, ephemeral=True)
-                    else:
-                        if interaction.channel:
-                            await interaction.channel.send(embed=em)
+                    # Build all embeds
+                    discord_embeds = []
+                    for eobj in embeds_list:
+                        try:
+                            em = _build_discord_embed(eobj)
+                            discord_embeds.append(em)
+                        except Exception:
+                            continue
+                    
+                    if discord_embeds:
+                        if ephemeral:
+                            await interaction.followup.send(embeds=discord_embeds, ephemeral=True)
                         else:
-                            await interaction.followup.send(embed=em, ephemeral=True)
-                    sent += 1
-                except Exception:
-                    continue
-
-            if sent == 0:
-                await interaction.followup.send("No embeds were sent (empty or invalid).", ephemeral=True)
+                            if interaction.channel:
+                                await interaction.channel.send(embeds=discord_embeds)
+                            else:
+                                await interaction.followup.send(embeds=discord_embeds, ephemeral=True)
+                    else:
+                        await interaction.followup.send("No valid embeds were found.", ephemeral=True)
+                except Exception as e:
+                    await interaction.followup.send(f"Error sending embeds: {e}", ephemeral=True)
             else:
-                await interaction.followup.send(f"Sent {sent} embed(s).", ephemeral=True)
+                await interaction.followup.send("No embeds were found.", ephemeral=True)
 
         except Exception as ex:
             try:
@@ -447,10 +470,11 @@ class PayloadView(ui.View):
 
 
 class JSONCollectorView(ui.View):
-    def __init__(self, cog, channel=None):
+    def __init__(self, cog, channel=None, persistent=False):
         super().__init__(timeout=300)  # 5 minute timeout
         self.cog = cog
         self.channel = channel
+        self.persistent = persistent
         self.waiting_for_json = True
 
     @ui.button(label="Cancel", style=discord.ButtonStyle.danger)
@@ -465,12 +489,30 @@ class JSONCollectorView(ui.View):
 class EmbedNewCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Register persistent views on startup
+        self._register_persistent_views()
+
+    def _register_persistent_views(self):
+        """Register persistent views to survive bot restarts."""
+        # Create a generic persistent view that can handle any payload
+        class PersistentPayloadView(PayloadView):
+            def __init__(self, bot: commands.Bot):
+                # Create a minimal payload for the persistent view
+                super().__init__({}, bot, persistent=True)
+                self.bot = bot
+            
+            async def interaction_check(self, interaction: discord.Interaction) -> bool:
+                # This will be overridden by the actual payload when the view is used
+                return True
+        
+        # Register the persistent view
+        self.bot.add_view(PersistentPayloadView(self.bot))
 
     @app_commands.command(name="send_json", description="Send a complete message JSON (messages with embeds + referenced_messages + actions)")
-    @app_commands.describe(channel="Optional target channel")
-    async def send_json(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
+    @app_commands.describe(channel="Optional target channel", persistent="Make buttons/selects persistent across bot restarts")
+    async def send_json(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, persistent: bool = False):
         # Create a view to collect JSON from chat
-        view = JSONCollectorView(self, channel)
+        view = JSONCollectorView(self, channel, persistent)
         
         embed = discord.Embed(
             title="JSON Collection",
@@ -523,7 +565,7 @@ class EmbedNewCog(commands.Cog):
                 return
             
             # Process and send the messages
-            await self._process_and_send_messages(interaction, data, channel)
+            await self._process_and_send_messages(interaction, data, channel, self.persistent)
             
             # Update the original message to show completion
             embed = discord.Embed(
@@ -540,7 +582,7 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
             view.waiting_for_json = False
 
-    async def _process_and_send_messages(self, interaction: discord.Interaction, data: dict, channel: Optional[discord.TextChannel] = None):
+    async def _process_and_send_messages(self, interaction: discord.Interaction, data: dict, channel: Optional[discord.TextChannel] = None, persistent: bool = False):
         """Process JSON data and send messages with embeds."""
         if not isinstance(data, dict):
             await interaction.followup.send("JSON must be an object with 'messages' or 'embeds' array.", ephemeral=True)
@@ -589,7 +631,7 @@ class EmbedNewCog(commands.Cog):
                 continue
 
             # Create view for this message (only the first message gets the view)
-            view = PayloadView(data, self.bot) if total_embeds_sent == 0 else None
+            view = PayloadView(data, self.bot, persistent=persistent) if total_embeds_sent == 0 else None
             
             try:
                 await target.send(embeds=primary_embeds, view=view if view and len(view.children) > 0 else None)
