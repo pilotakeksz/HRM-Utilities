@@ -723,6 +723,59 @@ label {
     color: var(--text-muted);
 }
 
+/* Author preview styles */
+.preview-author-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.preview-author-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.preview-author-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+/* Thumbnail preview styles */
+.preview-thumbnail-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.preview-thumbnail {
+    max-width: 80px;
+    max-height: 80px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+
+/* Main image preview styles */
+.preview-image-container {
+    margin-top: 0.5rem;
+}
+
+.preview-image {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 4px;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    background: var(--background-primary);
+}
+
 /* Modals */
 .modal {
     position: fixed;

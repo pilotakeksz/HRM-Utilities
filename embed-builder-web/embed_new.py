@@ -435,20 +435,48 @@ class PayloadView(ui.View):
                 pass
 
 
-class EmbedNewCog(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
+class FileUploadModal(ui.Modal, title="Upload JSON File"):
+    def __init__(self, cog, channel=None):
+        super().__init__()
+        self.cog = cog
+        self.channel = channel
 
-    @app_commands.command(name="send_json", description="Send a complete message JSON (messages with embeds + referenced_messages + actions)")
-    @app_commands.describe(json_payload="The full JSON payload (as string)", channel="Optional target channel")
-    async def send_json(self, interaction: discord.Interaction, json_payload: str, channel: Optional[discord.TextChannel] = None):
+    json_content = ui.TextInput(
+        label="JSON Content",
+        placeholder="Paste your JSON content here or upload a file...",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=4000
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+        
         try:
-            data = json.loads(json_payload) if isinstance(json_payload, str) else json_payload
+            data = json.loads(self.json_content.value)
         except Exception as ex:
             await interaction.followup.send(f"Invalid JSON: {ex}", ephemeral=True)
             return
 
+        await self.cog._process_and_send_messages(interaction, data, self.channel)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        await interaction.followup.send(f"An error occurred: {error}", ephemeral=True)
+
+
+class EmbedNewCog(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="send_json", description="Send a complete message JSON from file upload (messages with embeds + referenced_messages + actions)")
+    @app_commands.describe(channel="Optional target channel")
+    async def send_json(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
+        # Create a modal for file upload
+        modal = FileUploadModal(self, channel)
+        await interaction.response.send_modal(modal)
+
+    async def _process_and_send_messages(self, interaction: discord.Interaction, data: dict, channel: Optional[discord.TextChannel] = None):
+        """Process JSON data and send messages with embeds."""
         if not isinstance(data, dict):
             await interaction.followup.send("JSON must be an object with 'messages' or 'embeds' array.", ephemeral=True)
             return

@@ -1014,6 +1014,40 @@ class EmbedBuilder {
                 previewEmbed.style.marginTop = '1rem';
             }
 
+            // Add author if present
+            if (embed.author && embed.author.name) {
+                const authorContainer = document.createElement('div');
+                authorContainer.className = 'preview-author-container';
+                authorContainer.style.display = 'flex';
+                authorContainer.style.alignItems = 'center';
+                authorContainer.style.gap = '0.5rem';
+                authorContainer.style.marginBottom = '0.5rem';
+
+                if (embed.author.icon_url) {
+                    const authorIcon = document.createElement('img');
+                    authorIcon.className = 'preview-author-icon';
+                    authorIcon.src = embed.author.icon_url;
+                    authorIcon.alt = 'Author icon';
+                    authorIcon.style.width = '20px';
+                    authorIcon.style.height = '20px';
+                    authorIcon.style.borderRadius = '50%';
+                    authorIcon.style.objectFit = 'cover';
+                    authorIcon.onerror = function() {
+                        this.style.display = 'none';
+                    };
+                    authorContainer.appendChild(authorIcon);
+                }
+
+                const authorName = document.createElement('div');
+                authorName.className = 'preview-author-name';
+                authorName.textContent = embed.author.name;
+                authorName.style.fontWeight = '600';
+                authorName.style.color = 'var(--text-primary)';
+                authorContainer.appendChild(authorName);
+
+                previewEmbed.appendChild(authorContainer);
+            }
+
             if (embed.title) {
                 const title = document.createElement('div');
                 title.className = 'preview-embed-title';
@@ -1054,6 +1088,53 @@ class EmbedBuilder {
                 });
 
                 previewEmbed.appendChild(fieldsContainer);
+            }
+
+            // Add thumbnail if present
+            if (embed.thumbnail && embed.thumbnail.url) {
+                const thumbnailContainer = document.createElement('div');
+                thumbnailContainer.className = 'preview-thumbnail-container';
+                thumbnailContainer.style.display = 'flex';
+                thumbnailContainer.style.alignItems = 'flex-start';
+                thumbnailContainer.style.gap = '1rem';
+                thumbnailContainer.style.marginTop = '0.5rem';
+
+                const thumbnail = document.createElement('img');
+                thumbnail.className = 'preview-thumbnail';
+                thumbnail.src = embed.thumbnail.url;
+                thumbnail.alt = 'Thumbnail';
+                thumbnail.style.maxWidth = '80px';
+                thumbnail.style.maxHeight = '80px';
+                thumbnail.style.borderRadius = '4px';
+                thumbnail.style.objectFit = 'cover';
+                thumbnail.onerror = function() {
+                    this.style.display = 'none';
+                };
+
+                thumbnailContainer.appendChild(thumbnail);
+                previewEmbed.appendChild(thumbnailContainer);
+            }
+
+            // Add main image if present
+            if (embed.image && embed.image.url) {
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'preview-image-container';
+                imageContainer.style.marginTop = '0.5rem';
+
+                const image = document.createElement('img');
+                image.className = 'preview-image';
+                image.src = embed.image.url;
+                image.alt = 'Embed image';
+                image.style.maxWidth = '100%';
+                image.style.maxHeight = '300px';
+                image.style.borderRadius = '4px';
+                image.style.objectFit = 'contain';
+                image.onerror = function() {
+                    this.style.display = 'none';
+                };
+
+                imageContainer.appendChild(image);
+                previewEmbed.appendChild(imageContainer);
             }
 
             if (embed.footer.text) {

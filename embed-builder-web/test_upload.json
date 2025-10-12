@@ -1,0 +1,57 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Test Message 1",
+          "description": "This is the first embed in the first message with an image",
+          "color": 3447003,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "fields": [
+            {
+              "name": "Field 1",
+              "value": "Value 1",
+              "inline": true
+            }
+          ]
+        },
+        {
+          "title": "Test Message 1 - Embed 2",
+          "description": "This is the second embed with a thumbnail",
+          "color": 15158332,
+          "thumbnail": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "author": {
+            "name": "Test Author",
+            "icon_url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          }
+        }
+      ]
+    },
+    {
+      "embeds": [
+        {
+          "title": "Test Message 2",
+          "description": "This is a separate message with its own embed and image",
+          "color": 3066993,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "footer": {
+            "text": "Test Footer",
+            "icon_url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 2,
+    "total_embeds": 3,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}
