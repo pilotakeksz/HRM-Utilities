@@ -1632,7 +1632,92 @@ class EmbedBuilder {
     }
 }
 
-// Initialize the app when DOM is loaded
+// Add these validation functions at the top of app.js
+function validateEmbed(embed) {
+    // Check required fields
+    if (!embed.title && !embed.description && !embed.image?.url) {
+        throw new Error("Embed must have at least a title, description, or image");
+    }
+
+    // Validate length limits
+    if (embed.title && embed.title.length > 256) {
+        throw new Error("Embed title must be 256 characters or less");
+    }
+    if (embed.description && embed.description.length > 4096) {
+        throw new Error("Embed description must be 4096 characters or less"); 
+    }
+
+    // Validate fields
+    if (embed.fields) {
+        if (embed.fields.length > 25) {
+            throw new Error("Embed can have maximum 25 fields");
+        }
+        
+        embed.fields.forEach(field => {
+            if (!field.name || !field.value) {
+                throw new Error("Field must have both name and value");
+            }
+            if (field.name.length > 256) {
+                throw new Error("Field name must be 256 characters or less");
+            }
+            if (field.value.length > 1024) {
+                throw new Error("Field value must be 1024 characters or less");
+            }
+        });
+    }
+
+    // Validate footer
+    if (embed.footer?.text && embed.footer.text.length > 2048) {
+        throw new Error("Footer text must be 2048 characters or less");
+    }
+
+    // Validate author
+    if (embed.author?.name && embed.author.name.length > 256) {
+        throw new Error("Author name must be 256 characters or less");
+    }
+
+    // Validate URLs
+    const urlFields = ['thumbnail', 'image'];
+    urlFields.forEach(field => {
+        if (embed[field]?.url && !isValidUrl(embed[field].url)) {
+            throw new Error(`Invalid URL in ${field}`);
+        }
+    });
+
+    return true;
+}
+
+function isValidUrl(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function validateMessage(message) {
+    if (!message.embeds || !Array.isArray(message.embeds)) {
+        throw new Error("Message must have an embeds array");
+    }
+
+    if (message.embeds.length > 10) {
+        throw new Error("Message can have maximum 10 embeds");
+    }
+
+    // Validate each embed
+    message.embeds.forEach((embed, index) => {
+        try {
+            validateEmbed(embed);
+        } catch (e) {
+            throw new Error(`Embed ${index + 1}: ${e.message}`);
+        }
+    });
+
+    return true;
+}
+
+// Modify the export/send functions to include validation:
 document.addEventListener('DOMContentLoaded', () => {
   try {
     // Ensure single initialization
