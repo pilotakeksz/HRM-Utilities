@@ -1,0 +1,61 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Test Message with Buttons",
+          "description": "This embed has buttons and select menus for testing",
+          "color": 3447003,
+          "image": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "fields": [
+            {
+              "name": "Field 1",
+              "value": "Value 1",
+              "inline": true
+            }
+          ],
+          "buttons": [
+            {
+              "type": "link",
+              "label": "Visit Website",
+              "url": "https://discord.com"
+            },
+            {
+              "type": "send_embed",
+              "label": "Send Test Message",
+              "target": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IlRlc3QgUmVzcG9uc2UiLCJkZXNjcmlwdGlvbiI6IlRoaXMgaXMgYSB0ZXN0IG1lc3NhZ2Ugc2VudCBmcm9tIGEgYnV0dG9uISIsImNvbG9yIjozNDQ3MDAzfV1dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+              "ephemeral": true
+            }
+          ],
+          "selects": [
+            {
+              "placeholder": "Choose an option",
+              "options": [
+                {
+                  "label": "Option 1",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6Ik9wdGlvbiAxIFJlc3BvbnNlIiwiZGVzY3JpcHRpb24iOiJZb3Ugc2VsZWN0ZWQgT3B0aW9uIDEhIiwiY29sb3IiOjE1MTU4MzMyfV1dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+                  "description": "This will send a test message"
+                },
+                {
+                  "label": "Option 2",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6Ik9wdGlvbiAyIFJlc3BvbnNlIiwiZGVzY3JpcHRpb24iOiJZb3Ugc2VsZWN0ZWQgT3B0aW9uIDIhIiwiY29sb3IiOjMwNjY5OTN9XX1dLCJtZXRhZGF0YSI6eyJ2ZXJzaW9uIjoiMy4wIn19",
+                  "description": "This will send another test message"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 1,
+    "total_embeds": 1,
+    "has_buttons": true,
+    "has_selects": true,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}

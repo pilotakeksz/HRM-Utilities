@@ -1,0 +1,57 @@
+{
+  "messages": [
+    {
+      "embeds": [
+        {
+          "title": "Test from .txt with Buttons",
+          "description": "This embed was sent from a .txt file and has interactive components!",
+          "color": 15158332,
+          "thumbnail": {
+            "url": "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png"
+          },
+          "buttons": [
+            {
+              "type": "link",
+              "label": "Discord",
+              "url": "https://discord.com"
+            },
+            {
+              "type": "send_embed",
+              "label": "Send Response",
+              "target": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IkJ1dHRvbiBSZXNwb25zZSIsImRlc2NyaXB0aW9uIjoiVGhpcyBtZXNzYWdlIHdhcyBzZW50IGZyb20gYSBidXR0b24gaW4gYSB0eHQgZmlsZSEiLCJjb2xvciI6MzA2Njk5M31dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+              "ephemeral": false
+            }
+          ],
+          "selects": [
+            {
+              "placeholder": "Choose your response",
+              "options": [
+                {
+                  "label": "Success",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IuKdpOKdpOKdpCBTdWNjZXNzISIsImRlc2NyaXB0aW9uIjoiWW91IHNlbGVjdGVkIFN1Y2Nlc3MhIiwiY29sb3IiOjU3NjM3MTl9XX1dLCJtZXRhZGF0YSI6eyJ2ZXJzaW9uIjoiMy4wIn19",
+                  "description": "Send a success message"
+                },
+                {
+                  "label": "Error",
+                  "value": "send_json:eyJtZXNzYWdlcyI6W3siZW1iZWRzIjpbeyJ0aXRsZSI6IuKdpOKdpOKdpCBFcnJvciEiLCJkZXNjcmlwdGlvbiI6IllvdSBzZWxlY3RlZCBFcnJvciEiLCJjb2xvcioxNTE1ODMzMn1dfV0sIm1ldGFkYXRhIjp7InZlcnNpb24iOiIzLjAifX0=",
+                  "description": "Send an error message"
+                }
+              ]
+            }
+          ],
+          "footer": {
+            "text": "Uploaded via .txt file with buttons"
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "total_messages": 1,
+    "total_embeds": 1,
+    "has_buttons": true,
+    "has_selects": true,
+    "generated_at": "2024-01-01T00:00:00.000Z",
+    "version": "3.0"
+  }
+}

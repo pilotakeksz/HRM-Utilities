@@ -173,7 +173,17 @@ class PayloadView(ui.View):
         # local map of keys created for this view (not required but useful)
         self._local_keys: List[str] = []
 
-        first = (payload.get("embeds") or [None])[0]
+        # Handle both new message format and legacy embed format
+        first = None
+        if payload.get("messages"):
+            # New message format - get first embed from first message
+            first_message = payload.get("messages", [None])[0]
+            if first_message and first_message.get("embeds"):
+                first = first_message.get("embeds", [None])[0]
+        elif payload.get("embeds"):
+            # Legacy embed format
+            first = (payload.get("embeds") or [None])[0]
+        
         if not first:
             return
 
