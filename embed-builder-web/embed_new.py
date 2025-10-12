@@ -565,7 +565,8 @@ class EmbedNewCog(commands.Cog):
                 return
             
             # Process and send the messages
-            await self._process_and_send_messages(interaction, data, channel, self.persistent)
+            # Use the persistent flag from the view (fix: was referencing self.persistent which doesn't exist)
+            await self._process_and_send_messages(interaction, data, channel, view.persistent)
             
             # Update the original message to show completion
             embed = discord.Embed(
