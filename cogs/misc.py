@@ -4,14 +4,17 @@ from discord.ext import commands
 from discord import app_commands
 import time
 from io import BytesIO
+import asyncio
 try:
     from PIL import Image
 except Exception:
     Image = None
 
-# User allowed to run !tuna (in addition to server admins)
-ALLOWED_TUNA_USER_ID = 735167992966676530
-ALWAYS_ALLOW_TUNA_ID = 840949634071658507  # <-- Add this line
+
+# Removed user-whitelist — only admins allowed for tuna commands
+
+# Set this to a specific user ID if you want to allow a particular user, or set to None to disable
+ALLOWED_TUNA_USER_ID = 840949634071658507
 
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -85,35 +88,30 @@ class MiscCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.group(name="tuna")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna(self, ctx):
-        """Tuna utility commands."""
-        # Authorization gate: allow specified user, ALWAYS_ALLOW_TUNA_ID, or server admins
-        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
-        if ctx.author.id not in (ALLOWED_TUNA_USER_ID, ALWAYS_ALLOW_TUNA_ID) and not is_admin:
-            await ctx.send("❌ You are not allowed to use tuna commands.")
-            return
+        """Tuna utility commands. Only server admins may use these."""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `!tuna role` or `!tuna dm` for available commands.")
 
     @tuna.group(name="role")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_role(self, ctx):
-        """Role management commands."""
+        """Role management commands (admins only)."""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `!tuna role add`, `!tuna role list`, or `!tuna role remove`")
 
     @tuna.group(name="create")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_create(self, ctx):
-        """Creation utilities for tuna."""
-        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
-        if ctx.author.id not in (ALLOWED_TUNA_USER_ID, ALWAYS_ALLOW_TUNA_ID) and not is_admin:
-            await ctx.send("❌ You are not allowed to use tuna commands.")
-            return
+        """Creation utilities for tuna (admins only)."""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `!tuna create role <name> [hexcolor]`")
 
     @tuna_role.command(name="add")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_role_add(self, ctx, user: discord.Member, *, role_name: str):
-        """Add a role to a user."""
+        """Add a role to a user. (admins only)"""
         try:
             # Find the role by name (case insensitive)
             role = discord.utils.find(lambda r: r.name.lower() == role_name.lower(), ctx.guild.roles)
@@ -141,8 +139,9 @@ class MiscCog(commands.Cog):
             await ctx.send(f"❌ An error occurred: {str(e)}")
 
     @tuna_role.command(name="list")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_role_list(self, ctx, user: discord.Member):
-        """List all roles for a user."""
+        """List all roles for a user. (admins only)"""
         roles = [role.mention for role in user.roles if role.name != "@everyone"]
         
         if not roles:
@@ -158,8 +157,9 @@ class MiscCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @tuna_role.command(name="remove")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_role_remove(self, ctx, user: discord.Member, *, role_name: str):
-        """Remove a role from a user."""
+        """Remove a role from a user. (admins only)"""
         try:
             # Find the role by name (case insensitive)
             role = discord.utils.get(ctx.guild.roles, name=role_name)
@@ -187,8 +187,9 @@ class MiscCog(commands.Cog):
             await ctx.send(f"❌ An error occurred: {str(e)}")
 
     @tuna_role.command(name="members")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_role_members(self, ctx, *, role_name: str):
-        """List members who have a given role (by name or mention)."""
+        """List members who have a given role (admins only)."""
         # Try role mention first
         role = None
         if role_name.startswith("<@&") and role_name.endswith(">"):
@@ -235,8 +236,9 @@ class MiscCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @tuna.command(name="dm")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_dm(self, ctx, target, *, message: str):
-        """Send a DM to a user or all members with a specific role."""
+        """Send a DM to a user or all members with a specific role. (admins only)"""
         try:
             # Try to parse as user mention/ID first
             try:
@@ -286,8 +288,9 @@ class MiscCog(commands.Cog):
             await ctx.send(f"❌ An error occurred: {str(e)}")
 
     @tuna.command(name="say")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_say(self, ctx, channel: discord.TextChannel = None, *, message: str = None):
-        """Send a message to a channel. Usage: !tuna say [#channel] <message>"""
+        """Send a message to a channel. (admins only)"""
         if message is None and channel is None:
             await ctx.send("Usage: `!tuna say [#channel] <message>`")
             return
@@ -305,8 +308,9 @@ class MiscCog(commands.Cog):
             await ctx.send(f"❌ Failed to send message: {str(e)}")
 
     @tuna.command(name="servers")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_servers(self, ctx):
-        """List servers the bot is in (name, id, members)."""
+        """List servers the bot is in (admins only)."""
         guilds = list(self.bot.guilds)
         guilds_sorted = sorted(guilds, key=lambda g: g.member_count or 0, reverse=True)
         total = len(guilds_sorted)
@@ -332,8 +336,9 @@ class MiscCog(commands.Cog):
                 await ctx.send("```\n" + "\n".join(chunk) + "\n```")
 
     @tuna.command(name="perms")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_perms(self, ctx, channel: discord.TextChannel = None):
-        """Show the bot's permissions in the guild or a specified channel."""
+        """Show the bot's permissions in the guild or a specified channel. (admins only)"""
         target_channel = channel or ctx.channel
         me = ctx.guild.me
         perms = target_channel.permissions_for(me)
@@ -356,8 +361,9 @@ class MiscCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @tuna.command(name="invite")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_invite(self, ctx):
-        """Show OAuth2 invite links for the bot (basic and admin)."""
+        """Show OAuth2 invite links for the bot (admins only)."""
         client_id = self.bot.user.id if self.bot.user else None
         if client_id is None:
             await ctx.send("❌ Unable to determine bot user ID.")
@@ -373,9 +379,76 @@ class MiscCog(commands.Cog):
         embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
         await ctx.send(embed=embed)
 
+    @tuna.command(name="invite_all")
+    @commands.has_guild_permissions(administrator=True)
+    async def tuna_invite_all(self, ctx, include_admin: bool = False):
+        """DM invite link(s) to each guild owner for all servers the bot is in (admins only).
+        Usage: !tuna invite_all [include_admin=True]"""
+        client_id = self.bot.user.id if self.bot.user else None
+        if client_id is None:
+            await ctx.send("❌ Unable to determine bot user ID.")
+            return
+
+        scopes = "bot%20applications.commands"
+        base = f"https://discord.com/oauth2/authorize?client_id={client_id}&scope={scopes}"
+        basic_url = base
+        admin_url = base + "&permissions=8"
+
+        sent = 0
+        failed = 0
+        skipped = 0
+
+        # iterate guilds and attempt to DM the owner
+        for guild in list(self.bot.guilds):
+            try:
+                owner = guild.owner
+                # attempt to fetch owner if not cached
+                if owner is None and getattr(guild, "owner_id", None):
+                    try:
+                        owner = await self.bot.fetch_user(guild.owner_id)
+                    except Exception:
+                        owner = None
+
+                if owner is None:
+                    skipped += 1
+                    continue
+
+                embed = discord.Embed(
+                    title=f"Invite links for {self.bot.user.name}",
+                    description=f"Provided on behalf of the bot in `{guild.name}` (ID: {guild.id})",
+                    color=discord.Color.gold()
+                )
+                embed.add_field(name="Basic", value=f"[Add Bot]({basic_url})", inline=False)
+                if include_admin:
+                    embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
+                embed.set_footer(text=f"Server: {guild.name}")
+
+                try:
+                    await owner.send(embed=embed)
+                    sent += 1
+                except discord.Forbidden:
+                    # Owner DMs closed, try fallback: send to system channel if available and bot can send
+                    try:
+                        sc = guild.system_channel
+                        if sc and sc.permissions_for(guild.me).send_messages:
+                            await sc.send(f"{owner.mention} — I'm posting invite links here because I couldn't DM you.", embed=embed)
+                            sent += 1
+                        else:
+                            failed += 1
+                    except Exception:
+                        failed += 1
+            except Exception:
+                failed += 1
+
+            # gentle sleep to avoid hitting rate limits when many guilds
+            await asyncio.sleep(0.25)
+
+        await ctx.send(f"✅ Invite distribution complete — sent: {sent}, failed: {failed}, skipped (no owner): {skipped}")
+
     @tuna.command(name="shard")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_shard(self, ctx):
-        """Show shard info: shard count, per-shard latency, and guild distribution."""
+        """Show shard info (admins only)."""
         shard_count = self.bot.shard_count or 1
         latencies = getattr(self.bot, "latencies", None) or []
         if not latencies:
@@ -396,8 +469,9 @@ class MiscCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @tuna.command(name="stats")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_stats(self, ctx):
-        """Show system and runtime stats for the bot."""
+        """Show system and runtime stats for the bot (admins only)."""
         # Uptime
         uptime_seconds = int(time.time() - self.start_time)
         days = uptime_seconds // 86400
@@ -438,8 +512,9 @@ class MiscCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @tuna_create.command(name="role")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_create_role(self, ctx, role_name: str, color: str = None):
-        """Create a role. Optional color hex like FF8800 or #FF8800."""
+        """Create a role. (admins only)"""
         # authorization (double-check)
         is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
         if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
@@ -488,9 +563,9 @@ class MiscCog(commands.Cog):
             await ctx.send(f"❌ Failed to create role: {e}")
 
     @tuna.command(name="colour")
+    @commands.has_guild_permissions(administrator=True)
     async def tuna_colour(self, ctx, hex_color: str):
-        """Show a small image filled with the given hex colour.
-        Usage: !tuna colour FF8800  or  !tuna colour #FF8800  (3- or 6-digit hex allowed)"""
+        """Show a small image filled with the given hex colour. (admins only)"""
         # authorization
         is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
         if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
