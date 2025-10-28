@@ -368,8 +368,9 @@ def parse_relative_time(time_str: str) -> timedelta:
 class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # guild_id -> datetime of last vote invocation
         self.guild_vote_cooldowns: Dict[int, datetime] = {}
+        # Start the schedule checker task
+        self.schedule_check_task = bot.loop.create_task(self.check_schedule())
 
     training = app_commands.Group(name="training", description="Training related commands")
 
@@ -589,6 +590,83 @@ class Trainings(commands.Cog):
         await interaction.response.send_message("Training cancelled successfully!", ephemeral=True)
         await log_action(self.bot, interaction.user, "training_cancelled", 
                         extra=f"id={training_id}")
+
+    async def check_schedule(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try:
+                schedule = load_schedule()
+                now = datetime.now(TIMEZONE).timestamp()
+                
+                # Check for trainings that should start
+                for training_id, training in list(schedule.items()):
+                    training_time = float(training['timestamp'])
+                    
+                    # If training time has passed (within last minute to avoid duplicates)
+                    if now >= training_time and now - training_time < 60:
+                        # Send training vote embed
+                        channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID)
+                        host = await self.bot.fetch_user(int(training['host']))
+                        
+                        end_dt = datetime.now(timezone.utc) + timedelta(minutes=10)
+                        epoch = int(end_dt.timestamp())
+                        rel_ts = f"<t:{epoch}:R>"
+
+                        embed = discord.Embed(
+                            title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training Vote", 
+                            color=EMBED_COLOR,
+                            description=(
+                                "> A scheduled training session is starting. In order for a training to be hosted, "
+                                "at least 1 vote is required.\n\n"
+                                f"> Please react if you are able to join, the vote lasts ten minutes. "
+                                f"The vote will end {rel_ts}"
+                            )
+                        )
+                        embed.set_image(url=IMAGE_URL)
+                        embed.set_footer(text=f"Host: {host.display_name}")
+                        embed.add_field(
+                            name="Votes",
+                            value="✅ Joining: 0\n❌ Not joining: 0",
+                            inline=False
+                        )
+                        
+                        view = TrainingVoteView(self.bot, host, end_time=end_dt)
+                        msg = await channel.send(
+                            content=f"<@&{PING_ROLE_ID}> Scheduled training is starting!",
+                            embed=embed,
+                            view=view
+                        )
+                        view.message = msg
+
+                        # Schedule view finalization
+                        async def _wait_and_finalize():
+                            await asyncio.sleep(600)
+                            await view.finalize()
+                        
+                        asyncio.create_task(_wait_and_finalize())
+                        
+                        # Remove the training from schedule
+                        del schedule[training_id]
+                        save_schedule(schedule)
+                        
+                        await log_action(
+                            self.bot,
+                            "system",
+                            "scheduled_training_started",
+                            extra=f"id={training_id} host={host.id}"
+                        )
+
+            except Exception as e:
+                # Log any errors but don't stop the task
+                await log_action(self.bot, "system", "schedule_check_error", extra=str(e))
+            
+            # Check every 30 seconds
+            await asyncio.sleep(30)
+
+    # Add cleanup on cog unload
+    def cog_unload(self):
+        if hasattr(self, 'schedule_check_task'):
+            self.schedule_check_task.cancel()
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Trainings(bot))
