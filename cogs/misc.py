@@ -10,6 +10,9 @@ try:
 except Exception:
     Image = None
 
+import aiohttp
+import zipfile
+
 
 # Removed user-whitelist — only admins allowed for tuna commands
 
@@ -629,6 +632,45 @@ class MiscCog(commands.Cog):
             embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
             embed.description = f"RGB: {r}, {g}, {b}"
             await ctx.send(embed=embed)
+
+    @tuna.command(name="emojis")
+    @commands.has_guild_permissions(administrator=True)
+    async def tuna_emojis(self, ctx):
+        """Create a zip of all custom emojis in this guild and send it."""
+        guild = ctx.guild
+        if not guild:
+            await ctx.send("This command must be used in a server.")
+            return
+
+        emojis = guild.emojis
+        if not emojis:
+            await ctx.send("No custom emojis in this server.")
+            return
+
+        msg = await ctx.send("Creating emoji zip — this may take a moment...")
+        bio = BytesIO()
+        try:
+            with zipfile.ZipFile(bio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                async with aiohttp.ClientSession() as session:
+                    for e in emojis:
+                        url = str(e.url)
+                        ext = "gif" if getattr(e, "animated", False) else "png"
+                        filename = f"{e.name}_{e.id}.{ext}"
+                        try:
+                            async with session.get(url) as resp:
+                                if resp.status == 200:
+                                    data = await resp.read()
+                                    zf.writestr(filename, data)
+                        except Exception:
+                            # skip emoji on error
+                            continue
+            bio.seek(0)
+            file = discord.File(bio, filename=f"{guild.name}_emojis.zip")
+            await msg.edit(content="Here is the emoji zip:")
+            await ctx.send(file=file)
+        except Exception as exc:
+            await msg.edit(content="Failed to create emoji zip.")
+            await ctx.send(f"Error: {exc}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))
