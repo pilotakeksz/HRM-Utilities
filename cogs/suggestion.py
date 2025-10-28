@@ -291,12 +291,16 @@ class Suggestion(commands.Cog):
         msg = await channel.fetch_message(msg_id)
         embed = msg.embeds[0]
         embed.color = APPROVED_COLOR
-        # Remove the percentage indicator and percentage from the Votes field
-        embed.remove_field(2)
+        # Safely remove the votes/percentage field if present
+        try:
+            embed.remove_field(2)
+        except IndexError:
+            pass
         embed.insert_field_at(0, name="✅ **APPROVED**", value="This suggestion has been approved.", inline=False)
         embed.set_footer(text=f"Suggestion ID: {suggestion_id} | Approved by {interaction.user.display_name}")
-        # Remove the buttons by setting view to None
-        await msg.edit(embed=embed, view=None)
+        # Remove any image and clear attachments so the progress image doesn't reappear
+        embed.set_image(url=None)
+        await msg.edit(embed=embed, view=None, attachments=[])
         await interaction.response.send_message("Suggestion approved.", ephemeral=True)
 
     @app_commands.command(name="suggestion-deny", description="Deny a suggestion (managers only)")
@@ -313,14 +317,18 @@ class Suggestion(commands.Cog):
         msg = await channel.fetch_message(msg_id)
         embed = msg.embeds[0]
         embed.color = DENIED_COLOR
-        # Remove the percentage indicator and percentage from the Votes field
-        embed.remove_field(2)
+        # Safely remove the votes/percentage field if present
+        try:
+            embed.remove_field(2)
+        except IndexError:
+            pass
         embed.insert_field_at(0, name="❌ **DENIED**", value="This suggestion has been denied.", inline=False)
         if reason:
             embed.add_field(name="Denial Reason", value=reason, inline=False)
         embed.set_footer(text=f"Suggestion ID: {suggestion_id} | Denied by {interaction.user.display_name}")
-        # Remove the buttons by setting view to None
-        await msg.edit(embed=embed, view=None)
+        # Remove any image and clear attachments so the progress image doesn't reappear
+        embed.set_image(url=None)
+        await msg.edit(embed=embed, view=None, attachments=[])
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
