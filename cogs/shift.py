@@ -407,9 +407,8 @@ class ShiftManageView(discord.ui.View):
         if not st:
             await interaction.response.edit_message(embed=cog.embed_warn("You are not on a shift."), view=self)
             return
-        if st.get("on_break"):
-            await interaction.response.edit_message(embed=cog.embed_warn("You cannot stop while on break. End break first."), view=self)
-            return
+
+        # Remove the break check so shifts can be ended while on break
         record = cog.store.stop_shift(user.id)
         role_on = guild.get_role(ROLE_SHIFT_ON)
         role_break = guild.get_role(ROLE_BREAK)
