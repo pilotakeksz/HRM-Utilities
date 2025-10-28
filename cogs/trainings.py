@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict
 import json
 import pytz
+import re
 
 TRAINING_ROLE_ID = 1329910342301515838  # role allowed to run command
 ANNOUNCE_CHANNEL_ID = 1329910495536484374
@@ -341,6 +342,29 @@ def save_schedule(schedule):
     with open(SCHEDULE_FILE, 'w') as f:
         json.dump(schedule, f)
 
+def parse_relative_time(time_str: str) -> timedelta:
+    """Parse relative time strings like '2h', '30m', '1d', etc."""
+    time_units = {
+        'm': 'minutes',
+        'h': 'hours',
+        'd': 'days',
+        'w': 'weeks'
+    }
+    
+    pattern = r'(\d+)([mhdw])'
+    match = re.match(pattern, time_str.lower())
+    if not match:
+        raise ValueError("Invalid time format. Use formats like: 30m, 2h, 1d, 1w")
+        
+    amount = int(match.group(1))
+    unit = match.group(2)
+    
+    if unit not in time_units:
+        raise ValueError("Invalid time unit. Use m (minutes), h (hours), d (days), or w (weeks)")
+        
+    kwargs = {time_units[unit]: amount}
+    return timedelta(**kwargs)
+
 class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -419,14 +443,12 @@ class Trainings(commands.Cog):
 
     @training.command(name="schedule", description="Schedule a training session")
     @app_commands.describe(
-        date="Date of training (DD/MM/YYYY)",  # Updated to EU date format
-        time="Time of training in UK time (HH:MM)",  # Updated timezone reference
+        time="Time until training (e.g. 30m, 2h, 1d, 1w)",
         description="Description of the training"
     )
     async def schedule_training(
         self, 
-        interaction: discord.Interaction, 
-        date: str,
+        interaction: discord.Interaction,
         time: str,
         description: str
     ):
@@ -436,26 +458,20 @@ class Trainings(commands.Cog):
             return
 
         try:
-            # Parse date and time (update format string for EU date format)
-            datetime_str = f"{date} {time}"
-            training_time = TIMEZONE.localize(datetime.strptime(datetime_str, "%d/%m/%Y %H:%M"))
+            # Parse relative time
+            time_delta = parse_relative_time(time)
+            training_time = datetime.now(TIMEZONE) + time_delta
             
-            # Check if date is in the future
-            if training_time < datetime.now(TIMEZONE):
-                await interaction.response.send_message("Training time must be in the future!", ephemeral=True)
-                return
-
             # Load existing schedule
             schedule = load_schedule()
             
             # Create training entry
             training_id = str(len(schedule) + 1)
             schedule[training_id] = {
-                "date": date,
-                "time": time,
+                "timestamp": training_time.timestamp(),
                 "description": description,
                 "host": str(interaction.user.id),
-                "timestamp": training_time.timestamp()
+                "relative_time": time  # Store original relative time for reference
             }
             
             # Save updated schedule
@@ -467,9 +483,10 @@ class Trainings(commands.Cog):
                 description=description,
                 color=EMBED_COLOR
             )
+            timestamp = int(training_time.timestamp())
             embed.add_field(
                 name="📅 Date & Time", 
-                value=f"<t:{int(training_time.timestamp())}:F>\n(<t:{int(training_time.timestamp())}:R>)",
+                value=f"<t:{timestamp}:F>\n(<t:{timestamp}:R>)",
                 inline=False
             )
             embed.add_field(name="Host", value=interaction.user.mention, inline=False)
@@ -485,11 +502,11 @@ class Trainings(commands.Cog):
 
             await interaction.response.send_message("Training scheduled successfully!", ephemeral=True)
             await log_action(self.bot, interaction.user, "training_scheduled", 
-                           extra=f"id={training_id} date={date} time={time}")
+                           extra=f"id={training_id} relative_time={time}")
 
-        except ValueError:
+        except ValueError as e:
             await interaction.response.send_message(
-                "Invalid date/time format! Use DD/MM/YYYY for date and HH:MM for time (24-hour format)",
+                f"Error: {str(e)}",
                 ephemeral=True
             )
 
