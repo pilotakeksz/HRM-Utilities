@@ -6,6 +6,8 @@ from discord import app_commands
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict
+import json
+import pytz
 
 TRAINING_ROLE_ID = 1329910342301515838  # role allowed to run command
 ANNOUNCE_CHANNEL_ID = 1329910495536484374
@@ -20,6 +22,8 @@ EMBED_COLOR = 0xd0b47b
 IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68e8e4dc&is=68e7935c&hm=87d1062f2383b32fc32cdc397b1021296f29aa8caf549b38d3b7137ea8281262&"
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../logs/trainings.txt")
+SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "training_schedule.json")
+TIMEZONE = pytz.timezone('Europe/London')  # Changed from US/Eastern to EU/London
 
 async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
     """
@@ -244,12 +248,12 @@ class TrainingVoteView(discord.ui.View):
 
         # DM embed text to voters
         dm_text = (
-            "<:MIAthumbtack1:1365681465806815282>  Training server code: `AXEGK`.\n\n"
-            "> Once you join the server, please join the sheriff team, and  do the following:\n\n"
-            "**<:MIAdot:1365679087078604840> Make sure you have a gun equipped.**\n"
+            "<:MIAthumbtack1:1365681465806815282>  Training server code will be provided by the host.\n\n"
+            "> Once you join the server, please join the sheriff team, and do the following:\n\n"
+            "**<:Mapecliff_dot:1431744757146587339> Make sure you have a gun equipped.**\n"
             "> `•` [Glock-17 / M4A1 rifle]\n\n"
-            "**<:MIAdot:1365679087078604840> Use the [Standard Kit] uniform.**\n\n"
-            "**<:MIAdot:1365679087078604840> And spawn one of the following vehicles:**\n"
+            "**<:Mapecliff_dot:1431744757146587339> Use the [Standard Kit] uniform.**\n\n"
+            "**<:Mapecliff_dot:1431744757146587339> And spawn one of the following vehicles:**\n"
             "> `•` 2015 bullhorn prancer [MCNG Patrol]\n"
             "> `•` Falcon Interceptor 2019 [MCNG Utility]\n"
             "> `•` Chevlon Camion PPV 2000 [MCNG Utility]\n"
@@ -326,6 +330,17 @@ class TrainingVoteView(discord.ui.View):
             except Exception as e:
                 await log_action(self.bot, self.author, "dm_failed", extra=str(e))
 
+def load_schedule():
+    if os.path.exists(SCHEDULE_FILE):
+        with open(SCHEDULE_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_schedule(schedule):
+    os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
+    with open(SCHEDULE_FILE, 'w') as f:
+        json.dump(schedule, f)
+
 class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -401,6 +416,162 @@ class Trainings(commands.Cog):
             await view.finalize()
 
         asyncio.create_task(_wait_and_finalize())
+
+    @training.command(name="schedule", description="Schedule a training session")
+    @app_commands.describe(
+        date="Date of training (DD/MM/YYYY)",  # Updated to EU date format
+        time="Time of training in UK time (HH:MM)",  # Updated timezone reference
+        description="Description of the training"
+    )
+    async def schedule_training(
+        self, 
+        interaction: discord.Interaction, 
+        date: str,
+        time: str,
+        description: str
+    ):
+        # Permission check
+        if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("You don't have permission to schedule trainings.", ephemeral=True)
+            return
+
+        try:
+            # Parse date and time (update format string for EU date format)
+            datetime_str = f"{date} {time}"
+            training_time = TIMEZONE.localize(datetime.strptime(datetime_str, "%d/%m/%Y %H:%M"))
+            
+            # Check if date is in the future
+            if training_time < datetime.now(TIMEZONE):
+                await interaction.response.send_message("Training time must be in the future!", ephemeral=True)
+                return
+
+            # Load existing schedule
+            schedule = load_schedule()
+            
+            # Create training entry
+            training_id = str(len(schedule) + 1)
+            schedule[training_id] = {
+                "date": date,
+                "time": time,
+                "description": description,
+                "host": str(interaction.user.id),
+                "timestamp": training_time.timestamp()
+            }
+            
+            # Save updated schedule
+            save_schedule(schedule)
+
+            # Create announcement embed
+            embed = discord.Embed(
+                title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training Scheduled",
+                description=description,
+                color=EMBED_COLOR
+            )
+            embed.add_field(
+                name="📅 Date & Time", 
+                value=f"<t:{int(training_time.timestamp())}:F>\n(<t:{int(training_time.timestamp())}:R>)",
+                inline=False
+            )
+            embed.add_field(name="Host", value=interaction.user.mention, inline=False)
+            embed.set_footer(text=f"Training ID: {training_id}")
+            embed.set_image(url=IMAGE_URL)
+
+            # Send announcement
+            channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID)
+            await channel.send(
+                content=f"<@&{PING_ROLE_ID}> A new training has been scheduled!",
+                embed=embed
+            )
+
+            await interaction.response.send_message("Training scheduled successfully!", ephemeral=True)
+            await log_action(self.bot, interaction.user, "training_scheduled", 
+                           extra=f"id={training_id} date={date} time={time}")
+
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid date/time format! Use DD/MM/YYYY for date and HH:MM for time (24-hour format)",
+                ephemeral=True
+            )
+
+    @training.command(name="list-schedule", description="List upcoming scheduled trainings")
+    async def list_schedule(self, interaction: discord.Interaction):
+        schedule = load_schedule()
+        
+        if not schedule:
+            await interaction.response.send_message("No trainings are currently scheduled.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Scheduled Trainings",
+            color=EMBED_COLOR
+        )
+
+        # Filter and sort upcoming trainings
+        now = datetime.now(TIMEZONE).timestamp()
+        upcoming = {
+            k: v for k, v in schedule.items() 
+            if float(v['timestamp']) > now
+        }
+        
+        if not upcoming:
+            await interaction.response.send_message("No upcoming trainings are scheduled.", ephemeral=True)
+            return
+
+        sorted_trainings = sorted(upcoming.items(), key=lambda x: float(x[1]['timestamp']))
+
+        for training_id, training in sorted_trainings:
+            timestamp = int(float(training['timestamp']))
+            host = await self.bot.fetch_user(int(training['host']))
+            embed.add_field(
+                name=f"Training #{training_id}",
+                value=f"📅 <t:{timestamp}:F>\n👤 Host: {host.mention}\n📝 {training['description']}",
+                inline=False
+            )
+
+        embed.set_footer(text="All times are in ET")
+        await interaction.response.send_message(embed=embed)
+
+    @training.command(name="cancel-schedule", description="Cancel a scheduled training")
+    @app_commands.describe(training_id="ID of the training to cancel")
+    async def cancel_schedule(self, interaction: discord.Interaction, training_id: str):
+        if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("You don't have permission to cancel trainings.", ephemeral=True)
+            return
+
+        schedule = load_schedule()
+        
+        if training_id not in schedule:
+            await interaction.response.send_message("Training ID not found!", ephemeral=True)
+            return
+
+        training = schedule[training_id]
+        
+        # Check if user is the host or has admin permissions
+        is_host = str(interaction.user.id) == training['host']
+        is_admin = interaction.user.guild_permissions.administrator
+        
+        if not (is_host or is_admin):
+            await interaction.response.send_message("You can only cancel trainings you scheduled!", ephemeral=True)
+            return
+
+        # Remove the training
+        del schedule[training_id]
+        save_schedule(schedule)
+
+        # Send cancellation announcement
+        embed = discord.Embed(
+            title="❌ Training Cancelled",
+            description=f"The training scheduled for <t:{int(float(training['timestamp']))}:F> has been cancelled.",
+            color=discord.Color.red()
+        )
+        embed.set_footer(text=f"Cancelled by {interaction.user.display_name}")
+        
+        channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID)
+        await channel.send(embed=embed)
+
+        await interaction.response.send_message("Training cancelled successfully!", ephemeral=True)
+        await log_action(self.bot, interaction.user, "training_cancelled", 
+                        extra=f"id={training_id}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Trainings(bot))
