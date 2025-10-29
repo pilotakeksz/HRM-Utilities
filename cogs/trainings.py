@@ -237,6 +237,13 @@ class TrainingVoteView(discord.ui.View):
             return
 
         self.started = True
+        # Acknowledge the interaction quickly to avoid an interaction timeout
+        # (sending DMs and editing the message can take longer than the 3s limit)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
+            # If we can't defer (rare), continue — we'll try to send a normal response later
+            pass
         # disable interactive buttons
         for child in self.children:
             if isinstance(child, discord.ui.Button):
@@ -295,7 +302,15 @@ class TrainingVoteView(discord.ui.View):
         except Exception as e:
             await log_action(self.bot, "system", "session_start_announce_failed", extra=str(e))
 
-        await interaction.response.send_message("Session started. Voters have been DM'd and an announcement was posted.", ephemeral=True)
+        # Use a followup message since we already deferred the interaction above
+        try:
+            await interaction.followup.send("Session started. Voters have been DM'd and an announcement was posted.", ephemeral=True)
+        except Exception:
+            # Fallback if followup fails
+            try:
+                await interaction.response.send_message("Session started. Voters have been DM'd and an announcement was posted.", ephemeral=True)
+            except Exception:
+                pass
         await log_action(self.bot, self.author, "session_started", extra=f"yes_count={yes_count} dm_failures={len(dm_failed)} message_id={getattr(self.message,'id',None)}")
 
     async def finalize(self):
