@@ -245,7 +245,8 @@ class MiscCog(commands.Cog):
     async def tuna_dm(self, ctx, target, *, message: str):
         """Send a DM to a user or all members with a specific role. (admins only)"""
         try:
-            # Try to parse as user mention/ID first
+            # Try to parse as user mention/ID first. If that fails, allow numeric role IDs.
+            role = None
             try:
                 if target.startswith('<@') and target.endswith('>'):
                     # User mention
@@ -255,17 +256,25 @@ class MiscCog(commands.Cog):
                     await ctx.send(f"✅ DM sent to {user.mention}")
                     return
                 else:
-                    # Try as user ID
+                    # Try as user ID first
                     user_id = int(target)
                     user = await self.bot.fetch_user(user_id)
                     await user.send(f"**Message from {ctx.guild.name}:**\n{message}")
                     await ctx.send(f"✅ DM sent to {user.mention}")
                     return
             except (ValueError, discord.NotFound):
-                pass
-            
-            # Try to find role by name
-            role = discord.utils.get(ctx.guild.roles, name=target)
+                # Not a user — maybe it's a numeric role ID; check guild roles if we have a guild
+                try:
+                    if ctx.guild and target.isdigit():
+                        role_candidate = ctx.guild.get_role(int(target))
+                        if role_candidate:
+                            role = role_candidate
+                except Exception:
+                    role = None
+
+            # Try to find role by name if we didn't already resolve by ID
+            if role is None:
+                role = discord.utils.get(ctx.guild.roles, name=target) if ctx.guild else None
             if role:
                 sent_count = 0
                 failed_count = 0
