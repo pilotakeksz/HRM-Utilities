@@ -189,7 +189,7 @@ async def on_ready():
         print(f"Failed to DM console output: {e}")
     
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="Always Ready, Always There"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="e"))
     
     # Send version to specified channel
     try:
@@ -331,38 +331,41 @@ async def main():
         # Start HTTP server
         await start_webserver()
 
-        # Load cogs
-        cogs = [
-            "cogs.welcome",
-            "cogs.verification", 
-            "cogs.misc",
-            "cogs.leveling",
-            "cogs.economy",
-            "cogs.say",
-            "cogs.suggestion",
-            "cogs.Rules",
-            "cogs.about_us",
-            "cogs.applications",
-            "cogs.ticket_system",
-            "cogs.infract",
-            "cogs.delete_archive",
-            "cogs.callsign",
-            "cogs.afk",
-            "cogs.blacklist",
-            "cogs.archive_commands",
-            "cogs.MDT",
-            "cogs.embed",
-            "cogs.review",
-            "cogs.message",
-            "cogs.backups",
-            "cogs.shift",
-            "cogs.rolereq",
-            "cogs.loa",
-            "cogs.version",
-            "cogs.trainings",
-            "embed-builder-web.embed_new",
-            "cogs.quarantine"
-        ]
+
+        # Load cogs from directories specified in .env.cogs
+        cogs = []
+        cog_directories = []
+        
+        # Read cog directories from .env.cogs
+        env_cogs_path = os.path.join(os.path.dirname(__file__), ".env.cogs")
+        if os.path.exists(env_cogs_path):
+            with open(env_cogs_path, "r") as f:
+                cog_directories = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        else:
+            print("⚠️ Warning: .env.cogs not found, defaulting to 'cogs' directory")
+            cog_directories = ["cogs"]
+            
+        for directory in cog_directories:
+            directory = directory.strip()  # Remove any whitespace
+            dir_path = os.path.join(os.path.dirname(__file__), directory)
+            
+            if not os.path.exists(dir_path):
+                print(f"⚠️ Warning: Cog directory {directory} does not exist")
+                continue
+                
+            # Special case for embed-builder-web since it has a specific structure
+            if directory == "embed-builder-web":
+                cogs.append("embed-builder-web.embed_new")
+                continue
+                
+            # Get all Python files from directory
+            for filename in os.listdir(dir_path):
+                if filename.endswith(".py") and not filename.startswith("_"):
+                    cogs.append(f"{directory}.{filename[:-3]}")  # Remove .py and add directory prefix
+        
+        # Sort cogs for consistent loading order
+        cogs.sort()
+
         
         for cog in cogs:
             print(f"🔄 Loading cog {cog} ...")
