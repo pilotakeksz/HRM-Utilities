@@ -12,6 +12,7 @@ except Exception:
 
 import aiohttp
 import zipfile
+import re
 
 
 # Removed user-whitelist — only admins allowed for tuna commands
@@ -21,6 +22,7 @@ ALLOWED_TUNA_USER_ID = 840949634071658507 #tuna id yes
 
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
+
         self.bot = bot
         self.start_time = time.time()
 
@@ -652,10 +654,28 @@ class MiscCog(commands.Cog):
         try:
             with zipfile.ZipFile(bio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                 async with aiohttp.ClientSession() as session:
+                    used_filenames = set()
                     for e in emojis:
                         url = str(e.url)
                         ext = "gif" if getattr(e, "animated", False) else "png"
-                        filename = f"{e.name}_{e.id}.{ext}"
+                        # Sanitize the emoji name to produce a safe filename
+                        base_name = re.sub(r'[^A-Za-z0-9_.-]+', '_', (e.name or '').strip())
+                        if not base_name:
+                            base_name = f"emoji_{e.id}"
+
+                        filename = f"{base_name}.{ext}"
+                        # If filename already used (duplicate emoji names), add numeric suffix
+                        if filename in used_filenames:
+                            idx = 1
+                            while True:
+                                candidate = f"{base_name}_{idx}.{ext}"
+                                if candidate not in used_filenames:
+                                    filename = candidate
+                                    break
+                                idx += 1
+
+                        used_filenames.add(filename)
+
                         try:
                             async with session.get(url) as resp:
                                 if resp.status == 200:
