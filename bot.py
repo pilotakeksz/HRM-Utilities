@@ -189,7 +189,7 @@ async def on_ready():
         print(f"Failed to DM console output: {e}")
     
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="e"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="Always Ready, Always There"))
     
     # Send version to specified channel
     try:
