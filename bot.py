@@ -331,6 +331,7 @@ async def main():
         # Start HTTP server
         await start_webserver()
 
+
         # Load cogs from directories specified in .env.cogs
         cogs = []
         cog_directories = []
@@ -364,6 +365,7 @@ async def main():
         
         # Sort cogs for consistent loading order
         cogs.sort()
+
         
         for cog in cogs:
             print(f"🔄 Loading cog {cog} ...")
