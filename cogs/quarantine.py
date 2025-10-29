@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import random
 import string
 from collections import defaultdict
+import inspect
 
 # Constants
 IMMUNE_USER_ID = 840949634071658507
@@ -29,6 +30,11 @@ GIF_SPAM_THRESHOLD = 3  # gifs
 EMOJI_ADD_LIMIT = 5  # per hour
 ROLE_CHANGES_LIMIT = 30  # per hour
 CHANNEL_CREATE_LIMIT = 3  # per hour
+# Additional raid detection thresholds
+JOIN_RAID_THRESHOLD = 8  # joins
+JOIN_TIME_WINDOW = 20  # seconds
+BAN_THRESHOLD = 5  # bans by one actor
+BAN_TIME_WINDOW = 60  # seconds
 
 # Punishments
 MUTE_DURATION = 180  # 3 minutes
@@ -61,6 +67,8 @@ class RaidProtection(commands.Cog):
         self.emoji_counts = defaultdict(int)
         self.role_changes = defaultdict(int)
         self.channel_creates = defaultdict(int)
+        self.join_events = defaultdict(list)  # guild_id -> list of (timestamp, member_id)
+        self.ban_events = defaultdict(list)   # actor_id -> list of timestamps
         self.quarantined_users = {}
         self.left_restore = {}
         self.load_quarantine_data()
@@ -113,7 +121,32 @@ class RaidProtection(commands.Cog):
         if channel:
             await channel.send(embed=embed)
 
-    async def quarantine_user(self, user: discord.Member, reason: str):
+    async def quarantine_user(self, user, reason: str):
+        # Resolve to a guild Member if a User was passed (audit-log actors may be User objects)
+        member = None
+        try:
+            if isinstance(user, discord.Member):
+                member = user
+            else:
+                guild = self.bot.get_guild(GUILD_ID)
+                if guild:
+                    # try cached member first
+                    member = guild.get_member(getattr(user, 'id', None))
+                    if member is None and getattr(user, 'id', None) is not None:
+                        try:
+                            member = await guild.fetch_member(user.id)
+                        except Exception:
+                            member = None
+        except Exception:
+            member = None
+
+        if member is None:
+            logger.error(f"Cannot resolve guild member to quarantine for user id {getattr(user, 'id', None)}")
+            return
+
+        # Use member from here on
+        user = member
+
         if user.id == IMMUNE_USER_ID or any(role.id == IMMUNE_ROLE_ID for role in user.roles):
             return
 
@@ -218,6 +251,18 @@ class RaidProtection(commands.Cog):
 
                 try:
                     await interaction.client.wait_for('message', timeout=30.0, check=check)
+                    # Try to DM the user before kicking so they are notified
+                    try:
+                        em = discord.Embed(
+                            title="You have been kicked",
+                            description=f"You have been kicked from **{interaction.guild.name}** by {interaction.user} for: Suspicious activity",
+                            color=discord.Color.blue(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        em.set_footer(text="Contact server staff for appeal")
+                        await user.send(embed=em)
+                    except Exception:
+                        pass
                     await user.kick(reason="Suspicious activity")
                     self.used = True
                     
@@ -250,6 +295,18 @@ class RaidProtection(commands.Cog):
 
                 try:
                     await interaction.client.wait_for('message', timeout=30.0, check=check)
+                    # Try to DM the user before banning so they are notified
+                    try:
+                        em = discord.Embed(
+                            title="You have been banned",
+                            description=f"You have been banned from **{interaction.guild.name}** by {interaction.user} for: Suspicious activity",
+                            color=discord.Color.red(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        em.set_footer(text="Contact server staff for appeal")
+                        await user.send(embed=em)
+                    except Exception:
+                        pass
                     await user.ban(reason="Suspicious activity")
                     self.used = True
                     
@@ -280,10 +337,17 @@ class RaidProtection(commands.Cog):
                 view=QuarantineActions(self)  # Pass self (cog instance)
             )
 
-        # DM user
+        # DM user with embed
         try:
-            await user.send(f"You have been quarantined in {user.guild.name} for: {reason}")
-        except:
+            em = discord.Embed(
+                title="You have been quarantined",
+                description=f"You have been quarantined in **{user.guild.name}** for: {reason}",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            em.set_footer(text="Contact server staff for help")
+            await user.send(embed=em)
+        except Exception:
             pass
 
         await self.log_action("QUARANTINE", user, reason, QUARANTINE_DURATION)
@@ -293,8 +357,21 @@ class RaidProtection(commands.Cog):
         try:
             for attempt in range(attempts):
                 try:
-                    async for entry in guild.audit_logs(limit=10, action=action):
-                        if target_check is None or target_check(entry):
+                    logger.debug(f"Searching audit logs for action={action} (attempt {attempt+1}/{attempts})")
+                    async for entry in guild.audit_logs(limit=50, action=action):
+                        if target_check is None:
+                            return entry.user
+
+                        try:
+                            result = target_check(entry)
+                            # If target_check returned a coroutine, await it
+                            if inspect.isawaitable(result):
+                                result = await result
+                        except Exception as e:
+                            logger.error(f"Error in target_check: {e}")
+                            result = False
+
+                        if result:
                             return entry.user
                 except discord.Forbidden:
                     logger.error("Missing permission to read audit logs")
@@ -305,6 +382,17 @@ class RaidProtection(commands.Cog):
         except Exception as e:
             logger.error(f"_fetch_audit_actor failed: {e}")
         return None
+
+    def _prune_old(self, lst, window_seconds: int):
+        """Prune timestamps older than window_seconds from a list of datetimes/seconds in-place."""
+        cutoff = datetime.now(timezone.utc).timestamp() - window_seconds
+        # support list of tuples (timestamp, id) or plain timestamps
+        if not lst:
+            return lst
+        if isinstance(lst[0], tuple):
+            return [item for item in lst if item[0] >= cutoff]
+        else:
+            return [ts for ts in lst if ts >= cutoff]
 
     @tasks.loop(minutes=5)
     async def check_quarantines(self):
@@ -454,6 +542,39 @@ class RaidProtection(commands.Cog):
             logger.error(f"Error in channel create event: {str(e)}")
 
     @commands.Cog.listener()
+    async def on_guild_role_create(self, role):
+        try:
+            if role.guild.id != GUILD_ID:
+                return
+
+            def check_target(e):
+                try:
+                    # role create entries may have target with id
+                    return getattr(e.target, 'id', None) == role.id
+                except Exception:
+                    return False
+
+            actor = await self._fetch_audit_actor(role.guild, discord.AuditLogAction.role_create, target_check=check_target)
+            if actor is None:
+                logger.info(f"Role created but actor not found in audit logs: {role.name} ({role.id})")
+                return
+
+            if not self.has_bypass(actor):
+                # increment role change counter (uses same limit)
+                now_ts = datetime.now(timezone.utc).timestamp()
+                # store a timestamp list using role_changes mapping by replacing int with list if needed
+                # we'll temporarily use role_changes as a list store by keying with actor.id in a separate structure
+                if not hasattr(self, 'role_change_events'):
+                    self.role_change_events = defaultdict(list)
+                self.role_change_events[actor.id].append(now_ts)
+                # prune
+                self.role_change_events[actor.id] = self._prune_old(self.role_change_events[actor.id], 3600)
+                if len(self.role_change_events[actor.id]) > ROLE_CHANGES_LIMIT:
+                    await self.quarantine_user(actor, f"Excessive role changes ({len(self.role_change_events[actor.id])} in 1h)")
+        except Exception as e:
+            logger.error(f"Error in role create event: {str(e)}")
+
+    @commands.Cog.listener()
     async def on_guild_role_delete(self, role):
         try:
             if role.guild.id != GUILD_ID:
@@ -479,29 +600,116 @@ class RaidProtection(commands.Cog):
         try:
             if guild.id != GUILD_ID:
                 return
+            # Debug: log that the event fired and show before/after counts
+            try:
+                logger.info(f"on_guild_emojis_update fired for guild {guild.id}: before={len(before)} after={len(after)}")
+            except Exception:
+                logger.info(f"on_guild_emojis_update fired for guild {getattr(guild, 'id', None)}")
+
             # Compare by ID to avoid object-equality quirks
             before_emojis = {e.id: e for e in before}
             after_emojis = {e.id: e for e in after}
             removed_emojis = {id: emoji for id, emoji in before_emojis.items() if id not in after_emojis}
             added_emojis = {id: emoji for id, emoji in after_emojis.items() if id not in before_emojis}
 
+            logger.info(f"Emoji diff: removed={list(removed_emojis.keys())} added={list(added_emojis.keys())}")
+
             # Handle deletions
             if removed_emojis:
-                actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_delete, target_check=None)
-                if actor and not self.has_bypass(actor):
-                    deleted_info = "\n".join([f"- {e.name} ({e.id}) {str(e)}" for e in removed_emojis.values()])
-                    self.emoji_counts[actor.id] += len(removed_emojis)
-                    if self.emoji_counts[actor.id] > EMOJI_ADD_LIMIT:
-                        await self.quarantine_user(actor, f"Unauthorized emoji deletion\nDeleted emojis:\n{deleted_info}\nDeleted by: {actor.name} ({actor.id})")
+                # For each removed emoji, try to find the responsible audit log entry and attribute to that actor.
+                for eid, emo in removed_emojis.items():
+                    logger.info(f"Processing removed emoji {emo.name} ({eid})")
+                    def _check(entry, _eid=eid, _ename=emo.name):
+                        try:
+                            # Check target_id if available
+                            if getattr(entry, 'target_id', None) == _eid:
+                                return True
+                            # Some audit entries set entry.target to the emoji; compare id
+                            if getattr(getattr(entry, 'target', None), 'id', None) == _eid:
+                                return True
+                            # Some entries include changes listing the old name/value; check that too
+                            for ch in getattr(entry, 'changes', []) or []:
+                                try:
+                                    # changes may be dict-like for emoji objects
+                                    old = getattr(ch, 'old', None)
+                                    new = getattr(ch, 'new', None)
+                                    attr = getattr(ch, 'attribute', None)
+                                    # If old/new are dicts that contain 'id' or 'name'
+                                    if isinstance(old, dict):
+                                        if old.get('id') == _eid or old.get('name') == _ename:
+                                            return True
+                                    if isinstance(new, dict):
+                                        if new.get('id') == _eid or new.get('name') == _ename:
+                                            return True
+                                    if attr in ('name',) and old == _ename:
+                                        return True
+                                except Exception:
+                                    continue
+                            return False
+                        except Exception:
+                            return False
+
+                    # Increase attempts/delay to catch slightly delayed audit entries
+                    actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_delete, target_check=_check, attempts=5, delay=1.0)
+                    if not actor:
+                        # fallback: try generic emoji_delete entry (may be delayed)
+                        actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_delete, target_check=None, attempts=5, delay=1.0)
+
+                    if not actor:
+                        logger.info(f"Emoji deleted but actor not found for {emo.name} ({eid})")
+                    else:
+                        logger.info(f"Attributed deleted emoji {emo.name} ({eid}) to actor {actor} ({getattr(actor, 'id', None)})")
+
+                    if actor and not self.has_bypass(actor):
+                        self.emoji_counts[actor.id] += 1
+                        # build deleted info for logging/notification
+                        deleted_info = f"- {emo.name} ({emo.id}) {str(emo)}"
+                        if self.emoji_counts[actor.id] > EMOJI_ADD_LIMIT:
+                            await self.quarantine_user(actor, f"Unauthorized emoji deletion\nDeleted emoji:\n{deleted_info}\nDeleted by: {actor.name} ({actor.id})")
 
             # Handle additions
             if added_emojis:
-                actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_create, target_check=None)
-                if actor and not self.has_bypass(actor):
-                    added_info = "\n".join([f"- {e.name} ({e.id}) {str(e)}" for e in added_emojis.values()])
-                    self.emoji_counts[actor.id] += len(added_emojis)
-                    if self.emoji_counts[actor.id] > EMOJI_ADD_LIMIT:
-                        await self.quarantine_user(actor, f"Excessive emoji additions\nAdded emojis:\n{added_info}\nAdded by: {actor.name} ({actor.id})")
+                for aid, emo in added_emojis.items():
+                    logger.info(f"Processing added emoji {emo.name} ({aid})")
+                    def _check_add(entry, _aid=aid, _ename=emo.name):
+                        try:
+                            if getattr(entry, 'target_id', None) == _aid:
+                                return True
+                            if getattr(getattr(entry, 'target', None), 'id', None) == _aid:
+                                return True
+                            for ch in getattr(entry, 'changes', []) or []:
+                                try:
+                                    old = getattr(ch, 'old', None)
+                                    new = getattr(ch, 'new', None)
+                                    attr = getattr(ch, 'attribute', None)
+                                    if isinstance(old, dict):
+                                        if old.get('id') == _aid or old.get('name') == _ename:
+                                            return True
+                                    if isinstance(new, dict):
+                                        if new.get('id') == _aid or new.get('name') == _ename:
+                                            return True
+                                    if attr in ('name',) and new == _ename:
+                                        return True
+                                except Exception:
+                                    continue
+                            return False
+                        except Exception:
+                            return False
+
+                    actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_create, target_check=_check_add, attempts=5, delay=1.0)
+                    if not actor:
+                        actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_create, target_check=None, attempts=5, delay=1.0)
+
+                    if not actor:
+                        logger.info(f"Emoji created but actor not found for {emo.name} ({aid})")
+                    else:
+                        logger.info(f"Attributed added emoji {emo.name} ({aid}) to actor {actor} ({getattr(actor, 'id', None)})")
+
+                    if actor and not self.has_bypass(actor):
+                        self.emoji_counts[actor.id] += 1
+                        added_info = f"- {emo.name} ({emo.id}) {str(emo)}"
+                        if self.emoji_counts[actor.id] > EMOJI_ADD_LIMIT:
+                            await self.quarantine_user(actor, f"Excessive emoji additions\nAdded emoji:\n{added_info}\nAdded by: {actor.name} ({actor.id})")
         except Exception as e:
             logger.error(f"Error in emoji update event: {str(e)}")
 
@@ -523,6 +731,11 @@ class RaidProtection(commands.Cog):
             if had_quarantine or had_special:
                 reason = "Left while quarantined or held special role"
                 try:
+                    # Try to DM the user before banning so they are notified (may fail if user left or DMs closed)
+                    try:
+                        await member.send(f"You have been banned from {member.guild.name} for: {reason}")
+                    except Exception:
+                        pass
                     await member.guild.ban(member, reason=reason, delete_message_days=0)
                     logger.info(f"Auto-banned user {member.id} for leaving while quarantined/special")
                 except Exception as e:
@@ -541,6 +754,36 @@ class RaidProtection(commands.Cog):
                 await self.log_action("AUTO_BAN_ON_LEAVE", member, reason)
         except Exception as e:
             logger.error(f"Error in on_member_remove: {e}")
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        """Track bans and quarantine actors who ban many users in a short window."""
+        try:
+            if guild.id != GUILD_ID:
+                return
+            # Try to find the actor in audit logs
+            def target_check(entry):
+                try:
+                    return getattr(entry.target, 'id', None) == user.id
+                except Exception:
+                    return False
+
+            actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.ban, target_check=target_check)
+            if actor is None:
+                return
+
+            if self.has_bypass(actor):
+                return
+
+            now_ts = datetime.now(timezone.utc).timestamp()
+            self.ban_events[actor.id].append(now_ts)
+            # prune
+            self.ban_events[actor.id] = self._prune_old(self.ban_events[actor.id], BAN_TIME_WINDOW)
+
+            if len(self.ban_events[actor.id]) >= BAN_THRESHOLD:
+                await self.quarantine_user(actor, f"Excessive bans detected ({len(self.ban_events[actor.id])} bans in {BAN_TIME_WINDOW}s)")
+        except Exception as e:
+            logger.error(f"Error in on_member_ban: {e}")
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -574,6 +817,35 @@ class RaidProtection(commands.Cog):
                 pass
         except Exception as e:
             logger.error(f"Error in on_member_join: {e}")
+
+        # --- Join-raid detection ---
+        try:
+            # record join event
+            now_ts = datetime.now(timezone.utc).timestamp()
+            self.join_events[member.guild.id].append((now_ts, member.id))
+            # prune old events
+            self.join_events[member.guild.id] = self._prune_old(self.join_events[member.guild.id], JOIN_TIME_WINDOW)
+
+            recent = self.join_events[member.guild.id]
+            if len(recent) >= JOIN_RAID_THRESHOLD:
+                # Quarantine recent joiners (the last JOIN_RAID_THRESHOLD entries)
+                to_quarantine = [mid for (_, mid) in recent[-JOIN_RAID_THRESHOLD:]]
+                quarantined = []
+                for mid in to_quarantine:
+                    try:
+                        m = member.guild.get_member(int(mid))
+                        if m and not self.has_bypass(m):
+                            await self.quarantine_user(m, "Detected mass join raid")
+                            quarantined.append(m.id)
+                    except Exception as e:
+                        logger.error(f"Failed to quarantine joiner {mid}: {e}")
+
+                if quarantined:
+                    logger.info(f"Auto-quarantined join-raid accounts: {quarantined}")
+                    # Clear events for these quarantined users to avoid repeated action
+                    self.join_events[member.guild.id] = [ev for ev in self.join_events[member.guild.id] if ev[1] not in quarantined]
+        except Exception as e:
+            logger.error(f"Error in join-raid detection: {e}")
 
     # Add this method to reset counters periodically
     @tasks.loop(hours=1)
@@ -681,14 +953,21 @@ class RaidProtection(commands.Cog):
             duration_seconds
         )
 
-        # Try to DM the user
+        # Try to DM the user with an embed
         try:
-            await user.send(
-                f"You have been quarantined in {interaction.guild.name} for: {reason}\n"
-                f"Duration: {duration} days\n"
-                f"Should you leave the server before you resolve your quarantine, you will be banned."
+            em = discord.Embed(
+                title="You have been quarantined",
+                description=(
+                    f"You have been quarantined in **{interaction.guild.name}** for: {reason}\n"
+                    f"Duration: {duration} days\n"
+                    "Should you leave the server before you resolve your quarantine, you will be banned."
+                ),
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
             )
-        except:
+            em.set_footer(text="Contact server staff for help")
+            await user.send(embed=em)
+        except Exception:
             embed.add_field(
                 name="Note",
                 value="Could not DM user about quarantine",
@@ -776,7 +1055,14 @@ class RaidProtection(commands.Cog):
             
             # Try to DM user
             try:
-                await member.send(f"Your roles in {member.guild.name} have been restored.")
+                em = discord.Embed(
+                    title="Your roles have been restored",
+                    description=f"Your roles in **{member.guild.name}** have been restored.",
+                    color=discord.Color.green(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                em.set_footer(text="If something is wrong, contact server staff")
+                await member.send(embed=em)
             except:
                 pass
 
@@ -786,8 +1072,16 @@ class RaidProtection(commands.Cog):
             logger.error(f"Failed to restore roles for {member.id} - {str(e)}")
 
     def has_bypass(self, user: discord.Member) -> bool:
-        return (user.id == IMMUNE_USER_ID or 
-                any(role.id == IMMUNE_ROLE_ID for role in user.roles))
+        # Support both Member and User objects. If roles aren't available (User), only check ID.
+        try:
+            if getattr(user, 'id', None) == IMMUNE_USER_ID:
+                return True
+            roles = getattr(user, 'roles', None)
+            if not roles:
+                return False
+            return any(role.id == IMMUNE_ROLE_ID for role in roles)
+        except Exception:
+            return False
 
 async def setup(bot):
     await bot.add_cog(RaidProtection(bot))

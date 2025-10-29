@@ -6,8 +6,22 @@ FOOTER_TEXT = "Maplecliff National Guard"
 FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 EMBED_COLOR = 0xd0b47b
 
-ROLE_ID_ON_JOIN = int(os.getenv("ROLE_ID_ON_JOIN"))
-WELCOME_CHANNEL_ID = int(os.getenv("WELCOME_CHANNEL_ID"))
+# Read env vars with safe fallbacks. If ROLE_ID_ON_JOIN isn't set, fall back to the
+# commonly used role for new members (1329910383678328922).
+DEFAULT_ROLE_ON_JOIN = 1329910383678328922
+DEFAULT_WELCOME_CHANNEL = None
+
+role_env = os.getenv("ROLE_ID_ON_JOIN")
+try:
+    ROLE_ID_ON_JOIN = int(role_env) if role_env else DEFAULT_ROLE_ON_JOIN
+except Exception:
+    ROLE_ID_ON_JOIN = DEFAULT_ROLE_ON_JOIN
+
+chan_env = os.getenv("WELCOME_CHANNEL_ID")
+try:
+    WELCOME_CHANNEL_ID = int(chan_env) if chan_env else DEFAULT_WELCOME_CHANNEL
+except Exception:
+    WELCOME_CHANNEL_ID = DEFAULT_WELCOME_CHANNEL
 
 class WelcomeView(discord.ui.View):
     def __init__(self, member_count: int):
@@ -62,7 +76,17 @@ class Welcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        
+        # Try to assign the default role on join (if available)
+        try:
+            role = member.guild.get_role(ROLE_ID_ON_JOIN)
+            if role and role not in member.roles:
+                try:
+                    await member.add_roles(role, reason="Auto role on join")
+                except Exception as e:
+                    print(f"Failed to assign role {ROLE_ID_ON_JOIN} to {member.id}: {e}")
+        except Exception as e:
+            print(f"Error while resolving role {ROLE_ID_ON_JOIN}: {e}")
+
         member_count = member.guild.member_count
         welcome_text = f"Welcome {member.mention}!"
 
