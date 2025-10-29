@@ -335,12 +335,37 @@ async def main():
         # Load cogs from directories specified in .env.cogs
         cogs = []
         cog_directories = []
-        
-        # Read cog directories from .env.cogs
+
+        # Read cog directories from .env.cogs (supports several formats)
+        # Acceptable lines:
+        # - cogs
+        # - COG_DIRECTORIES=cogs
+        # - cogs,embed-builder-web
+        # - # comments and blank lines are ignored
         env_cogs_path = os.path.join(os.path.dirname(__file__), ".env.cogs")
         if os.path.exists(env_cogs_path):
-            with open(env_cogs_path, "r") as f:
-                cog_directories = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+            try:
+                with open(env_cogs_path, "r", encoding="utf-8") as f:
+                    raw_lines = [ln.strip() for ln in f if ln.strip() and not ln.strip().startswith("#")]
+
+                for ln in raw_lines:
+                    # If line is of form KEY=VALUE, take the VALUE side
+                    if "=" in ln:
+                        _, rhs = ln.split("=", 1)
+                        ln = rhs.strip()
+
+                    # Allow comma-separated lists on a single line
+                    for part in ln.split(","):
+                        part = part.strip()
+                        if part:
+                            cog_directories.append(part)
+
+                if not cog_directories:
+                    print("⚠️ Warning: .env.cogs exists but no valid entries were found; defaulting to 'cogs'")
+                    cog_directories = ["cogs"]
+            except Exception as e:
+                print(f"⚠️ Warning: Failed to read .env.cogs: {e}; defaulting to 'cogs'")
+                cog_directories = ["cogs"]
         else:
             print("⚠️ Warning: .env.cogs not found, defaulting to 'cogs' directory")
             cog_directories = ["cogs"]
