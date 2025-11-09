@@ -184,6 +184,23 @@ class RaidProtection(commands.Cog):
             "timestamp": datetime.now(timezone.utc).timestamp(),
             "duration": QUARANTINE_DURATION
         }
+        try:
+            self.save_quarantine_data()
+        except Exception:
+            pass
+
+        # Attempt to timeout (mute) the user for the quarantine duration
+        try:
+            until = datetime.now(timezone.utc) + timedelta(seconds=QUARANTINE_DURATION)
+            try:
+                await user.timeout(until=until)
+            except TypeError:
+                try:
+                    await user.timeout(timedelta(seconds=QUARANTINE_DURATION))
+                except Exception as e:
+                    logger.error(f"Failed to timeout/quarantine member {user.id}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to apply timeout to quarantined user {user.id}: {e}")
         
 
         # Create confirmation buttons
@@ -215,23 +232,67 @@ class RaidProtection(commands.Cog):
                     return
                 
                 try:
+                    # defer because restoring roles may take time and make it public
+                    try:
+                        await interaction.response.defer()
+                    except Exception:
+                        pass
+
                     self.used = True
                     roles = self.cog.quarantined_users.get(str(user.id), {}).get("roles", [])
-                    await self.cog.restore_roles(user, roles)
-                    del self.cog.quarantined_users[str(user.id)]
-                    self.cog.save_quarantine_data()
+
+                    # send an initial progress message to update live
+                    try:
+                        progress_embed = discord.Embed(
+                            title="Unquarantining user...",
+                            description=f"Restoring roles to {user.mention}",
+                            color=discord.Color.green()
+                        )
+                        progress_embed.add_field(name="Roles restored", value="0", inline=True)
+                        progress_embed.add_field(name="Last role added", value="None", inline=True)
+                        progress_msg = await interaction.followup.send(embed=progress_embed, wait=True)
+                    except Exception:
+                        progress_msg = None
+
+                    added = await self.cog.restore_roles(user, roles, progress_message=progress_msg)
+                    try:
+                        del self.cog.quarantined_users[str(user.id)]
+                        self.cog.save_quarantine_data()
+                    except KeyError:
+                        pass
                     
                     embed = discord.Embed(
                         title="User Unquarantined",
                         description=f"{user.mention} has been unquarantined by {interaction.user.mention}",
                         color=discord.Color.green()
                     )
+                    embed.add_field(name="Roles restored", value=f"{added} roles restored", inline=False)
                     await self.disable_all_buttons()
-                    await interaction.message.edit(view=self)
-                    await interaction.response.send_message(embed=embed)
+                    try:
+                        await interaction.message.edit(view=self)
+                    except Exception:
+                        pass
+
+                    # Edit the progress message into the final embed if possible
+                    try:
+                        if progress_msg:
+                            await progress_msg.edit(embed=embed)
+                        else:
+                            await interaction.followup.send(embed=embed)
+                    except Exception:
+                        try:
+                            await interaction.followup.send(embed=embed)
+                        except Exception:
+                            pass
                 except Exception as e:
                     logger.error(f"Failed to unquarantine: {e}")
-                    await interaction.response.send_message(f"Error: {str(e)}", ephemeral=True)
+                    try:
+                        await interaction.followup.send(f"Error: {str(e)}")
+                    except Exception:
+                        try:
+                            await interaction.response.send_message(f"Error: {str(e)}")
+                        except Exception:
+                            pass
 
             @discord.ui.button(label="Kick", style=discord.ButtonStyle.blurple)
             async def kick(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -449,46 +510,124 @@ class RaidProtection(commands.Cog):
 
         # Spam check
         now_dt = datetime.now(timezone.utc)
-        self.message_counts[message.author.id].append(now_dt)
-        recent_messages = [t for t in self.message_counts[message.author.id]
+        author_id = getattr(message.author, 'id', None)
+        if author_id is None:
+            return
+
+        self.message_counts[author_id].append(now_dt)
+        recent_messages = [t for t in self.message_counts[author_id]
                          if (now_dt - t).seconds <= SPAM_TIME_WINDOW]
-        self.message_counts[message.author.id] = recent_messages
+        self.message_counts[author_id] = recent_messages
 
         if len(recent_messages) >= SPAM_MESSAGE_THRESHOLD:
-            # Member.timeout expects an 'until' datetime in newer discord.py versions
-            try:
-                until = datetime.now(timezone.utc) + timedelta(seconds=MUTE_DURATION)
-                await message.author.timeout(until=until)
-            except TypeError:
-                # Fallback: some versions accept a seconds integer; try that
+            # Resolve to a guild Member so we can apply a timeout even if the user has no roles
+            member = message.author
+            if not isinstance(member, discord.Member):
                 try:
-                    await message.author.timeout(MUTE_DURATION)
-                except Exception as e:
-                    logger.error(f"Failed to timeout member {message.author.id}: {e}")
-            except Exception as e:
-                logger.error(f"Failed to timeout member {message.author.id}: {e}")
-            await self.log_action("MUTE", message.author, "Message spam", MUTE_DURATION)
+                    if message.guild:
+                        member = message.guild.get_member(author_id) or await message.guild.fetch_member(author_id)
+                except Exception:
+                    member = None
+
+            if not member:
+                logger.info(f"Unable to resolve member for timeout: {author_id}")
+            else:
+                # Skip immune users
+                if not self.has_bypass(member):
+                    # Check bot permissions in this guild before attempting timeout
+                    try:
+                        bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+                        bot_perms = bot_member.guild_permissions if bot_member else None
+                        bot_has_mod = bool(bot_perms and getattr(bot_perms, 'moderate_members', False))
+                        bot_has_admin = bool(bot_perms and getattr(bot_perms, 'administrator', False))
+                        logger.info(f"Attempting timeout for member={member.id} guild={member.guild.id} bot_has_mod={bot_has_mod} bot_has_admin={bot_has_admin}")
+                    except Exception:
+                        bot_has_mod = False
+                        bot_has_admin = False
+
+                    if not (bot_has_mod or bot_has_admin):
+                        logger.warning(f"Bot lacks Moderate Members/Admin permission in guild {member.guild.id}; cannot apply timeout to {member.id}")
+                        try:
+                            ch = self.bot.get_channel(LOG_CHANNEL_ID)
+                            if ch:
+                                await ch.send(f"Warning: Unable to timeout member {member.mention} ({member.id}) in guild {member.guild.id} — bot lacks Moderate Members permission.")
+                        except Exception:
+                            pass
+                    else:
+                        # Member.timeout expects an 'until' datetime in newer discord.py versions
+                        try:
+                            until = datetime.now(timezone.utc) + timedelta(seconds=MUTE_DURATION)
+                            await member.timeout(until=until)
+                            logger.info(f"Timed out member {member.id} for {MUTE_DURATION}s")
+                        except TypeError:
+                            # Fallback: try passing a timedelta
+                            try:
+                                await member.timeout(timedelta(seconds=MUTE_DURATION))
+                                logger.info(f"Timed out member {member.id} for {MUTE_DURATION}s (timedelta fallback)")
+                            except Exception as e:
+                                logger.error(f"Failed to timeout member {member.id}: {e}")
+                        except Exception as e:
+                            logger.error(f"Failed to timeout member {member.id}: {e}")
+                        await self.log_action("MUTE", member, "Message spam", MUTE_DURATION)
 
         # GIF spam check
         if any(attach.filename.endswith('.gif') for attach in message.attachments):
             now_dt = datetime.now(timezone.utc)
-            self.gif_counts[message.author.id].append(now_dt)
-            recent_gifs = [t for t in self.gif_counts[message.author.id]
+            author_id = getattr(message.author, 'id', None)
+            if author_id is None:
+                return
+            self.gif_counts[author_id].append(now_dt)
+            recent_gifs = [t for t in self.gif_counts[author_id]
                          if (now_dt - t).seconds <= SPAM_TIME_WINDOW]
-            self.gif_counts[message.author.id] = recent_gifs
+            self.gif_counts[author_id] = recent_gifs
 
             if len(recent_gifs) >= GIF_SPAM_THRESHOLD:
-                try:
-                    until = datetime.now(timezone.utc) + timedelta(seconds=MUTE_DURATION)
-                    await message.author.timeout(until=until)
-                except TypeError:
+                # Resolve to a guild Member so we can apply a timeout even if the user has no roles
+                member = message.author
+                if not isinstance(member, discord.Member):
                     try:
-                        await message.author.timeout(MUTE_DURATION)
-                    except Exception as e:
-                        logger.error(f"Failed to timeout member {message.author.id}: {e}")
-                except Exception as e:
-                    logger.error(f"Failed to timeout member {message.author.id}: {e}")
-                await self.log_action("MUTE", message.author, "GIF spam", MUTE_DURATION)
+                        if message.guild:
+                            member = message.guild.get_member(author_id) or await message.guild.fetch_member(author_id)
+                    except Exception:
+                        member = None
+
+                if not member:
+                    logger.info(f"Unable to resolve member for GIF timeout: {author_id}")
+                else:
+                    if not self.has_bypass(member):
+                        # Check bot permissions before attempting timeout
+                        try:
+                            bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+                            bot_perms = bot_member.guild_permissions if bot_member else None
+                            bot_has_mod = bool(bot_perms and getattr(bot_perms, 'moderate_members', False))
+                            bot_has_admin = bool(bot_perms and getattr(bot_perms, 'administrator', False))
+                            logger.info(f"Attempting GIF timeout for member={member.id} guild={member.guild.id} bot_has_mod={bot_has_mod} bot_has_admin={bot_has_admin}")
+                        except Exception:
+                            bot_has_mod = False
+                            bot_has_admin = False
+
+                        if not (bot_has_mod or bot_has_admin):
+                            logger.warning(f"Bot lacks Moderate Members/Admin permission in guild {member.guild.id}; cannot apply timeout to {member.id}")
+                            try:
+                                ch = self.bot.get_channel(LOG_CHANNEL_ID)
+                                if ch:
+                                    await ch.send(f"Warning: Unable to timeout member {member.mention} ({member.id}) in guild {member.guild.id} — bot lacks Moderate Members permission.")
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                until = datetime.now(timezone.utc) + timedelta(seconds=MUTE_DURATION)
+                                await member.timeout(until=until)
+                                logger.info(f"Timed out member {member.id} for GIF spam ({MUTE_DURATION}s)")
+                            except TypeError:
+                                try:
+                                    await member.timeout(timedelta(seconds=MUTE_DURATION))
+                                    logger.info(f"Timed out member {member.id} for GIF spam ({MUTE_DURATION}s) (timedelta fallback)")
+                                except Exception as e:
+                                    logger.error(f"Failed to timeout member {member.id}: {e}")
+                            except Exception as e:
+                                logger.error(f"Failed to timeout member {member.id}: {e}")
+                            await self.log_action("MUTE", member, "GIF spam", MUTE_DURATION)
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
@@ -885,23 +1024,60 @@ class RaidProtection(commands.Cog):
             )
             return
 
-        # Store roles before removing them
-        stored_roles = [role.id for role in user.roles if role.id != user.guild.id]
+        # Acknowledge interaction early to avoid "interaction failed" and make it public
+        try:
+            await interaction.response.defer()
+        except Exception:
+            pass
+
+        # Store roles before removing them (exclude @everyone and the quarantine role)
+        stored_roles = [role.id for role in user.roles if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID]
         
-        # Remove roles one by one with error handling
-        for role in user.roles:
-            if role != user.guild.default_role:  # Skip removing @everyone role
-                try:
-                    await user.remove_roles(role, reason="Quarantine")
-                except discord.NotFound:
-                    logger.warning(f"Role {role.id} not found while quarantining {user.id}")
-                    continue
-                except discord.Forbidden:
-                    logger.warning(f"Cannot remove role {role.id} from {user.id} - Missing Permissions")
-                    continue
-                except Exception as e:
-                    logger.error(f"Error removing role {role.id} from {user.id}: {str(e)}")
-                    continue
+        # Build list of roles to remove (exclude @everyone and quarantine role)
+        roles_to_remove = [r for r in user.roles if r != user.guild.default_role and r.id != QUARANTINE_ROLE_ID]
+
+        # Send an initial public progress embed so we can update live
+        try:
+            progress_embed = discord.Embed(
+                title="Quarantining user...",
+                description=f"Preparing to remove {len(roles_to_remove)} roles from {user.mention}",
+                color=discord.Color.red()
+            )
+            progress_embed.add_field(name="Roles removed", value="0", inline=True)
+            progress_embed.add_field(name="Last role removed", value="None", inline=True)
+            progress_msg = await interaction.followup.send(embed=progress_embed, wait=True)
+        except Exception:
+            progress_msg = None
+
+        # Remove roles one by one with error handling and live updates
+        removed_count = 0
+        for role in roles_to_remove:
+            try:
+                await user.remove_roles(role, reason="Quarantine")
+                removed_count += 1
+                last_name = role.name
+                # update progress embed
+                if progress_msg:
+                    try:
+                        progress_embed = discord.Embed(
+                            title="Quarantining user...",
+                            description=f"Removing roles from {user.mention}",
+                            color=discord.Color.red()
+                        )
+                        progress_embed.add_field(name="Roles removed", value=f"{removed_count}/{len(roles_to_remove)}", inline=True)
+                        progress_embed.add_field(name="Last role removed", value=last_name or "Unknown", inline=True)
+                        await progress_msg.edit(embed=progress_embed)
+                    except Exception:
+                        pass
+            except discord.NotFound:
+                logger.warning(f"Role {role.id} not found while quarantining {user.id}")
+                continue
+            except discord.Forbidden:
+                logger.warning(f"Cannot remove role {role.id} from {user.id} - Missing Permissions")
+                continue
+            except Exception as e:
+                logger.error(f"Error removing role {role.id} from {user.id}: {str(e)}")
+                continue
 
         # Convert days to seconds
         duration_seconds = int(duration * 86400)
@@ -911,19 +1087,37 @@ class RaidProtection(commands.Cog):
             quarantine_role = interaction.guild.get_role(QUARANTINE_ROLE_ID)
             if quarantine_role:
                 await user.add_roles(quarantine_role, reason="Quarantine")
+                # update progress with quarantine role added
+                if progress_msg:
+                    try:
+                        progress_embed = discord.Embed(
+                            title="User quarantined",
+                            description=f"{user.mention} has been assigned the quarantine role",
+                            color=discord.Color.red()
+                        )
+                        progress_embed.add_field(name="Roles removed", value=f"{removed_count}/{len(roles_to_remove)}", inline=True)
+                        progress_embed.add_field(name="Last role removed", value=last_name if removed_count else "None", inline=True)
+                        progress_embed.add_field(name="Quarantine role", value=quarantine_role.name, inline=False)
+                        await progress_msg.edit(embed=progress_embed)
+                    except Exception:
+                        pass
             else:
                 logger.error(f"Quarantine role {QUARANTINE_ROLE_ID} not found")
-                await interaction.response.send_message(
-                    "Error: Quarantine role not found. Please check configuration.",
-                    ephemeral=True
-                )
+                try:
+                    await interaction.followup.send(
+                        "Error: Quarantine role not found. Please check configuration."
+                    )
+                except Exception:
+                    pass
                 return
         except Exception as e:
             logger.error(f"Error adding quarantine role to {user.id}: {str(e)}")
-            await interaction.response.send_message(
-                f"Error adding quarantine role: {str(e)}",
-                ephemeral=True
-            )
+            try:
+                await interaction.followup.send(
+                    f"Error adding quarantine role: {str(e)}"
+                )
+            except Exception:
+                pass
             return
 
         # Store quarantine data
@@ -935,7 +1129,22 @@ class RaidProtection(commands.Cog):
         }
         self.save_quarantine_data()
 
-        # Create embed for response
+        # Attempt to timeout (mute) the user for the quarantine duration
+        try:
+            until = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
+            try:
+                await user.timeout(until=until)
+            except TypeError:
+                # fallback: try passing a timedelta
+                try:
+                    await user.timeout(timedelta(seconds=duration_seconds))
+                except Exception as e:
+                    logger.error(f"Failed to timeout/quarantine member {user.id}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to apply timeout to quarantined user {user.id}: {e}")
+
+        # Create embed for response (include roles removed count)
+        roles_removed_count = len(stored_roles)
         embed = discord.Embed(
             title="Manual Quarantine",
             description=f"{user.mention} has been quarantined",
@@ -944,6 +1153,7 @@ class RaidProtection(commands.Cog):
         embed.add_field(name="Reason", value=reason)
         embed.add_field(name="Duration", value=f"{duration} days")
         embed.add_field(name="Quarantined by", value=interaction.user.mention)
+        embed.add_field(name="Roles removed", value=f"{roles_removed_count} roles removed", inline=False)
 
         # Log the action
         await self.log_action(
@@ -974,13 +1184,22 @@ class RaidProtection(commands.Cog):
                 inline=False
             )
 
+        # Send final response as followup (we deferred earlier) if we didn't already update a progress message
         try:
-            await interaction.response.send_message(embed=embed)
-        except (discord.NotFound, discord.HTTPException) as e:
-            try:
+            if progress_msg is None:
                 await interaction.followup.send(embed=embed)
+            else:
+                # edit progress message to the final summary embed
+                try:
+                    await progress_msg.edit(embed=embed)
+                except Exception:
+                    # fallback to sending a new followup
+                    await interaction.followup.send(embed=embed)
+        except Exception:
+            try:
+                await interaction.response.send_message(embed=embed)
             except Exception as e2:
-                logger.error(f"Failed to send interaction response for quarantine_command: {e}; {e2}")
+                logger.error(f"Failed to send interaction response for quarantine_command: {e2}")
 
     @app_commands.command(name="unquarantine", description="Unquarantine a user (admin only)")
     @app_commands.describe(user="The user to unquarantine")
@@ -996,11 +1215,31 @@ class RaidProtection(commands.Cog):
             return
 
         roles = entry.get("roles", [])
-        # restore roles and remove quarantine role
+        # Acknowledge interaction early to avoid "interaction failed" and make it public
         try:
-            await self.restore_roles(user, roles)
+            await interaction.response.defer()
+        except Exception:
+            pass
+
+        # Send initial progress message so we can update live
+        try:
+            progress_embed = discord.Embed(
+                title="Unquarantining user...",
+                description=f"Restoring roles to {user.mention}",
+                color=discord.Color.green()
+            )
+            progress_embed.add_field(name="Roles restored", value="0", inline=True)
+            progress_embed.add_field(name="Last role added", value="None", inline=True)
+            progress_msg = await interaction.followup.send(embed=progress_embed, wait=True)
+        except Exception:
+            progress_msg = None
+
+        # restore roles and remove quarantine role (with progress)
+        try:
+            added = await self.restore_roles(user, roles, progress_message=progress_msg)
         except Exception as e:
             logger.error(f"Error restoring roles for unquarantine {user.id}: {e}")
+            added = 0
 
         # remove from persisted quarantine list
         try:
@@ -1009,10 +1248,17 @@ class RaidProtection(commands.Cog):
         except KeyError:
             pass
 
-        # DM and respond
+        # DM the user with an embed
         try:
-            await user.send(f"You have been unquarantined in {interaction.guild.name} by {interaction.user}.")
-        except:
+            em = discord.Embed(
+                title="You have been unquarantined",
+                description=f"You have been unquarantined in **{interaction.guild.name}** by {interaction.user}.",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            em.set_footer(text="If something is wrong, contact server staff")
+            await user.send(embed=em)
+        except Exception:
             pass
 
         try:
@@ -1020,39 +1266,84 @@ class RaidProtection(commands.Cog):
         except Exception:
             logger.exception("Failed to log manual unquarantine")
 
+        # Finalize progress message or send a summary followup
         try:
-            await interaction.response.send_message(f"Unquarantined {user.mention}")
-        except (discord.NotFound, discord.HTTPException) as e:
+            summary = discord.Embed(
+                title="User Unquarantined",
+                description=f"{user.mention} has been unquarantined",
+                color=discord.Color.green()
+            )
+            summary.add_field(name="Roles restored", value=f"{added}", inline=False)
+            if progress_msg:
+                try:
+                    await progress_msg.edit(embed=summary)
+                except Exception:
+                    await interaction.followup.send(embed=summary)
+            else:
+                await interaction.followup.send(embed=summary)
+        except Exception:
             try:
-                await interaction.followup.send(f"Unquarantined {user.mention}")
+                await interaction.response.send_message(f"Unquarantined {user.mention} — Roles restored: {added}")
             except Exception as e2:
-                logger.error(f"Failed to send interaction response for unquarantine_command: {e}; {e2}")
+                logger.error(f"Failed to send interaction response for unquarantine_command: {e2}")
 
-    async def restore_roles(self, member: discord.Member, role_ids: List[int]):
-        """Restore roles to a member after quarantine"""
+    async def restore_roles(self, member: discord.Member, role_ids: List[int], progress_message: Optional[discord.Message] = None):
+        """Restore roles to a member after quarantine. Optionally update a progress_message embed live.
+
+        Returns the number of roles successfully restored.
+        """
         try:
-            # Remove quarantine role
+            # Remove quarantine role if present
             quarantine_role = member.guild.get_role(QUARANTINE_ROLE_ID)
             if quarantine_role and quarantine_role in member.roles:
-                await member.remove_roles(quarantine_role)
+                try:
+                    await member.remove_roles(quarantine_role)
+                except Exception:
+                    # ignore failures removing the quarantine role
+                    pass
 
-            # Add back original roles
-            roles_to_add = []
+            total = len(role_ids or [])
+            added_count = 0
+            last_added = None
+
             for role_id in role_ids:
-                role = member.guild.get_role(role_id)
-                if role:
-                    roles_to_add.append(role)
-            
-            if roles_to_add:
-                await member.add_roles(*roles_to_add)
-                
+                try:
+                    role = member.guild.get_role(role_id)
+                    if not role:
+                        continue
+                    try:
+                        await member.add_roles(role)
+                        added_count += 1
+                        last_added = role.name
+                    except Exception as e:
+                        logger.error(f"Failed to add role {role.id} to {member.id}: {e}")
+
+                    # Update progress message if provided
+                    if progress_message:
+                        try:
+                            prog = discord.Embed(
+                                title="Restoring roles...",
+                                description=f"Restoring roles for {member.mention}",
+                                color=discord.Color.green()
+                            )
+                            prog.add_field(name="Roles restored", value=f"{added_count}/{total}", inline=True)
+                            prog.add_field(name="Last role added", value=last_added or "None", inline=True)
+                            await progress_message.edit(embed=prog)
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+
             # Log the restoration
-            await self.log_action(
-                "ROLES_RESTORED", 
-                member, 
-                f"Restored {len(roles_to_add)} roles after quarantine"
-            )
-            
+            try:
+                await self.log_action(
+                    "ROLES_RESTORED",
+                    member,
+                    f"Restored {added_count} roles after quarantine"
+                )
+            except Exception:
+                pass
+
             # Try to DM user
             try:
                 em = discord.Embed(
@@ -1063,13 +1354,16 @@ class RaidProtection(commands.Cog):
                 )
                 em.set_footer(text="If something is wrong, contact server staff")
                 await member.send(embed=em)
-            except:
+            except Exception:
                 pass
 
+            return added_count
         except discord.Forbidden:
             logger.error(f"Failed to restore roles for {member.id} - Missing Permissions")
+            return 0
         except Exception as e:
             logger.error(f"Failed to restore roles for {member.id} - {str(e)}")
+            return 0
 
     def has_bypass(self, user: discord.Member) -> bool:
         # Support both Member and User objects. If roles aren't available (User), only check ID.
