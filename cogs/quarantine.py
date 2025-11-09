@@ -66,6 +66,8 @@ class RaidProtection(commands.Cog):
         self.gif_counts = defaultdict(list)
         self.emoji_counts = defaultdict(int)
         self.role_changes = defaultdict(int)
+        # Track recent mute events per user (timestamps)
+        self.mute_events = defaultdict(list)
         self.channel_creates = defaultdict(int)
         self.join_events = defaultdict(list)  # guild_id -> list of (timestamp, member_id)
         self.ban_events = defaultdict(list)   # actor_id -> list of timestamps
@@ -569,6 +571,36 @@ class RaidProtection(commands.Cog):
                         except Exception as e:
                             logger.error(f"Failed to timeout member {member.id}: {e}")
                         await self.log_action("MUTE", member, "Message spam", MUTE_DURATION)
+                        # Record mute event and quarantine if muted twice within 10 minutes
+                        try:
+                            now_ts = datetime.now(timezone.utc).timestamp()
+                            self.mute_events[member.id].append(now_ts)
+                            # prune to 10 minutes (600 seconds)
+                            self.mute_events[member.id] = self._prune_old(self.mute_events[member.id], 600)
+                            if len(self.mute_events[member.id]) >= 2:
+                                # Quarantine the offending member
+                                try:
+                                    await self.quarantine_user(member, "Repeated mutes within 10 minutes")
+                                except Exception as e:
+                                    logger.error(f"Failed to auto-quarantine after repeated mutes for {member.id}: {e}")
+                                # Notify quarantine notify channel
+                                try:
+                                    notify_ch = self.bot.get_channel(QUARANTINE_NOTIFY_CHANNEL_ID)
+                                    if notify_ch:
+                                        em = discord.Embed(
+                                            title="User Auto-Quarantined",
+                                            description=f"{member.mention} was quarantined for repeated mutes",
+                                            color=discord.Color.red(),
+                                            timestamp=datetime.now(timezone.utc)
+                                        )
+                                        em.add_field(name="Reason", value="Repeated mutes within 10 minutes")
+                                        await notify_ch.send(content=f"<@&{ADMIN_ROLE_ID}>", embed=em)
+                                except Exception:
+                                    pass
+                                # clear recent mute events for this user to avoid repeat
+                                self.mute_events[member.id] = []
+                        except Exception as e:
+                            logger.error(f"Error handling mute events for {member.id}: {e}")
 
         # GIF spam check
         if any(attach.filename.endswith('.gif') for attach in message.attachments):
@@ -628,6 +660,32 @@ class RaidProtection(commands.Cog):
                             except Exception as e:
                                 logger.error(f"Failed to timeout member {member.id}: {e}")
                             await self.log_action("MUTE", member, "GIF spam", MUTE_DURATION)
+                            # Record mute event and quarantine if muted twice within 10 minutes
+                            try:
+                                now_ts = datetime.now(timezone.utc).timestamp()
+                                self.mute_events[member.id].append(now_ts)
+                                self.mute_events[member.id] = self._prune_old(self.mute_events[member.id], 600)
+                                if len(self.mute_events[member.id]) >= 2:
+                                    try:
+                                        await self.quarantine_user(member, "Repeated mutes within 10 minutes")
+                                    except Exception as e:
+                                        logger.error(f"Failed to auto-quarantine after repeated GIF mutes for {member.id}: {e}")
+                                    try:
+                                        notify_ch = self.bot.get_channel(QUARANTINE_NOTIFY_CHANNEL_ID)
+                                        if notify_ch:
+                                            em = discord.Embed(
+                                                title="User Auto-Quarantined",
+                                                description=f"{member.mention} was quarantined for repeated mutes",
+                                                color=discord.Color.red(),
+                                                timestamp=datetime.now(timezone.utc)
+                                            )
+                                            em.add_field(name="Reason", value="Repeated mutes within 10 minutes")
+                                            await notify_ch.send(content=f"<@&{ADMIN_ROLE_ID}>", embed=em)
+                                    except Exception:
+                                        pass
+                                    self.mute_events[member.id] = []
+                            except Exception as e:
+                                logger.error(f"Error handling mute events for {member.id}: {e}")
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
