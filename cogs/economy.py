@@ -143,30 +143,46 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.apply_bank_interest.start()
+        # Initialize the database synchronously in __init__ (wrapped in asyncio)
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is already running, schedule it as a task instead
+                asyncio.create_task(self._initialize_db())
+            else:
+                # Run synchronously if no loop is running (shouldn't happen in normal Discord.py setup)
+                loop.run_until_complete(self._initialize_db())
+        except Exception as e:
+            print(f"Warning: Failed to initialize economy DB in __init__: {e}")
 
-    async def cog_load(self):
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    balance INTEGER NOT NULL,
-                    last_daily TEXT,
-                    last_work TEXT,
-                    bank INTEGER DEFAULT 0
-                )
-            """)
-            # --- FIXED INVENTORY TABLE ---
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS inventory (
-                    user_id INTEGER,
-                    item TEXT,
-                    amount INTEGER,
-                    value INTEGER DEFAULT NULL
-                    -- No PRIMARY KEY here; SQLite will use implicit rowid
-                )
-            """)
-            await db.commit()
+    async def _initialize_db(self):
+        """Initialize the database tables."""
+        try:
+            os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id INTEGER PRIMARY KEY,
+                        balance INTEGER NOT NULL,
+                        last_daily TEXT,
+                        last_work TEXT,
+                        bank INTEGER DEFAULT 0
+                    )
+                """)
+                # --- FIXED INVENTORY TABLE ---
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS inventory (
+                        user_id INTEGER,
+                        item TEXT,
+                        amount INTEGER,
+                        value INTEGER DEFAULT NULL
+                        -- No PRIMARY KEY here; SQLite will use implicit rowid
+                    )
+                """)
+                await db.commit()
+        except Exception as e:
+            print(f"Error initializing economy DB: {e}")
 
     async def get_user(self, user_id):
         async with aiosqlite.connect(DB_PATH) as db:
