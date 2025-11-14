@@ -235,13 +235,13 @@ class CallsignCog(commands.Cog):
                     return False, f"Your callsign is already up to date: **{current_callsign}**"
                 callsigns[user.id] = new_callsign
                 save_callsigns(callsigns)
-                if not current_callsign:
-                    role = user.guild.get_role(1371198982340083712)
-                    if role:
-                        try:
-                            await user.remove_roles(role, reason="Callsign assigned")
-                        except Exception:
-                            pass
+                # Always remove the role when callsign is requested
+                role = user.guild.get_role(1371198982340083712)
+                if role:
+                    try:
+                        await user.remove_roles(role, reason="Callsign assigned")
+                    except Exception:
+                        pass
                 # Always use new_callsign in the confirmation message
                 return True, f"Auto-assigned callsign **{new_callsign}** to {user.mention}."
             return False, "No available callsign numbers left."
