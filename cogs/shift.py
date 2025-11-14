@@ -815,6 +815,30 @@ class ShiftCog(commands.Cog):
                 value=f"{human_td(elapsed)} (<t:{elapsed_ts}:R>)",
                 inline=True
             )
+        
+        # Add total shift time for the week and leaderboard placement
+        total_seconds = self.store.total_for_user(user.id)
+        e.add_field(name="Total This Week", value=human_td(total_seconds), inline=True)
+        
+        # Calculate leaderboard placement
+        guild = user.guild
+        if guild:
+            manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+            if manage_role:
+                # Build leaderboard data
+                totals: Dict[int, int] = {}
+                for member in manage_role.members:
+                    total = self.store.total_for_user(member.id)
+                    totals[member.id] = total
+                
+                # Sort by total (descending)
+                sorted_users = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+                
+                # Find user's rank
+                rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if uid == user.id), None)
+                if rank:
+                    e.add_field(name="Leaderboard Placement", value=f"#{rank} / {len(sorted_users)}", inline=True)
+        
         e.set_footer(text=f"User: {user.display_name}")
         return e
 
