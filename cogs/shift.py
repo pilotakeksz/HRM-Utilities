@@ -290,9 +290,27 @@ class Store:
 
 # -------------------- UI VIEWS --------------------
 class ShiftManageView(discord.ui.View):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, owner_id: Optional[int] = None):
         super().__init__(timeout=None)
         self.bot = bot
+        # If owner_id is provided, only that user may interact with this view's components.
+        # If None, no restriction is enforced (used for persistent registration).
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Allow only the owner (invoker of the /shift_manage command) to press buttons.
+        If owner_id is None, allow all interactions (for persistent view registration).
+        """
+        if self.owner_id is None:
+            return True
+        if interaction.user.id != self.owner_id:
+            try:
+                await interaction.response.send_message("Only the user who opened this panel can use these buttons.", ephemeral=True)
+            except Exception:
+                # In case interaction already responded; just ignore silently.
+                pass
+            return False
+        return True
 
     async def refresh_buttons(self, interaction: discord.Interaction, logging_enabled: bool, on_shift: bool, on_break: bool):
         # update button disabled states based on current status
@@ -762,7 +780,7 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message("You do not have the required role to manage shifts.", ephemeral=True)
             return
         # if logging disabled, end all current shifts and log - handled by /shift logging, but buttons should be disabled
-        view = ShiftManageView(self.bot)
+        view = ShiftManageView(self.bot, owner_id=user.id)
         embed = await self.build_manage_embed(user)
         msg = await interaction.response.send_message(embed=embed, view=view)
 
