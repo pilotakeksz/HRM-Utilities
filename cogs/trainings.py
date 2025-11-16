@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord import app_commands
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Dict, Optional, List
 import json
 import pytz
 import re
@@ -25,6 +25,41 @@ IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/14093088
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../logs/trainings.txt")
 SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "training_schedule.json")
 TIMEZONE = pytz.timezone('Europe/London')  # Changed from US/Eastern to EU/London
+RESULT_CHANNEL_ID = 1329910498350727188  # channel to post individual result embeds
+RESULTS_LOG_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+
+
+def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str):
+    """Create the visual and summary embeds for a training result.
+    Embeds will not include numeric IDs or timestamps; the summary embed has the same colour as the visual.
+    """
+    # choose color and image based on pass/fail
+    if result.lower().startswith("pass"):
+        image_url = "https://cdn.discordapp.com/attachments/1409252771978280973/1439393464394580008/Template.png"
+        color = discord.Colour.green()
+    else:
+        image_url = "https://media.discordapp.net/attachments/1409252771978280973/1439393779722485942/Template.png"
+        color = discord.Colour.red()
+
+    # big visual embed
+    emb_visual = discord.Embed(title=f"Training Result — {trainee.display_name}", color=color)
+    emb_visual.set_image(url=image_url)
+
+    # summary embed (with image, same colour as visual)
+    emb2 = discord.Embed(title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training results", color=color)
+    trainer_text = f"> {trainer.mention}"
+    cotext = f"> {cotrainer.mention}" if cotrainer else "> None"
+    emb2.add_field(name="<:Member:1343945679390904330> Trainer", value=trainer_text, inline=True)
+    emb2.add_field(name="<:Member:1343945679390904330> Co-trainer", value=cotext, inline=True)
+    emb2.add_field(name="<:Member:1343945679390904330> Trainee", value=f"> {trainee.mention}", inline=False)
+    emb2.add_field(name="📊 Result", value=f">{'<:yes:1358812809558753401> PASS' if result.lower().startswith('pass') else '<:no:1358812780890947625> FAIL'}", inline=True)
+    if remarks:
+        emb2.add_field(name="📝 Remarks", value=f"> {remarks}", inline=False)
+    if notes:
+        emb2.add_field(name="📌 Notes", value=f"> {notes}", inline=False)
+    emb2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=691a551c&is=6919039c&hm=e3875f03b5f806cd119131d923c940d68345f15296d23fd9e3a1ef3ed633bcc8&")
+    return emb_visual, emb2
+
 
 async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
     """
@@ -64,6 +99,67 @@ async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
                 f.write(traceback.format_exc() + "\n")
         except Exception:
             pass
+
+
+async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str):
+    """Log a training result: post embed to RESULT_CHANNEL_ID, DM trainee, and write a local JSON log line and log to LOG_CHANNEL_ID as embed.
+    Uses shared embed builder so previews and sent embeds match. Embeds do not include numeric IDs or timestamps.
+    """
+    ts = datetime.now(timezone.utc).isoformat()
+
+    # build embeds using module-level helper
+    emb_visual, emb2 = build_result_embeds(trainer, trainee, result, cotrainer, remarks, notes)
+
+    # Send to RESULTS channel (both embeds in one message)
+    try:
+        out_ch = bot.get_channel(RESULT_CHANNEL_ID) or await bot.fetch_channel(RESULT_CHANNEL_ID)
+        if out_ch:
+            await out_ch.send(content=f"{trainee.mention}", embeds=[emb_visual, emb2])
+    except Exception:
+        pass
+
+    # DM trainee (both embeds in one message)
+    try:
+        dm = await trainee.create_dm()
+        await dm.send(embeds=[emb_visual, emb2])
+    except Exception:
+        pass
+
+    # Log to central log channel as embed (no numeric IDs)
+    try:
+        log_ch = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
+        if log_ch:
+            log_emb = discord.Embed(title="Training result logged", colour=discord.Colour.blurple())
+            log_emb.add_field(name="Trainee", value=f"{trainee.mention}", inline=True)
+            log_emb.add_field(name="Result", value=result, inline=True)
+            log_emb.add_field(name="Trainer", value=f"{trainer.mention}", inline=True)
+            if cotrainer:
+                log_emb.add_field(name="Co-trainer", value=f"{cotrainer.mention}", inline=True)
+            if remarks:
+                log_emb.add_field(name="Remarks", value=remarks, inline=False)
+            if notes:
+                log_emb.add_field(name="Notes", value=notes, inline=False)
+            await log_ch.send(embed=log_emb)
+    except Exception:
+        pass
+
+    # Append to local results log
+    try:
+        os.makedirs(RESULTS_LOG_FOLDER, exist_ok=True)
+        path = os.path.join(RESULTS_LOG_FOLDER, f"training_results_{datetime.now(timezone.utc).date().isoformat()}.log")
+        rec = {
+            "timestamp": ts,
+            "trainer": getattr(trainer, 'id', str(trainer)),
+            "cotrainer": getattr(cotrainer, 'id', None) if cotrainer else None,
+            "trainee": getattr(trainee, 'id', str(trainee)),
+            "result": result,
+            "remarks": remarks,
+            "notes": notes,
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 class ConfirmUnvoteView(discord.ui.View):
     def __init__(self, parent_view: "TrainingVoteView", user_id: int, timeout: int = 30):
@@ -256,7 +352,7 @@ class TrainingVoteView(discord.ui.View):
 
         # DM embed text to voters
         dm_text = (
-            "<:MIAthumbtack1:1365681465806815282>  Training server code will be provided by the host.\n\n"
+            "<:MCNGdot:1433174947899113614> The training server code is **AXEGK**\n\n"
             "> Once you join the server, please join the sheriff team, and do the following:\n\n"
             "**<:Mapecliff_dot:1431744757146587339> Make sure you have a gun equipped.**\n"
             "> `•` [Glock-17 / M4A1 rifle]\n\n"
@@ -345,6 +441,16 @@ class TrainingVoteView(discord.ui.View):
                 await log_action(self.bot, self.author, "dm_sent_results", extra=f"recipient_id={self.author.id} message_id={getattr(self.message, 'id', None)}")
             except Exception as e:
                 await log_action(self.bot, self.author, "dm_failed", extra=str(e))
+        # Store last yes-voters for convenience (per-guild)
+        try:
+            if self.message and self.message.guild:
+                guild_id = self.message.guild.id
+                yes_ids = [uid for uid, v in self.votes.items() if v == "yes"]
+                if not hasattr(self.bot, "_last_training_votes"):
+                    self.bot._last_training_votes = {}
+                self.bot._last_training_votes[guild_id] = yes_ids
+        except Exception:
+            pass
 
 def load_schedule():
     if os.path.exists(SCHEDULE_FILE):
@@ -606,6 +712,46 @@ class Trainings(commands.Cog):
         await log_action(self.bot, interaction.user, "training_cancelled", 
                         extra=f"id={training_id}")
 
+    
+
+    @training.command(name="result", description="Record a training result (trainer role only)")
+    @app_commands.describe(
+        trainee="Trainee (select a member)",
+        result="Result (pass or fail)",
+        remarks="Remarks (mandatory)",
+        cotrainer="Optional co-trainer (select a member)",
+        notes="Notes (optional)"
+    )
+    @app_commands.choices(result=[
+        app_commands.Choice(name="Pass", value="pass"),
+        app_commands.Choice(name="Fail", value="fail"),
+    ])
+    async def result(
+        self,
+        interaction: discord.Interaction,
+        trainee: discord.Member,
+        result: app_commands.Choice[str],
+        remarks: str,
+        cotrainer: Optional[discord.Member] = None,
+        notes: Optional[str] = "",
+    ):
+        # permission check
+        if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("You don't have permission to record training results.", ephemeral=True)
+            return
+
+        trainer = interaction.user
+        # Build preview embeds and ask for confirmation before sending
+        try:
+            emb_visual, emb2 = build_result_embeds(trainer, trainee, result.value, cotrainer, remarks or "", notes or "")
+            view = ConfirmResultView(self.bot, trainer, trainee, result.value, cotrainer, remarks or "", notes or "")
+            # send ephemeral preview with confirmation buttons
+            await interaction.response.send_message(embeds=[emb_visual, emb2], view=view, ephemeral=True)
+            await log_action(self.bot, trainer, "training_result_preview_shown", extra=f"trainee={getattr(trainee,'id',None)} result={result.value}")
+        except Exception as e:
+            await interaction.response.send_message(f"Failed to build preview: {e}", ephemeral=True)
+            await log_action(self.bot, trainer, "training_result_preview_failed", extra=str(e))
+
     async def check_schedule(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
@@ -685,3 +831,356 @@ class Trainings(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Trainings(bot))
+
+
+# -------------------- Training Results UI & Command --------------------
+class AddTraineesModal(discord.ui.Modal, title="Add Trainees"):
+    trainee_list = discord.ui.TextInput(label="Trainees (IDs or mentions, space/comma separated)", style=discord.TextStyle.long)
+
+    def __init__(self, parent_view: "TrainingResultView"):
+        super().__init__()
+        self.parent_view = parent_view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw = self.trainee_list.value
+        ids = parse_trainee_ids(raw)
+        self.parent_view.add_trainees(ids)
+        await interaction.response.send_message(f"Added {len(ids)} trainees.", ephemeral=True)
+
+
+class TrainingIndividualModal(discord.ui.Modal):
+    def __init__(self, parent_view: "TrainingResultView", trainee_id: Optional[int] = None):
+        title = "Individual Training Result"
+        super().__init__(title=title)
+        self.parent_view = parent_view
+        self.trainee_id = trainee_id
+        self.trainee = discord.ui.TextInput(label="Trainee ID or mention", style=discord.TextStyle.short, required=True, default=str(trainee_id) if trainee_id else "")
+        self.result = discord.ui.TextInput(label="Result (pass/fail)", style=discord.TextStyle.short, required=True)
+        self.remarks = discord.ui.TextInput(label="Remarks", style=discord.TextStyle.long, required=False)
+        self.notes = discord.ui.TextInput(label="Notes", style=discord.TextStyle.long, required=False)
+        self.add_item(self.trainee)
+        self.add_item(self.result)
+        self.add_item(self.remarks)
+        self.add_item(self.notes)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        trainee_ids = parse_trainee_ids(self.trainee.value)
+        if not trainee_ids:
+            await interaction.response.send_message("Could not parse trainee ID.", ephemeral=True)
+            return
+        tid = trainee_ids[0]
+        res = self.result.value.strip()
+        remarks = self.remarks.value.strip()
+        notes = self.notes.value.strip()
+        self.parent_view.individual_results[tid] = {"result": res, "remarks": remarks, "notes": notes}
+        if tid not in self.parent_view.trainees:
+            self.parent_view.trainees.append(tid)
+        await interaction.response.send_message(f"Recorded individual result for <@{tid}>.", ephemeral=True)
+        try:
+            # update original message
+            await interaction.edit_original_response(embed=self.parent_view.build_embed(), view=self.parent_view)
+        except Exception:
+            pass
+
+
+class GroupModal(discord.ui.Modal, title="Apply Group Result"):
+    common_result = discord.ui.TextInput(label="Result for all (pass/fail)", style=discord.TextStyle.short)
+    remarks = discord.ui.TextInput(label="Remarks (optional)", style=discord.TextStyle.long, required=False)
+    notes = discord.ui.TextInput(label="Notes (optional)", style=discord.TextStyle.long, required=False)
+
+    def __init__(self, parent_view: "TrainingResultView"):
+        super().__init__()
+        self.parent_view = parent_view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        self.parent_view.group_result = {"result": self.common_result.value.strip(), "remarks": self.remarks.value.strip(), "notes": self.notes.value.strip()}
+        await interaction.response.send_message("Group result recorded.", ephemeral=True)
+        try:
+            await interaction.edit_original_response(embed=self.parent_view.build_embed(), view=self.parent_view)
+        except Exception:
+            pass
+
+
+class SetCotrainerModal(discord.ui.Modal, title="Set Co-trainer"):
+    cotrainer = discord.ui.TextInput(label="Co-trainer ID or mention (leave blank for none)", style=discord.TextStyle.short, required=False)
+
+    def __init__(self, parent_view: "TrainingResultView"):
+        super().__init__()
+        self.parent_view = parent_view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw = self.cotrainer.value.strip()
+        if not raw:
+            self.parent_view.cotrainer = None
+            await interaction.response.send_message("Co-trainer cleared.", ephemeral=True)
+            try:
+                await interaction.edit_original_response(embed=self.parent_view.build_embed(), view=self.parent_view)
+            except Exception:
+                pass
+            return
+        ids = parse_trainee_ids(raw)
+        if not ids:
+            await interaction.response.send_message("Could not parse co-trainer ID.", ephemeral=True)
+            return
+        self.parent_view.cotrainer = ids[0]
+        await interaction.response.send_message(f"Co-trainer set to <@{ids[0]}>.", ephemeral=True)
+        try:
+            await interaction.edit_original_response(embed=self.parent_view.build_embed(), view=self.parent_view)
+        except Exception:
+            pass
+
+
+class ImmediateIndividualModal(discord.ui.Modal, title="Record Individual Result"):
+    trainee = discord.ui.TextInput(label="Trainee ID or mention", style=discord.TextStyle.short, required=True)
+    result = discord.ui.TextInput(label="Result (pass/fail)", style=discord.TextStyle.short, required=True)
+    remarks = discord.ui.TextInput(label="Remarks (optional)", style=discord.TextStyle.long, required=False)
+    notes = discord.ui.TextInput(label="Notes (optional)", style=discord.TextStyle.long, required=False)
+
+    def __init__(self):
+        super().__init__()
+
+    async def on_submit(self, interaction: discord.Interaction):
+        trainer = interaction.user
+        raw = self.trainee.value.strip()
+        ids = parse_trainee_ids(raw)
+        if not ids:
+            await interaction.response.send_message("Could not parse trainee ID.", ephemeral=True)
+            return
+        tid = ids[0]
+        try:
+            trainee = await interaction.client.fetch_user(tid)
+        except Exception as e:
+            await interaction.response.send_message(f"Failed to fetch trainee user: {e}", ephemeral=True)
+            return
+        res = self.result.value.strip()
+        remarks = self.remarks.value.strip()
+        notes = self.notes.value.strip()
+        try:
+            await log_training_result(interaction.client, trainer, trainee, res, None, remarks, notes)
+            await interaction.response.send_message(f"Recorded result for <@{tid}>.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Failed to record result: {e}", ephemeral=True)
+
+
+class ImmediateGroupModal(discord.ui.Modal, title="Record Group Results"):
+    trainee_list = discord.ui.TextInput(label="Trainees (IDs or mentions, space/comma separated)", style=discord.TextStyle.long, required=True)
+    cotrainer = discord.ui.TextInput(label="Co-trainer ID or mention (optional)", style=discord.TextStyle.short, required=False)
+    result = discord.ui.TextInput(label="Result for all (pass/fail)", style=discord.TextStyle.short, required=True)
+    remarks = discord.ui.TextInput(label="Remarks (optional)", style=discord.TextStyle.long, required=False)
+    notes = discord.ui.TextInput(label="Notes (optional)", style=discord.TextStyle.long, required=False)
+
+    def __init__(self):
+        super().__init__()
+
+    async def on_submit(self, interaction: discord.Interaction):
+        trainer = interaction.user
+        raw = self.trainee_list.value
+        ids = parse_trainee_ids(raw)
+        if not ids:
+            await interaction.response.send_message("No trainees parsed from input.", ephemeral=True)
+            return
+        cot = None
+        cot_raw = self.cotrainer.value.strip() if self.cotrainer.value else ""
+        if cot_raw:
+            cot_ids = parse_trainee_ids(cot_raw)
+            if cot_ids:
+                try:
+                    cot = await interaction.client.fetch_user(cot_ids[0])
+                except Exception:
+                    cot = None
+
+        res = self.result.value.strip()
+        remarks = self.remarks.value.strip()
+        notes = self.notes.value.strip()
+
+        successes = 0
+        failures = 0
+        for tid in ids:
+            try:
+                trainee = await interaction.client.fetch_user(tid)
+                await log_training_result(interaction.client, trainer, trainee, res, cot, remarks, notes)
+                successes += 1
+            except Exception:
+                failures += 1
+
+        await interaction.response.send_message(f"Sent results: {successes} succeeded, {failures} failed.", ephemeral=True)
+
+
+def parse_trainee_ids(raw: str) -> List[int]:
+    out: List[int] = []
+    if not raw:
+        return out
+    parts = re.split(r"[\s,]+", raw.strip())
+    for p in parts:
+        if not p:
+            continue
+        # mention form <@!id> or <@id>
+        m = re.match(r"<@!?([0-9]+)>", p)
+        if m:
+            out.append(int(m.group(1)))
+            continue
+        if p.isdigit():
+            out.append(int(p))
+            continue
+    return out
+
+
+class ConfirmationView(discord.ui.View):
+    def __init__(self, parent_view: "TrainingResultView", payload: List[Dict]):
+        super().__init__(timeout=120)
+        self.parent_view = parent_view
+        self.payload = payload
+
+    @discord.ui.button(label="Confirm and Send", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        # perform sending for each
+        for item in self.payload:
+            trainee = await self.parent_view.bot.fetch_user(item['trainee'])
+            cot = await (self.parent_view.bot.fetch_user(item['cotrainer']) if item.get('cotrainer') else None)
+            await log_training_result(self.parent_view.bot, interaction.user, trainee, item['result'], cot, item.get('remarks',''), item.get('notes',''))
+        await interaction.followup.send(f"Sent results for {len(self.payload)} trainees.", ephemeral=True)
+        # close the parent view message
+        try:
+            await interaction.edit_original_response(embed=self.parent_view.build_embed(final=True), view=self.parent_view)
+        except Exception:
+            pass
+        self.stop()
+
+
+class ConfirmResultView(discord.ui.View):
+    def __init__(self, bot: commands.Bot, trainer: discord.User, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str, timeout: int = 120):
+        super().__init__(timeout=timeout)
+        self.bot = bot
+        self.trainer = trainer
+        self.trainee = trainee
+        self.result = result
+        self.cotrainer = cotrainer
+        self.remarks = remarks
+        self.notes = notes
+
+    @discord.ui.button(label="Confirm and Send", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # only trainer may confirm
+        if interaction.user.id != getattr(self.trainer, 'id', None):
+            await interaction.response.send_message("Only the trainer may confirm.", ephemeral=True)
+            return
+        # disable buttons
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+        try:
+            await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "")
+            await interaction.response.edit_message(content="Result sent.", view=self)
+            await log_action(self.bot, self.trainer, "training_result_confirmed", extra=f"trainee={getattr(self.trainee,'id',None)} result={self.result}")
+        except Exception as e:
+            await interaction.response.send_message(f"Failed to send result: {e}", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != getattr(self.trainer, 'id', None):
+            await interaction.response.send_message("Only the trainer may cancel.", ephemeral=True)
+            return
+        await interaction.response.edit_message(content="Cancelled.", view=None)
+        self.stop()
+
+
+
+class TrainingResultView(discord.ui.View):
+    def __init__(self, bot: commands.Bot, trainer: discord.User):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.trainer = trainer
+        self.trainees: List[int] = []
+        self.individual_results: Dict[int, Dict] = {}
+        self.group_result: Optional[Dict] = None
+        self.cotrainer: Optional[int] = None
+
+    def add_trainees(self, ids: List[int]):
+        for i in ids:
+            if i not in self.trainees:
+                self.trainees.append(i)
+
+    def build_embed(self, final: bool = False) -> discord.Embed:
+        emb = discord.Embed(title="Training Results Builder", color=EMBED_COLOR)
+        emb.add_field(name="Trainer", value=f"{self.trainer.mention}", inline=True)
+        emb.add_field(name="Co-trainer", value=(f"<@{self.cotrainer}>" if self.cotrainer else "None"), inline=True)
+        emb.add_field(name="Trainees count", value=str(len(self.trainees)), inline=True)
+        lines = []
+        for tid in self.trainees:
+            if tid in self.individual_results:
+                r = self.individual_results[tid]
+                lines.append(f"<@{tid}> — {r['result']} — {r.get('remarks','')}")
+            elif self.group_result:
+                lines.append(f"<@{tid}> — {self.group_result['result']} (group)")
+            else:
+                lines.append(f"<@{tid}> — (no result)")
+        emb.description = "\n".join(lines) if lines else "No trainees added yet."
+        if final:
+            emb.set_footer(text="Results sent")
+        return emb
+
+    @discord.ui.button(label="Add trainees (paste IDs)", style=discord.ButtonStyle.primary)
+    async def add_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AddTraineesModal(self))
+
+    @discord.ui.button(label="Set co-trainer", style=discord.ButtonStyle.secondary)
+    async def set_cotrainer_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SetCotrainerModal(self))
+
+    @discord.ui.button(label="Add all from last vote", style=discord.ButtonStyle.secondary)
+    async def add_last_vote(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        if not guild:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        ids = []
+        try:
+            ids = getattr(self.bot, '_last_training_votes', {}).get(guild.id, [])
+        except Exception:
+            ids = []
+        if not ids:
+            await interaction.response.send_message("No recent vote data available.", ephemeral=True)
+            return
+        self.add_trainees(ids)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Individualise next", style=discord.ButtonStyle.success)
+    async def individualise(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # find next trainee without individual result
+        for tid in self.trainees:
+            if tid not in self.individual_results:
+                await interaction.response.send_modal(TrainingIndividualModal(self, trainee_id=tid))
+                return
+        await interaction.response.send_message("No trainees left to individualise.", ephemeral=True)
+
+    @discord.ui.button(label="Apply group result", style=discord.ButtonStyle.primary)
+    async def group_apply(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(GroupModal(self))
+
+    @discord.ui.button(label="Preview & Confirm", style=discord.ButtonStyle.success, row=2)
+    async def preview_confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # build payload
+        payload = []
+        for tid in self.trainees:
+            entry = {"trainee": tid}
+            if tid in self.individual_results:
+                entry.update(self.individual_results[tid])
+            elif self.group_result:
+                entry.update(self.group_result)
+            else:
+                entry.update({"result": "(no result)", "remarks": "", "notes": ""})
+            entry['cotrainer'] = None
+            entry['cotrainer'] = self.cotrainer
+            payload.append(entry)
+        # build confirmation embed
+        emb = discord.Embed(title="Confirm Training Results", color=EMBED_COLOR)
+        for p in payload:
+            emb.add_field(name=f"<@{p['trainee']}>", value=f"Result: {p['result']}\nRemarks: {p.get('remarks','')}\nNotes: {p.get('notes','')}", inline=False)
+        view = ConfirmationView(self, payload)
+        await interaction.response.send_message(embed=emb, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=2)
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Cancelled result entry.", ephemeral=True)

@@ -11,6 +11,7 @@ from aiohttp import web
 from version_manager import get_version
 import json
 from datetime import datetime, timezone, date
+from typing import Optional
 
 
 load_dotenv(".env")
@@ -36,6 +37,10 @@ try:
 except Exception as e:
     raise ValueError(f"Failed to decode DISCORD_BOT_TOKEN_BASE64: {e}")
 
+# Logging configuration
+LOG_CHANNEL_ID = 1343686645815181382  # channel to send command-use embeds to
+LOGS_FOLDER = "logs"  # local folder to append daily command logs
+
 # --- Discord Bot Setup ---
 intents = discord.Intents.default()
 intents.members = True
@@ -55,9 +60,131 @@ old_stderr = sys.stderr
 sys.stdout = startup_output
 sys.stderr = startup_output
 
+async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[discord.Guild], channel: Optional[discord.abc.Messageable], command_name: str, content: str = "", affected_ids: Optional[list] = None):
+    """Log a command invocation both to the configured logging channel as an embed and locally as a JSON line.
+
+    kind: 'slash' or 'prefix'
+    affected_ids: list of user IDs that were affected (optional)
+    """
+    try:
+        ts = datetime.now(timezone.utc)
+        # Build embed
+        emb = discord.Embed(title=f"Command: {command_name}", colour=discord.Colour.blurple(), timestamp=ts)
+        try:
+            emb.add_field(name="Invoker", value=f"{user.mention} ({user.id})", inline=True)
+        except Exception:
+            emb.add_field(name="Invoker", value=f"{getattr(user,'name',str(user))} ({getattr(user,'id', 'N/A')})", inline=True)
+        emb.add_field(name="Type", value=kind, inline=True)
+        if guild:
+            emb.add_field(name="Guild", value=f"{guild.name} ({guild.id})", inline=True)
+        else:
+            emb.add_field(name="Guild", value="DM/Unknown", inline=True)
+        # Channel
+        ch_text = ""
+        try:
+            if channel is None:
+                ch_text = "None"
+            else:
+                ch_text = f"{getattr(channel,'mention', getattr(channel,'name', str(channel)))} ({getattr(channel,'id', 'N/A')})"
+        except Exception:
+            ch_text = str(channel)
+        emb.add_field(name="Channel", value=ch_text, inline=True)
+
+        if content:
+            txt = content if len(content) <= 1024 else (content[:1021] + "...")
+            emb.add_field(name="Args/Content", value=txt, inline=False)
+
+        affected_ids = affected_ids or []
+        affected = ", ".join(f"<@{uid}>" for uid in affected_ids) if affected_ids else "None"
+        emb.add_field(name="Affected", value=affected, inline=False)
+
+        # Send embed to channel if available
+        try:
+            log_ch = bot.get_channel(LOG_CHANNEL_ID)
+            if isinstance(log_ch, discord.TextChannel):
+                await log_ch.send(embed=emb)
+        except Exception as e:
+            print(f"Failed to send command log embed: {e}")
+
+        # Append to local file
+        try:
+            os.makedirs(LOGS_FOLDER, exist_ok=True)
+            path = os.path.join(LOGS_FOLDER, f"commands_{date.today().isoformat()}.log")
+            record = {
+                "timestamp": ts.isoformat(),
+                "type": kind,
+                "command": command_name,
+                "invoker_id": getattr(user, "id", None),
+                "invoker_name": str(user),
+                "guild_id": getattr(guild, "id", None),
+                "guild_name": getattr(guild, "name", None),
+                "channel_id": getattr(channel, "id", None),
+                "channel_name": getattr(channel, "name", None),
+                "content": content,
+                "affected": affected_ids,
+            }
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as e:
+            print(f"Failed to write command log locally: {e}")
+    except Exception as e:
+        print(f"Unexpected error in log_command_use: {e}")
+
+
+@bot.event
+async def on_command(ctx: commands.Context):
+    """Log legacy prefix commands invoked via `!` prefix."""
+    try:
+        if ctx.author and getattr(ctx.author, "bot", False):
+            return
+        cmd_name = ctx.command.qualified_name if ctx.command else (ctx.message.content.split()[0] if ctx.message and ctx.message.content else "(unknown)")
+        mentions = [m.id for m in ctx.message.mentions] if ctx.message else []
+        await log_command_use(kind="prefix", user=ctx.author, guild=ctx.guild, channel=ctx.channel, command_name=cmd_name, content=(ctx.message.content if ctx.message else ""), affected_ids=mentions)
+    except Exception as e:
+        print(f"Failed to log prefix command: {e}")
+
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
-    """Handle button interactions for embed sending."""
+    """Handle interactions: also log slash command invocations and handle embed-send buttons."""
+    # If this is an application command (slash command), log it centrally
+    try:
+        if interaction.type == discord.InteractionType.application_command:
+            try:
+                # Gather basic info
+                user = interaction.user
+                guild = interaction.guild
+                channel = interaction.channel or (guild.get_channel(interaction.channel_id) if guild else None)
+                cmd_name = None
+                args_text = None
+                mentions_list = []
+                if interaction.data:
+                    cmd_name = interaction.data.get("name")
+                    # Options may contain nested structures; store a compact JSON string
+                    try:
+                        args_text = json.dumps(interaction.data.get("options", {}), ensure_ascii=False)
+                    except Exception:
+                        args_text = str(interaction.data.get("options", {}))
+                    # resolved users (if present) indicate explicitly affected users
+                    resolved = interaction.data.get("resolved", {}) or {}
+                    users = resolved.get("users", {})
+                    if isinstance(users, dict):
+                        mentions_list = [int(uid) for uid in users.keys()]
+                await log_command_use(
+                    kind="slash",
+                    user=user,
+                    guild=guild,
+                    channel=channel,
+                    command_name=cmd_name or "(unknown)",
+                    content=args_text or "",
+                    affected_ids=mentions_list,
+                )
+            except Exception as e:
+                print(f"Failed to log slash command interaction: {e}")
+    except Exception:
+        # Non-fatal for logging
+        pass
+
+    # Handle button interactions for embed sending.
     if not interaction.data or not interaction.data.get("custom_id"):
         return
     

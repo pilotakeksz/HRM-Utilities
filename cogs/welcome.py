@@ -23,6 +23,12 @@ try:
 except Exception:
     WELCOME_CHANNEL_ID = DEFAULT_WELCOME_CHANNEL
 
+# Users automatically blacklisted: the bot will DM and ban these user IDs on join
+# Add user IDs (integers) to this list to have them auto-banned when they join.
+BLACKLISTED_USER_IDS = [
+    # Example: 1163179403954618469,
+]
+ 
 class WelcomeView(discord.ui.View):
     def __init__(self, member_count: int):
         super().__init__(timeout=None)
@@ -76,6 +82,23 @@ class Welcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
+        # Auto-ban blacklisted users: DM then ban on join
+        try:
+            if member.id in BLACKLISTED_USER_IDS:
+                try:
+                    await member.send("You have been blacklisted from the Maplecliff National Guard server and will be banned upon joining.")
+                except Exception:
+                    # DM may fail if user has DMs closed
+                    pass
+                try:
+                    await member.ban(reason="Auto-ban: blacklisted user")
+                    print(f"Banned blacklisted user {member} ({member.id}) on join.")
+                except Exception as e:
+                    print(f"Failed to ban blacklisted user {member.id}: {e}")
+                return
+        except Exception as e:
+            print(f"Error checking blacklist for {member.id}: {e}")
+
         # Try to assign the default role on join (if available)
         try:
             role = member.guild.get_role(ROLE_ID_ON_JOIN)
