@@ -103,6 +103,7 @@ class OctoPrintMonitor(commands.Cog):
         self.last_connected = None
         self.last_state_text = None
         self.last_progress = None
+        self.last_sent_progress = None  # Track progress when we last sent an update
         
         self.check_status.start()
 
@@ -293,9 +294,11 @@ class OctoPrintMonitor(commands.Cog):
             if connected:
                 self.last_state_text = current_state_text
                 self.last_progress = current_progress
+                self.last_sent_progress = current_progress if current_progress is not None else None
             else:
                 self.last_state_text = None
                 self.last_progress = None
+                self.last_sent_progress = None
             return  # Skip further checks this cycle
         
         # Update connection state
@@ -315,19 +318,20 @@ class OctoPrintMonitor(commands.Cog):
             
             # Check for progress change (5% threshold or print just started)
             # Always check progress independently of state changes
+            # Use last_sent_progress to track cumulative progress since last update
             if current_progress is not None:
-                # If we don't have a last progress value (print just started)
-                if self.last_progress is None:
+                # If we don't have a last sent progress value (print just started or first time)
+                if self.last_sent_progress is None:
                     # Print just started - always send update
-                    print(f"Progress started: {current_progress}% (last was None)")
+                    print(f"Progress started: {current_progress}% (last sent was None)")
                     progress_changed = True
-                # If we have a last progress value, check if it changed significantly
+                # If we have a last sent progress value, check cumulative change
                 else:
-                    progress_diff = abs(current_progress - self.last_progress)
-                    print(f"Progress check: last={self.last_progress}%, current={current_progress}%, diff={progress_diff}%")
-                    # Send update if progress changed by 5% or more
+                    progress_diff = abs(current_progress - self.last_sent_progress)
+                    print(f"Progress check: last_sent={self.last_sent_progress}%, current={current_progress}%, diff={progress_diff}%")
+                    # Send update if we've accumulated 5% or more since last update
                     if progress_diff >= 5:
-                        print(f"✓ Progress update triggered: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%)")
+                        print(f"✓ Progress update triggered: {self.last_sent_progress}% -> {current_progress}% (diff: {progress_diff}%)")
                         progress_changed = True
                     else:
                         print(f"✗ Progress update skipped: diff {progress_diff}% < 5% threshold")
@@ -335,23 +339,29 @@ class OctoPrintMonitor(commands.Cog):
             elif self.last_progress is not None:
                 # Print finished - progress went from a value to None
                 print(f"Print finished: progress went from {self.last_progress}% to None")
+                # Reset last_sent_progress when print finishes
+                self.last_sent_progress = None
                 # Don't send update for this, state change will handle it
             
             # Send update if state OR progress changed
             if state_changed or progress_changed:
                 print(f"Sending update: state_changed={state_changed}, progress_changed={progress_changed}")
                 await self._send_update(channel, data)
+                # Update last_sent_progress only when we actually send an update
+                if progress_changed and current_progress is not None:
+                    self.last_sent_progress = current_progress
             else:
                 print(f"No update needed: state_changed={state_changed}, progress_changed={progress_changed}")
             
             # Update last state AFTER checking for changes
-            # Always update, even if we didn't send an update
+            # Always update tracking variables, even if we didn't send an update
             self.last_state_text = current_state_text
             self.last_progress = current_progress
         else:
             # Reset state when disconnected
             self.last_state_text = None
             self.last_progress = None
+            self.last_sent_progress = None
 
     @check_status.before_loop
     async def before_check_status(self):
@@ -367,11 +377,14 @@ class OctoPrintMonitor(commands.Cog):
                 progress_value = data["job"]["progress"].get("completion")
                 if progress_value is not None:
                     self.last_progress = float(progress_value)
+                    self.last_sent_progress = float(progress_value)  # Initialize to current progress
                 else:
-                    self.last_progress = 0
+                    self.last_progress = None
+                    self.last_sent_progress = None
         else:
             self.last_state_text = None
             self.last_progress = None
+            self.last_sent_progress = None
 
     # ---------------------------
     # Monitor chat for E-STOP token confirmation
