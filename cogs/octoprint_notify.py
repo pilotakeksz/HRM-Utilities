@@ -99,7 +99,7 @@ class OctoPrintMonitor(commands.Cog):
         self.api_key = os.getenv("OCTOPRINT_API_KEY")
         self.snapshot_url = os.getenv("OCTOPRINT_SNAPSHOT_URL")
         
-        # State tracking
+        # State tracking e
         self.last_connected = None
         self.last_state_text = None
         self.last_progress = None
