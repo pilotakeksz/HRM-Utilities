@@ -20,7 +20,7 @@ import re
 # Set this to a specific user ID if you want to allow a particular user, or set to None to disable
 ALLOWED_TUNA_USER_ID = 840949634071658507 #tuna id yes
 
-class octoprint(commands.Cog):
+class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
 
         self.bot = bot
@@ -702,5 +702,4 @@ class octoprint(commands.Cog):
             await ctx.send(f"Error: {exc}")
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(octoprint(bot))
-#ètest
+    await bot.add_cog(MiscCog(bot))
