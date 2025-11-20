@@ -283,6 +283,15 @@ class OctoPrintMonitor(commands.Cog):
                 await self._send_update(channel, data, "🟢 Printer Connected")
             else:
                 await self._send_update(channel, data, "🔴 Printer Disconnected")
+            # Update state immediately after connection change
+            self.last_connected = connected
+            if connected:
+                self.last_state_text = current_state_text
+                self.last_progress = current_progress
+            else:
+                self.last_state_text = None
+                self.last_progress = None
+            return  # Skip further checks this cycle
         
         # Update connection state
         self.last_connected = connected
@@ -293,22 +302,24 @@ class OctoPrintMonitor(commands.Cog):
             
             # Check for state change
             if current_state_text and current_state_text != self.last_state_text:
+                print(f"State changed: '{self.last_state_text}' -> '{current_state_text}'")
                 send_update = True
             
             # Check for progress change (5% threshold or print just started)
-            # Only check progress if we have a valid current progress value
             if current_progress is not None:
-                # If we don't have a last progress value, or it was reset
                 if self.last_progress is None:
-                    # Only send update if progress is actually > 0 (print started)
+                    # First time we see progress, or was disconnected before
                     if current_progress > 0:
+                        print(f"Progress started: {current_progress}% (last was None)")
                         send_update = True
-                # If we have a last progress value, check if it changed significantly
                 elif self.last_progress is not None:
                     progress_diff = abs(current_progress - self.last_progress)
                     # Send update if progress changed by 5% or more
                     if progress_diff >= 5:
+                        print(f"Progress update: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%)")
                         send_update = True
+                    else:
+                        print(f"Progress check: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%, no update)")
             
             # Send update if any change detected
             if send_update:
