@@ -1,705 +1,352 @@
-from __future__ import annotations
+import os
 import discord
-from discord.ext import commands
-from discord import app_commands
-import time
-from io import BytesIO
+from discord.ext import commands, tasks
+import requests
+from datetime import datetime
+import random
 import asyncio
-try:
-    from PIL import Image
-except Exception:
-    Image = None
+from io import BytesIO
 
-import aiohttp
-import zipfile
-import re
+# ---------------------------
+# Authorized E-STOP users
+# ---------------------------
+ESTOP_ALLOWED = {840949634071658507, 735167992966676530}
 
-
-# Removed user-whitelist — only admins allowed for tuna commands
-
-# Set this to a specific user ID if you want to allow a particular user, or set to None to disable
-ALLOWED_TUNA_USER_ID = 840949634071658507 #tuna id yes
-
-class MiscCog(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-
+# ---------------------------
+# E-STOP view (button on every embed)
+# ---------------------------
+class EStopView(discord.ui.View):
+    def __init__(self, bot, cog=None):
+        super().__init__(timeout=None)
         self.bot = bot
-        self.start_time = time.time()
+        self.cog = cog
 
-    @app_commands.command(name="ping", description="Check bot latency")
-    async def ping(self, interaction: discord.Interaction):
-        """Simple ping command to check bot responsiveness."""
-        latency = round(self.bot.latency * 1000)
-        embed = discord.Embed(
-            title="🏓 Pong!",
-            description=f"Latency: {latency}ms",
-            color=discord.Color.green()
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="server_info", description="Get server information")
-    async def server_info(self, interaction: discord.Interaction):
-        """Display basic server information."""
-        guild = interaction.guild
-        if not guild:
-            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+    @discord.ui.button(label="EMERGENCY STOP", style=discord.ButtonStyle.danger, custom_id="estop_btn")
+    async def estop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        if user_id not in ESTOP_ALLOWED:
+            await interaction.response.send_message("You are not authorized to request an E-STOP.", ephemeral=True)
             return
 
-        embed = discord.Embed(
-            title=f"Server Information: {guild.name}",
-            color=discord.Color.blue()
+        token = str(random.randint(100000, 999999))
+        self.bot.active_tokens[user_id] = token
+
+        await interaction.response.send_message(
+            f"⚠️ Confirmation required: Send the token `{token}` in chat within 60s to execute E-STOP.",
+            ephemeral=True
         )
-        embed.add_field(name="Members", value=guild.member_count, inline=True)
-        embed.add_field(name="Created", value=f"<t:{int(guild.created_at.timestamp())}:F>", inline=True)
-        embed.add_field(name="Owner", value=guild.owner.mention if guild.owner else "Unknown", inline=True)
-        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+
+        async def expire_token():
+            await asyncio.sleep(60)
+            self.bot.active_tokens.pop(user_id, None)
+        asyncio.create_task(expire_token())
+
+    @discord.ui.button(label="Update Image", style=discord.ButtonStyle.secondary, custom_id="update_image_btn")
+    async def update_image_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
         
-        await interaction.response.send_message(embed=embed)
-
-    @commands.command(name="ping")
-    async def ping_prefix(self, ctx):
-        """Simple ping command to check bot responsiveness."""
-        latency = round(self.bot.latency * 1000)
-        embed = discord.Embed(
-            title="🏓 Pong!",
-            description=f"Latency: {latency}ms",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.command(name="uptime")
-    async def uptime(self, ctx):
-        """Shows how long the bot has been running."""
-        uptime_seconds = int(time.time() - self.start_time)
-        days = uptime_seconds // 86400
-        hours = (uptime_seconds % 86400) // 3600
-        minutes = (uptime_seconds % 3600) // 60
-        seconds = uptime_seconds % 60
-        
-        uptime_str = ""
-        if days > 0:
-            uptime_str += f"{days}d "
-        if hours > 0:
-            uptime_str += f"{hours}h "
-        if minutes > 0:
-            uptime_str += f"{minutes}m "
-        uptime_str += f"{seconds}s"
-        
-        embed = discord.Embed(
-            title="⏰ Bot Uptime",
-            description=f"I've been running for **{uptime_str}**",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.group(name="tuna")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna(self, ctx):
-        """Tuna utility commands. Only server admins may use these."""
-        if ctx.invoked_subcommand is None:
-            await ctx.send("Use `!tuna role` or `!tuna dm` for available commands.")
-
-    @tuna.group(name="role")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_role(self, ctx):
-        """Role management commands (admins only)."""
-        if ctx.invoked_subcommand is None:
-            await ctx.send("Use `!tuna role add`, `!tuna role list`, or `!tuna role remove`")
-
-    @tuna.group(name="create")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_create(self, ctx):
-        """Creation utilities for tuna (admins only)."""
-        if ctx.invoked_subcommand is None:
-            await ctx.send("Use `!tuna create role <name> [hexcolor]`")
-
-    @tuna_role.command(name="add")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_role_add(self, ctx, user: discord.Member, *, role_name: str):
-        """Add a role to a user. (admins only)"""
-        try:
-            # Find the role by name (case insensitive)
-            role = discord.utils.find(lambda r: r.name.lower() == role_name.lower(), ctx.guild.roles)
-            if not role:
-                await ctx.send(f"❌ Role '{role_name}' not found.")
-                return
-
-            # Check if user already has the role
-            if role in user.roles:
-                await ctx.send(f"❌ {user.mention} already has the role {role.mention}")
-                return
-
-            # Add the role
-            await user.add_roles(role)
-            embed = discord.Embed(
-                title="✅ Role Added",
-                description=f"Successfully added {role.mention} to {user.mention}",
-                color=discord.Color.green()
-            )
-            await ctx.send(embed=embed)
-
-        except discord.Forbidden:
-            await ctx.send("❌ I don't have permission to manage roles.")
-        except Exception as e:
-            await ctx.send(f"❌ An error occurred: {str(e)}")
-
-    @tuna_role.command(name="list")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_role_list(self, ctx, user: discord.Member):
-        """List all roles for a user. (admins only)"""
-        roles = [role.mention for role in user.roles if role.name != "@everyone"]
-        
-        if not roles:
-            await ctx.send(f"{user.mention} has no roles.")
+        if not self.cog:
+            await interaction.followup.send("Error: Cog reference not available.", ephemeral=True)
             return
         
-        embed = discord.Embed(
-            title=f"Roles for {user.display_name}",
-            description="\n".join(roles),
-            color=discord.Color.blue()
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
-        await ctx.send(embed=embed)
-
-    @tuna_role.command(name="remove")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_role_remove(self, ctx, user: discord.Member, *, role_name: str):
-        """Remove a role from a user. (admins only)"""
-        try:
-            # Find the role by name (case insensitive)
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-            if not role:
-                await ctx.send(f"❌ Role '{role_name}' not found.")
-                return
-            
-            # Check if user has the role
-            if role not in user.roles:
-                await ctx.send(f"❌ {user.mention} doesn't have the role {role.mention}")
-                return
-            
-            # Remove the role
-            await user.remove_roles(role)
-            embed = discord.Embed(
-                title="✅ Role Removed",
-                description=f"Successfully removed {role.mention} from {user.mention}",
-                color=discord.Color.red()
-            )
-            await ctx.send(embed=embed)
-            
-        except discord.Forbidden:
-            await ctx.send("❌ I don't have permission to manage roles.")
-        except Exception as e:
-            await ctx.send(f"❌ An error occurred: {str(e)}")
-
-    @tuna_role.command(name="members")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_role_members(self, ctx, *, role_name: str):
-        """List members who have a given role (admins only)."""
-        # Try role mention first
-        role = None
-        if role_name.startswith("<@&") and role_name.endswith(">"):
+        # Get current status
+        data = self.cog._get_status()
+        connected = data.get("connected", False)
+        
+        if not connected:
+            await interaction.followup.send("Printer is offline. Cannot update image.", ephemeral=True)
+            return
+        
+        # Get snapshot
+        snapshot_file = None
+        if self.cog.snapshot_url:
             try:
-                role_id = int(role_name[3:-1])
-                role = ctx.guild.get_role(role_id)
-            except ValueError:
-                role = None
-        if role is None:
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-        if role is None:
-            await ctx.send(f"❌ Role '{role_name}' not found.")
-            return
-
-        members = [member.mention for member in role.members]
-        if not members:
-            await ctx.send(f"No members have {role.mention}.")
-            return
-
-        # Avoid overly long messages
-        joined = ", ".join(members)
-        if len(joined) > 3800:
-            # Chunk into multiple messages
-            await ctx.send(f"Members with {role.mention} (total {len(members)}):")
-            chunk = []
-            length = 0
-            for m in members:
-                if length + len(m) + 2 > 1900:
-                    await ctx.send(", ".join(chunk))
-                    chunk = [m]
-                    length = len(m)
-                else:
-                    chunk.append(m)
-                    length += len(m) + 2
-            if chunk:
-                await ctx.send(", ".join(chunk))
-            return
-
-        embed = discord.Embed(
-            title=f"Members with {role.name}",
-            description=joined,
-            color=discord.Color.blurple()
-        )
-        await ctx.send(embed=embed)
-
-    @tuna.command(name="dm")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_dm(self, ctx, target, *, message: str):
-        """Send a DM to a user or all members with a specific role. (admins only)"""
-        try:
-            # Try to parse as user mention/ID first. If that fails, allow numeric role IDs.
-            role = None
-            try:
-                if target.startswith('<@') and target.endswith('>'):
-                    # User mention
-                    user_id = int(target[2:-1].replace('!', ''))
-                    user = await self.bot.fetch_user(user_id)
-                    await user.send(f"**Message from {ctx.guild.name}:**\n{message}")
-                    await ctx.send(f"✅ DM sent to {user.mention}")
-                    return
-                else:
-                    # Try as user ID first
-                    user_id = int(target)
-                    user = await self.bot.fetch_user(user_id)
-                    await user.send(f"**Message from {ctx.guild.name}:**\n{message}")
-                    await ctx.send(f"✅ DM sent to {user.mention}")
-                    return
-            except (ValueError, discord.NotFound):
-                # Not a user — maybe it's a numeric role ID; check guild roles if we have a guild
-                try:
-                    if ctx.guild and target.isdigit():
-                        role_candidate = ctx.guild.get_role(int(target))
-                        if role_candidate:
-                            role = role_candidate
-                except Exception:
-                    role = None
-
-            # Try to find role by name if we didn't already resolve by ID
-            if role is None:
-                role = discord.utils.get(ctx.guild.roles, name=target) if ctx.guild else None
-            if role:
-                sent_count = 0
-                failed_count = 0
-                
-                for member in role.members:
-                    try:
-                        await member.send(f"**Message from {ctx.guild.name} (via {role.name}):**\n{message}")
-                        sent_count += 1
-                    except:
-                        failed_count += 1
-                
-                embed = discord.Embed(
-                    title="✅ DMs Sent",
-                    description=f"Sent to {sent_count} members with role {role.mention}",
-                    color=discord.Color.green()
-                )
-                if failed_count > 0:
-                    embed.add_field(name="Failed", value=f"{failed_count} members couldn't receive DMs", inline=False)
-                await ctx.send(embed=embed)
+                headers = {"X-Api-Key": self.cog.api_key} if self.cog.api_key else {}
+                r = requests.get(self.cog.snapshot_url, headers=headers, timeout=3)
+                if r.status_code == 200:
+                    fp = BytesIO(r.content)
+                    fp.seek(0)
+                    snapshot_file = discord.File(fp, filename="snapshot.jpg")
+            except Exception as e:
+                await interaction.followup.send(f"Failed to fetch snapshot: {e}", ephemeral=True)
                 return
-            
-            await ctx.send("❌ Could not find user or role. Use @user, user ID, or role name.")
-            
-        except Exception as e:
-            await ctx.send(f"❌ An error occurred: {str(e)}")
-
-    @tuna.command(name="say")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_say(self, ctx, channel: discord.TextChannel = None, *, message: str = None):
-        """Send a message to a channel. (admins only)"""
-        if message is None and channel is None:
-            await ctx.send("Usage: `!tuna say [#channel] <message>`")
-            return
-        if message is None and channel is not None:
-            await ctx.send("Usage: `!tuna say [#channel] <message>`")
-            return
-        target_channel = channel or ctx.channel
+        
+        # Update the message
         try:
-            await target_channel.send(message)
-            if target_channel.id != ctx.channel.id:
-                await ctx.send(f"✅ Sent message in {target_channel.mention}")
-        except discord.Forbidden:
-            await ctx.send("❌ I don't have permission to send messages in that channel.")
+            message = interaction.message
+            embed = message.embeds[0] if message.embeds else None
+            
+            if embed and snapshot_file:
+                embed.set_image(url="attachment://snapshot.jpg")
+                await message.edit(embed=embed, attachments=[snapshot_file], view=self)
+                await interaction.followup.send("Image updated!", ephemeral=True)
+            elif embed:
+                embed.set_image(url=None)
+                await message.edit(embed=embed, attachments=[], view=self)
+                await interaction.followup.send("Image removed (snapshot unavailable).", ephemeral=True)
+            else:
+                await interaction.followup.send("No embed found to update.", ephemeral=True)
         except Exception as e:
-            await ctx.send(f"❌ Failed to send message: {str(e)}")
+            await interaction.followup.send(f"Failed to update message: {e}", ephemeral=True)
 
-    @tuna.command(name="servers")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_servers(self, ctx):
-        """List servers the bot is in (admins only)."""
-        guilds = list(self.bot.guilds)
-        guilds_sorted = sorted(guilds, key=lambda g: g.member_count or 0, reverse=True)
-        total = len(guilds_sorted)
-        lines = [f"{g.name} — ID: `{g.id}` — Members: {g.member_count}" for g in guilds_sorted]
-        header = f"I am in {total} server(s):\n"
-        text = header + "\n".join(lines)
-        if len(text) <= 1900:
-            await ctx.send("```\n" + text + "\n```")
+# ---------------------------
+# OctoPrint Monitoring Cog
+# ---------------------------
+class OctoPrintMonitor(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.api = os.getenv("OCTOPRINT_URL").rstrip("/")
+        self.api_key = os.getenv("OCTOPRINT_API_KEY")
+        self.snapshot_url = os.getenv("OCTOPRINT_SNAPSHOT_URL")
+        
+        # State tracking
+        self.last_connected = None
+        self.last_state_text = None
+        self.last_progress = None
+        
+        self.check_status.start()
+
+    # ---------------------------
+    # Send G-code (E-STOP)
+    # ---------------------------
+    def _send_gcode(self, command):
+        url = f"{self.api}/api/printer/command"
+        headers = {"X-Api-Key": self.api_key} if self.api_key else {}
+        payload = {"command": command}
+        try:
+            r = requests.post(url, json=payload, headers=headers, timeout=2)
+            if r.status_code == 204:
+                return "OK"
+            return f"Error: {r.text}"
+        except Exception as e:
+            return f"Exception: {e}"
+
+    # ---------------------------
+    # Get printer status - simple and reliable
+    # ---------------------------
+    def _get_status(self):
+        headers = {"X-Api-Key": self.api_key} if self.api_key else {}
+        try:
+            # Try to get printer status
+            r = requests.get(f"{self.api}/api/printer", headers=headers, timeout=5)
+            job_r = requests.get(f"{self.api}/api/job", headers=headers, timeout=5)
+            
+            # 409 = Printer not connected, 503 = Printer not operational
+            if r.status_code in [409, 503]:
+                return {"connected": False}
+            
+            # If we got 200, printer is connected
+            if r.status_code == 200:
+                data = r.json()
+                # Check for error in response
+                if "error" in data:
+                    return {"connected": False}
+                
+                # Get job data
+                if job_r.status_code == 200:
+                    data["job"] = job_r.json()
+                else:
+                    data["job"] = {}
+                
+                data["connected"] = True
+                return data
+            
+            # Any other status means disconnected
+            return {"connected": False}
+            
+        except Exception as e:
+            return {"connected": False}
+
+    # ---------------------------
+    # Build embed with snapshot
+    # ---------------------------
+    def _format_embed(self, data, title_prefix="🖨️ OctoPrint Status Update"):
+        connected = data.get("connected", False)
+        if not connected:
+            embed = discord.Embed(
+                title=title_prefix if title_prefix != "🖨️ OctoPrint Status Update" else "Printer Offline",
+                description="Printer is not reachable.",
+                color=discord.Color.light_grey(),
+                timestamp=datetime.utcnow()
+            )
+            embed.set_footer(text="Automatic OctoPrint Monitor")
+            return embed, None
+
+        state_text = data["state"]["text"]
+        state_text_lower = state_text.lower()
+        nozzle = data["temperature"]["tool0"]["actual"]
+        bed = data["temperature"]["bed"]["actual"]
+        job = data.get("job", {})
+        file = job.get("job", {}).get("file", {}).get("name") or job.get("file", {}).get("name") or "No file"
+        progress = job.get("progress", {}).get("completion", 0) or 0
+        time_left = job.get("progress", {}).get("printTimeLeft", None)
+        time_elapsed = job.get("progress", {}).get("printTime", None)
+
+        # Color based on state
+        if "printing" in state_text_lower:
+            color = discord.Color.green()
+        elif "paused" in state_text_lower:
+            color = discord.Color.orange()
+        elif "error" in state_text_lower or "failed" in state_text_lower:
+            color = discord.Color.red()
         else:
-            # chunk output
-            await ctx.send(header)
-            chunk = []
-            size = 0
-            for line in lines:
-                if size + len(line) + 1 > 1900:
-                    await ctx.send("```\n" + "\n".join(chunk) + "\n```")
-                    chunk = [line]
-                    size = len(line)
-                else:
-                    chunk.append(line)
-                    size += len(line) + 1
-            if chunk:
-                await ctx.send("```\n" + "\n".join(chunk) + "\n```")
+            color = discord.Color.blue()
 
-    @tuna.command(name="perms")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_perms(self, ctx, channel: discord.TextChannel = None):
-        """Show the bot's permissions in the guild or a specified channel. (admins only)"""
-        target_channel = channel or ctx.channel
-        me = ctx.guild.me
-        perms = target_channel.permissions_for(me)
-        true_perms = [
-            name.replace('_', ' ').title()
-            for name, value in perms if value
-        ]
-        false_perms = [
-            name.replace('_', ' ').title()
-            for name, value in perms if not value
-        ]
+        time_left_str = f"{time_left // 60}m {time_left % 60}s" if time_left else "Unknown"
+        time_elapsed_str = f"{time_elapsed // 60}m {time_elapsed % 60}s" if time_elapsed else "Unknown"
 
         embed = discord.Embed(
-            title="Bot Permissions",
-            description=f"Channel: {target_channel.mention}",
-            color=discord.Color.teal()
+            title=title_prefix,
+            color=color,
+            timestamp=datetime.utcnow()
         )
-        embed.add_field(name="Allowed", value=", ".join(true_perms) or "None", inline=False)
-        embed.add_field(name="Denied", value=", ".join(false_perms) or "None", inline=False)
-        await ctx.send(embed=embed)
+        embed.add_field(name="State", value=state_text, inline=False)
+        embed.add_field(name="File", value=file, inline=False)
+        embed.add_field(name="Progress", value=f"{progress:.1f}%", inline=True)
+        embed.add_field(name="Time Left", value=time_left_str, inline=True)
+        embed.add_field(name="Time Elapsed", value=time_elapsed_str, inline=True)
+        embed.add_field(name="Nozzle Temp", value=f"{nozzle} °C", inline=True)
+        embed.add_field(name="Bed Temp", value=f"{bed} °C", inline=True)
+        embed.set_footer(text="Automatic OctoPrint Monitor")
 
-    @tuna.command(name="invite")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_invite(self, ctx):
-        """Show OAuth2 invite links for the bot (admins only)."""
-        client_id = self.bot.user.id if self.bot.user else None
-        if client_id is None:
-            await ctx.send("❌ Unable to determine bot user ID.")
-            return
-        scopes = "bot%20applications.commands"
-        base = f"https://discord.com/oauth2/authorize?client_id={client_id}&scope={scopes}"
-        # No preset permissions (choose in UI)
-        basic_url = base
-        # Administrator preset
-        admin_url = base + "&permissions=8"
-        embed = discord.Embed(title="Invite Links", color=discord.Color.gold())
-        embed.add_field(name="Basic", value=f"[Add Bot]({basic_url})", inline=False)
-        embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
-        await ctx.send(embed=embed)
-
-    @tuna.command(name="invite_all")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_invite_all(self, ctx, include_admin: bool = False):
-        """DM invite link(s) to each guild owner for all servers the bot is in (admins only).
-        Usage: !tuna invite_all [include_admin=True]"""
-        client_id = self.bot.user.id if self.bot.user else None
-        if client_id is None:
-            await ctx.send("❌ Unable to determine bot user ID.")
-            return
-
-        scopes = "bot%20applications.commands"
-        base = f"https://discord.com/oauth2/authorize?client_id={client_id}&scope={scopes}"
-        basic_url = base
-        admin_url = base + "&permissions=8"
-
-        sent = 0
-        failed = 0
-        skipped = 0
-
-        # iterate guilds and attempt to DM the owner
-        for guild in list(self.bot.guilds):
+        snapshot_file = None
+        if self.snapshot_url:
             try:
-                owner = guild.owner
-                # attempt to fetch owner if not cached
-                if owner is None and getattr(guild, "owner_id", None):
-                    try:
-                        owner = await self.bot.fetch_user(guild.owner_id)
-                    except Exception:
-                        owner = None
+                headers = {"X-Api-Key": self.api_key} if self.api_key else {}
+                r = requests.get(self.snapshot_url, headers=headers, timeout=3)
+                if r.status_code == 200:
+                    fp = BytesIO(r.content)
+                    fp.seek(0)
+                    snapshot_file = discord.File(fp, filename="snapshot.jpg")
+                    embed.set_image(url="attachment://snapshot.jpg")
+            except:
+                pass
 
-                if owner is None:
-                    skipped += 1
-                    continue
+        return embed, snapshot_file
 
+    # ---------------------------
+    # Send message to channel
+    # ---------------------------
+    async def _send_update(self, channel, data, title_prefix="🖨️ OctoPrint Status Update"):
+        embed, snapshot_file = self._format_embed(data, title_prefix=title_prefix)
+        view = EStopView(self.bot, cog=self)
+        try:
+            if snapshot_file:
+                await channel.send(embed=embed, file=snapshot_file, view=view)
+            else:
+                await channel.send(embed=embed, view=view)
+            return True
+        except Exception as e:
+            print(f"Failed to send update: {e}")
+            return False
+
+    # ---------------------------
+    # Polling loop
+    # ---------------------------
+    @tasks.loop(seconds=10)
+    async def check_status(self):
+        await self.bot.wait_until_ready()
+        channel_id = os.getenv("OCTO_NOTIFY_CHANNEL_ID")
+        if not channel_id:
+            return
+        channel_id = int(channel_id)
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+            except:
+                return
+
+        # Get current status
+        data = self._get_status()
+        connected = data.get("connected", False)
+        
+        # Get current state and progress
+        current_state_text = None
+        current_progress = None
+        
+        if connected:
+            if "state" in data and "text" in data["state"]:
+                current_state_text = data["state"]["text"]
+            if "job" in data and "progress" in data["job"]:
+                current_progress = data["job"]["progress"].get("completion", 0) or 0
+
+        # Check for connection state change
+        if self.last_connected is not None and self.last_connected != connected:
+            # Connection state changed!
+            if connected:
+                await self._send_update(channel, data, "🟢 Printer Connected")
+            else:
+                await self._send_update(channel, data, "🔴 Printer Disconnected")
+        
+        # Update connection state
+        self.last_connected = connected
+        
+        # Only check for state/progress changes if connected
+        if connected:
+            # Check for state change
+            if current_state_text and current_state_text != self.last_state_text:
+                await self._send_update(channel, data)
+            
+            # Check for progress change (5% threshold or print just started)
+            if current_progress is not None:
+                if self.last_progress is None or self.last_progress < 0:
+                    # First time we see progress, or was disconnected before
+                    if current_progress > 0:
+                        await self._send_update(channel, data)
+                elif abs(current_progress - self.last_progress) >= 5:
+                    # Progress changed by 5% or more
+                    await self._send_update(channel, data)
+            
+            # Update last state
+            self.last_state_text = current_state_text
+            self.last_progress = current_progress
+        else:
+            # Reset state when disconnected
+            self.last_state_text = None
+            self.last_progress = None
+
+    @check_status.before_loop
+    async def before_check_status(self):
+        await self.bot.wait_until_ready()
+        # Initialize state tracking
+        data = self._get_status()
+        self.last_connected = data.get("connected", False)
+        
+        if self.last_connected and "state" in data and "text" in data["state"]:
+            self.last_state_text = data["state"]["text"]
+        if self.last_connected and "job" in data and "progress" in data["job"]:
+            self.last_progress = data["job"]["progress"].get("completion", 0) or 0
+
+    # ---------------------------
+    # Monitor chat for E-STOP token confirmation
+    # ---------------------------
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        user_id = message.author.id
+        if user_id in self.bot.active_tokens:
+            token = self.bot.active_tokens[user_id]
+            if message.content.strip() == token:
+                # Execute E-STOP
+                result = self._send_gcode("M112")
+                self.bot.active_tokens.pop(user_id, None)
+                channel = message.channel
+                mentions_text = " ".join(f"<@{uid}>" for uid in ESTOP_ALLOWED)
                 embed = discord.Embed(
-                    title=f"Invite links for {self.bot.user.name}",
-                    description=f"Provided on behalf of the bot in `{guild.name}` (ID: {guild.id})",
-                    color=discord.Color.gold()
+                    title="⚠️ EMERGENCY STOP ACTIVATED",
+                    description=f"E-STOP triggered by {message.author.mention}",
+                    color=discord.Color.red(),
+                    timestamp=datetime.utcnow()
                 )
-                embed.add_field(name="Basic", value=f"[Add Bot]({basic_url})", inline=False)
-                if include_admin:
-                    embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
-                embed.set_footer(text=f"Server: {guild.name}")
+                embed.add_field(name="Response", value=result)
+                await channel.send(content=mentions_text, embed=embed)
+                await message.reply("E-STOP executed successfully.", delete_after=10)
 
-                try:
-                    await owner.send(embed=embed)
-                    sent += 1
-                except discord.Forbidden:
-                    # Owner DMs closed, try fallback: send to system channel if available and bot can send
-                    try:
-                        sc = guild.system_channel
-                        if sc and sc.permissions_for(guild.me).send_messages:
-                            await sc.send(f"{owner.mention} — I'm posting invite links here because I couldn't DM you.", embed=embed)
-                            sent += 1
-                        else:
-                            failed += 1
-                    except Exception:
-                        failed += 1
-            except Exception:
-                failed += 1
-
-            # gentle sleep to avoid hitting rate limits when many guilds
-            await asyncio.sleep(0.25)
-
-        await ctx.send(f"✅ Invite distribution complete — sent: {sent}, failed: {failed}, skipped (no owner): {skipped}")
-
-    @tuna.command(name="shard")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_shard(self, ctx):
-        """Show shard info (admins only)."""
-        shard_count = self.bot.shard_count or 1
-        latencies = getattr(self.bot, "latencies", None) or []
-        if not latencies:
-            latencies = [(0, self.bot.latency)]
-        per_shard = {}
-        for g in self.bot.guilds:
-            sid = g.shard_id if g.shard_id is not None else 0
-            per_shard[sid] = per_shard.get(sid, 0) + 1
-        lines = []
-        for sid, latency in sorted(latencies, key=lambda x: x[0]):
-            ms = int(latency * 1000)
-            count = per_shard.get(sid, 0)
-            lines.append(f"Shard {sid}: {ms}ms — {count} guilds")
-        embed = discord.Embed(title="Shard Info", color=discord.Color.purple())
-        embed.add_field(name="Shard Count", value=str(shard_count), inline=True)
-        embed.add_field(name="Total Guilds", value=str(len(self.bot.guilds)), inline=True)
-        embed.add_field(name="Latencies", value="\n".join(lines) or "N/A", inline=False)
-        await ctx.send(embed=embed)
-
-    @tuna.command(name="stats")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_stats(self, ctx):
-        """Show system and runtime stats for the bot (admins only)."""
-        # Uptime
-        uptime_seconds = int(time.time() - self.start_time)
-        days = uptime_seconds // 86400
-        hours = (uptime_seconds % 86400) // 3600
-        minutes = (uptime_seconds % 3600) // 60
-        seconds = uptime_seconds % 60
-        uptime_str = (f"{days}d " if days else "") + (f"{hours}h " if hours else "") + (f"{minutes}m " if minutes else "") + f"{seconds}s"
-
-        # Versions
-        import sys as _sys  # local import to avoid global dependency
-        pyver = f"{_sys.version_info.major}.{_sys.version_info.minor}.{_sys.version_info.micro}"
-        dpyver = discord.__version__
-        guilds = len(self.bot.guilds)
-        users = sum(g.member_count or 0 for g in self.bot.guilds)
-
-        # Optional psutil
-        cpu = mem = None
-        try:
-            import psutil  # type: ignore
-            process = psutil.Process()
-            with process.oneshot():
-                rss = process.memory_info().rss
-                mem = f"{rss / (1024*1024):.2f} MiB"
-                cpu = f"{psutil.cpu_percent(interval=0.2):.1f}%"
-        except Exception:
-            pass
-
-        embed = discord.Embed(title="Bot Stats", color=discord.Color.green())
-        embed.add_field(name="Uptime", value=uptime_str, inline=True)
-        embed.add_field(name="Guilds", value=str(guilds), inline=True)
-        embed.add_field(name="Users (sum)", value=str(users), inline=True)
-        embed.add_field(name="Python", value=pyver, inline=True)
-        embed.add_field(name="discord.py", value=dpyver, inline=True)
-        if mem:
-            embed.add_field(name="Memory", value=mem, inline=True)
-        if cpu:
-            embed.add_field(name="CPU", value=cpu, inline=True)
-        await ctx.send(embed=embed)
-
-    @tuna_create.command(name="role")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_create_role(self, ctx, role_name: str, color: str = None):
-        """Create a role. (admins only)"""
-        # authorization (double-check)
-        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
-        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
-            await ctx.send("❌ You are not allowed to use tuna commands.")
-            return
-
-        # parse color if provided
-        role_color = None
-        c = None
-        if color:
-            c = color.strip()
-            if c.startswith("#"):
-                c = c[1:]
-            if len(c) == 3:
-                c = "".join(ch * 2 for ch in c)
-            if len(c) != 6:
-                await ctx.send("❌ Invalid color. Use 3- or 6-digit hex like `#F80` or `#FF8800`.")
-                return
-            try:
-                color_val = int(c, 16)
-                role_color = discord.Color(value=color_val)
-            except Exception:
-                await ctx.send("❌ Invalid color. Use hex like `#RRGGBB` or `RRGGBB`.")
-                return
-
-        try:
-            guild = ctx.guild
-            if not guild:
-                await ctx.send("❌ This command must be run in a server.")
-                return
-            role = await guild.create_role(
-                name=role_name,
-                color=role_color or discord.Color.default(),
-                mentionable=False,
-                reason=f"Created by {ctx.author}"
-            )
-            embed = discord.Embed(title="✅ Role Created", description=f"Created role {role.mention}", color=discord.Color.green())
-            embed.add_field(name="Name", value=role.name, inline=True)
-            embed.add_field(name="ID", value=str(role.id), inline=True)
-            if c:
-                embed.add_field(name="Color", value=f"#{c.upper()}", inline=True)
-            await ctx.send(embed=embed)
-        except discord.Forbidden:
-            await ctx.send("❌ I don't have permission to create roles.")
-        except Exception as e:
-            await ctx.send(f"❌ Failed to create role: {e}")
-
-    @tuna.command(name="colour")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_colour(self, ctx, hex_color: str):
-        """Show a small image filled with the given hex colour. (admins only)"""
-        # authorization
-        is_admin = getattr(ctx.author.guild_permissions, "administrator", False)
-        if ctx.author.id != ALLOWED_TUNA_USER_ID and not is_admin:
-            await ctx.send("❌ You are not allowed to use tuna commands.")
-            return
-
-        c = hex_color.strip().lstrip("#")
-        if len(c) not in (3, 6):
-            await ctx.send("❌ Invalid color. Provide 3- or 6-digit hex, e.g. `FF8800` or `F80`.")
-            return
-        if len(c) == 3:
-            c = "".join(ch * 2 for ch in c)
-        try:
-            value = int(c, 16)
-        except ValueError:
-            await ctx.send("❌ Invalid hex value.")
-            return
-
-        r = (value >> 16) & 0xFF
-        g = (value >> 8) & 0xFF
-        b = value & 0xFF
-
-        # Check attach permission
-        try:
-            me = ctx.guild.me if ctx.guild else None
-            if me and not ctx.channel.permissions_for(me).attach_files:
-                await ctx.send("❌ I don't have permission to attach files in this channel. Showing fallback embed instead.")
-                embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
-                embed.description = f"RGB: {r}, {g}, {b}"
-                await ctx.send(embed=embed)
-                return
-        except Exception:
-            # ignore permission checks failure, continue
-
-            pass
-
-        # If Pillow available, send an image attachment; otherwise fallback to embed color bar
-        if Image is None:
-            # Pillow not installed
-            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
-            embed.description = f"RGB: {r}, {g}, {b}\n\n(Pillow not installed — install with `pip install Pillow` to get an image attachment.)"
-            await ctx.send(embed=embed)
-            return
-
-        # Create image and attempt to send as attachment (with safe error handling)
-        try:
-            img = Image.new("RGB", (256, 256), (r, g, b))
-            bio = BytesIO()
-            img.save(bio, "PNG")
-            bio.seek(0)
-            file = discord.File(bio, filename="colour.png")
-
-            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
-            embed.set_image(url="attachment://colour.png")
-            embed.add_field(name="RGB", value=f"{r}, {g}, {b}", inline=True)
-
-            await ctx.send(embed=embed, file=file)
-        except Exception as e:
-            # fallback: send embed and show error in channel so you can debug
-            await ctx.send(f"❌ Failed to send image attachment: {e}")
-            embed = discord.Embed(title=f"Colour: #{c.upper()}", color=discord.Color(value))
-            embed.description = f"RGB: {r}, {g}, {b}"
-            await ctx.send(embed=embed)
-
-    @tuna.command(name="emojis")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_emojis(self, ctx):
-        """Create a zip of all custom emojis in this guild and send it."""
-        guild = ctx.guild
-        if not guild:
-            await ctx.send("This command must be used in a server.")
-            return
-
-        emojis = guild.emojis
-        if not emojis:
-            await ctx.send("No custom emojis in this server.")
-            return
-
-        msg = await ctx.send("Creating emoji zip — this may take a moment...")
-        bio = BytesIO()
-        try:
-            with zipfile.ZipFile(bio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                async with aiohttp.ClientSession() as session:
-                    used_filenames = set()
-                    for e in emojis:
-                        url = str(e.url)
-                        ext = "gif" if getattr(e, "animated", False) else "png"
-                        # Sanitize the emoji name to produce a safe filename
-                        base_name = re.sub(r'[^A-Za-z0-9_.-]+', '_', (e.name or '').strip())
-                        if not base_name:
-                            base_name = f"emoji_{e.id}"
-
-                        filename = f"{base_name}.{ext}"
-                        # If filename already used (duplicate emoji names), add numeric suffix
-                        if filename in used_filenames:
-                            idx = 1
-                            while True:
-                                candidate = f"{base_name}_{idx}.{ext}"
-                                if candidate not in used_filenames:
-                                    filename = candidate
-                                    break
-                                idx += 1
-
-                        used_filenames.add(filename)
-
-                        try:
-                            async with session.get(url) as resp:
-                                if resp.status == 200:
-                                    data = await resp.read()
-                                    zf.writestr(filename, data)
-                        except Exception:
-                            # skip emoji on error
-                            continue
-            bio.seek(0)
-            file = discord.File(bio, filename=f"{guild.name}_emojis.zip")
-            await msg.edit(content="Here is the emoji zip:")
-            await ctx.send(file=file)
-        except Exception as exc:
-            await msg.edit(content="Failed to create emoji zip.")
-            await ctx.send(f"Error: {exc}")
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(MiscCog(bot))
+# ---------------------------
+# Setup
+# ---------------------------
+async def setup(bot):
+    bot.active_tokens = {}  # Tracks E-STOP tokens
+    await bot.add_cog(OctoPrintMonitor(bot))
