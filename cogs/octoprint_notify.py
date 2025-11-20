@@ -268,13 +268,18 @@ class OctoPrintMonitor(commands.Cog):
         if connected:
             if "state" in data and "text" in data["state"]:
                 current_state_text = data["state"]["text"]
-            if "job" in data and "progress" in data["job"]:
-                progress_value = data["job"]["progress"].get("completion")
-                # Handle None, 0, or actual progress value
-                if progress_value is not None:
-                    current_progress = float(progress_value)
+            if "job" in data:
+                job_data = data["job"]
+                if "progress" in job_data:
+                    progress_obj = job_data["progress"]
+                    progress_value = progress_obj.get("completion")
+                    # Only set progress if we have a valid value
+                    if progress_value is not None:
+                        current_progress = float(progress_value)
+                    # Leave as None if no progress data (not printing)
                 else:
-                    current_progress = 0
+                    # No progress key means not printing
+                    current_progress = None
 
         # Check for connection state change
         if self.last_connected is not None and self.last_connected != connected:
@@ -298,34 +303,41 @@ class OctoPrintMonitor(commands.Cog):
         
         # Only check for state/progress changes if connected
         if connected:
-            send_update = False
+            state_changed = False
+            progress_changed = False
             
             # Check for state change
             if current_state_text and current_state_text != self.last_state_text:
                 print(f"State changed: '{self.last_state_text}' -> '{current_state_text}'")
-                send_update = True
+                state_changed = True
             
             # Check for progress change (5% threshold or print just started)
+            # Only check progress if we have a current progress value (means we're printing)
             if current_progress is not None:
+                # If we don't have a last progress value (print just started)
                 if self.last_progress is None:
-                    # First time we see progress, or was disconnected before
-                    if current_progress > 0:
-                        print(f"Progress started: {current_progress}% (last was None)")
-                        send_update = True
+                    # Print just started - always send update
+                    print(f"Progress started: {current_progress}% (last was None)")
+                    progress_changed = True
+                # If we have a last progress value, check if it changed significantly
                 elif self.last_progress is not None:
                     progress_diff = abs(current_progress - self.last_progress)
                     # Send update if progress changed by 5% or more
                     if progress_diff >= 5:
                         print(f"Progress update: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%)")
-                        send_update = True
-                    else:
-                        print(f"Progress check: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%, no update)")
+                        progress_changed = True
+            # If current_progress is None but last_progress wasn't, print finished
+            elif self.last_progress is not None:
+                # Print finished - progress went from a value to None
+                print(f"Print finished: progress went from {self.last_progress}% to None")
+                # Don't send update for this, state change will handle it
             
-            # Send update if any change detected
-            if send_update:
+            # Send update if state OR progress changed
+            if state_changed or progress_changed:
                 await self._send_update(channel, data)
             
             # Update last state AFTER checking for changes
+            # Always update, even if we didn't send an update
             self.last_state_text = current_state_text
             self.last_progress = current_progress
         else:
