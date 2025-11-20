@@ -303,6 +303,8 @@ class OctoPrintMonitor(commands.Cog):
         
         # Only check for state/progress changes if connected
         if connected:
+            print(f"=== Poll Check: state='{current_state_text}', progress={current_progress}, last_state='{self.last_state_text}', last_progress={self.last_progress} ===")
+            
             state_changed = False
             progress_changed = False
             
@@ -312,7 +314,7 @@ class OctoPrintMonitor(commands.Cog):
                 state_changed = True
             
             # Check for progress change (5% threshold or print just started)
-            # Only check progress if we have a current progress value (means we're printing)
+            # Always check progress independently of state changes
             if current_progress is not None:
                 # If we don't have a last progress value (print just started)
                 if self.last_progress is None:
@@ -320,12 +322,15 @@ class OctoPrintMonitor(commands.Cog):
                     print(f"Progress started: {current_progress}% (last was None)")
                     progress_changed = True
                 # If we have a last progress value, check if it changed significantly
-                elif self.last_progress is not None:
+                else:
                     progress_diff = abs(current_progress - self.last_progress)
+                    print(f"Progress check: last={self.last_progress}%, current={current_progress}%, diff={progress_diff}%")
                     # Send update if progress changed by 5% or more
                     if progress_diff >= 5:
-                        print(f"Progress update: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%)")
+                        print(f"✓ Progress update triggered: {self.last_progress}% -> {current_progress}% (diff: {progress_diff}%)")
                         progress_changed = True
+                    else:
+                        print(f"✗ Progress update skipped: diff {progress_diff}% < 5% threshold")
             # If current_progress is None but last_progress wasn't, print finished
             elif self.last_progress is not None:
                 # Print finished - progress went from a value to None
@@ -334,7 +339,10 @@ class OctoPrintMonitor(commands.Cog):
             
             # Send update if state OR progress changed
             if state_changed or progress_changed:
+                print(f"Sending update: state_changed={state_changed}, progress_changed={progress_changed}")
                 await self._send_update(channel, data)
+            else:
+                print(f"No update needed: state_changed={state_changed}, progress_changed={progress_changed}")
             
             # Update last state AFTER checking for changes
             # Always update, even if we didn't send an update
