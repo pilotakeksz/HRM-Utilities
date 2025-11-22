@@ -1492,15 +1492,15 @@ class ShiftCog(commands.Cog):
             quota_minutes = await self._get_quota(member)
             mids = {r.id for r in member.roles}
 
-            # Exemption logic
-            if QUOTA_ROLE_0 in mids or QUOTA_ROLE_ADMIN_0 in mids:
-                continue  # Fully exempt
-            if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
-                continue  # Exempt above 15 minutes
-
-            # Promotion eligibility
+            # Promotion eligibility (check before exemptions so reduced activity role can still be promoted)
             if total_seconds >= 90 * 60 and self.store.can_be_promoted(member.id, member.roles):
                 promo_candidates.append((member, total_seconds))
+
+            # Exemption logic (only applies to infractions, not promotions)
+            if QUOTA_ROLE_0 in mids or QUOTA_ROLE_ADMIN_0 in mids:
+                continue  # Fully exempt from infractions
+            if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
+                continue  # Exempt from infractions above 15 minutes
             
             # Infractions
             if total_seconds < quota_minutes * 60:
