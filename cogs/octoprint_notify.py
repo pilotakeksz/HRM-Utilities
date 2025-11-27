@@ -2,7 +2,7 @@ import os
 import discord
 from discord.ext import commands, tasks
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import asyncio
 from io import BytesIO
@@ -11,6 +11,65 @@ from io import BytesIO
 # Authorized E-STOP users
 # ---------------------------
 ESTOP_ALLOWED = {840949634071658507, 735167992966676530}
+
+# ---------------------------
+# LCD Message Modal
+# ---------------------------
+class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
+    message = discord.ui.TextInput(
+        label="Message",
+        placeholder="Enter message to display on printer LCD (max 20 chars recommended)",
+        required=True,
+        max_length=50
+    )
+
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        
+        # Double-check cooldown (in case of race condition)
+        if user_id in self.cog.lcd_cooldowns:
+            last_used = self.cog.lcd_cooldowns[user_id]
+            time_since = datetime.utcnow() - last_used
+            if time_since < timedelta(hours=24):
+                remaining = timedelta(hours=24) - time_since
+                hours = int(remaining.total_seconds() // 3600)
+                minutes = int((remaining.total_seconds() % 3600) // 60)
+                await interaction.response.send_message(
+                    f"⏰ You can send another message in {hours}h {minutes}m. (24hr cooldown per person)",
+                    ephemeral=True
+                )
+                return
+        
+        # Check if printer is still connected
+        data = self.cog._get_status()
+        connected = data.get("connected", False)
+        
+        if not connected:
+            await interaction.response.send_message("Printer went offline. Cannot send message.", ephemeral=True)
+            return
+        
+        # Send M117 G-code command to display message on LCD
+        message_text = self.message.value.strip()
+        gcode_command = f"M117 {message_text}"
+        result = self.cog._send_gcode(gcode_command)
+        
+        # Update cooldown
+        self.cog.lcd_cooldowns[user_id] = datetime.utcnow()
+        
+        if result == "OK":
+            await interaction.response.send_message(
+                f"✅ Message sent to printer LCD: `{message_text}`\n⏰ Next use available in 24 hours.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"❌ Failed to send message: {result}",
+                ephemeral=True
+            )
 
 # ---------------------------
 # E-STOP view (button on every embed)
@@ -89,6 +148,39 @@ class EStopView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"Failed to update message: {e}", ephemeral=True)
 
+    @discord.ui.button(label="Send LCD Message", style=discord.ButtonStyle.primary, custom_id="lcd_message_btn")
+    async def lcd_message_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.cog:
+            await interaction.response.send_message("Error: Cog reference not available.", ephemeral=True)
+            return
+        
+        # Check cooldown
+        user_id = interaction.user.id
+        if user_id in self.cog.lcd_cooldowns:
+            last_used = self.cog.lcd_cooldowns[user_id]
+            time_since = datetime.utcnow() - last_used
+            if time_since < timedelta(hours=24):
+                remaining = timedelta(hours=24) - time_since
+                hours = int(remaining.total_seconds() // 3600)
+                minutes = int((remaining.total_seconds() % 3600) // 60)
+                await interaction.response.send_message(
+                    f"⏰ You can send another message in {hours}h {minutes}m. (24hr cooldown per person)",
+                    ephemeral=True
+                )
+                return
+        
+        # Check if printer is connected
+        data = self.cog._get_status()
+        connected = data.get("connected", False)
+        
+        if not connected:
+            await interaction.response.send_message("Printer is offline. Cannot send message.", ephemeral=True)
+            return
+        
+        # Show modal to get message
+        modal = LCDMessageModal(self.cog)
+        await interaction.response.send_modal(modal)
+
 # ---------------------------
 # OctoPrint Monitoring Cog
 # ---------------------------
@@ -104,6 +196,9 @@ class OctoPrintMonitor(commands.Cog):
         self.last_state_text = None
         self.last_progress = None
         self.last_sent_progress = None  # Track progress when we last sent an update
+        
+        # LCD message cooldowns: user_id -> datetime
+        self.lcd_cooldowns = {}
         
         self.check_status.start()
 
