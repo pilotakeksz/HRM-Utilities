@@ -93,6 +93,25 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
         self.cog.lcd_cooldowns[user_id] = datetime.utcnow()
         
         if result == "OK":
+            # Update current LCD message tracking
+            self.cog.current_lcd_message = {
+                "message": message_text,
+                "sender_id": user_id,
+                "sender_name": str(interaction.user),
+                "timestamp": datetime.utcnow()
+            }
+            
+            # Update the status embed to show the new LCD message
+            try:
+                channel_id = os.getenv("OCTO_NOTIFY_CHANNEL_ID")
+                if channel_id:
+                    channel = self.cog.bot.get_channel(int(channel_id))
+                    if channel:
+                        data = self.cog._get_status()
+                        await self.cog._send_update(channel, data, update_existing=True)
+            except Exception as e:
+                print(f"Failed to update status embed after LCD message: {e}")
+            
             log_button_click(interaction.user, "Send LCD Message", "Message sent", "Success", f"Message: {message_text}")
             await interaction.response.send_message(
                 f"✅ Message sent to printer LCD: `{message_text}`\n⏰ Next use available in {self.cog.lcd_cooldown_minutes} minutes.",
@@ -259,6 +278,12 @@ class OctoPrintMonitor(commands.Cog):
         # LCD message cooldowns: user_id -> datetime
         self.lcd_cooldowns = {}
         
+        # Current LCD message tracking: {"message": str, "sender_id": int, "sender_name": str, "timestamp": datetime}
+        self.current_lcd_message = None
+        
+        # Track the last status message ID for updates
+        self.last_status_message_id = None
+        
         self.check_status.start()
 
     # ---------------------------
@@ -362,6 +387,12 @@ class OctoPrintMonitor(commands.Cog):
         embed.add_field(name="Time Elapsed", value=time_elapsed_str, inline=True)
         embed.add_field(name="Nozzle Temp", value=f"{nozzle} °C", inline=True)
         embed.add_field(name="Bed Temp", value=f"{bed} °C", inline=True)
+        
+        # Add current LCD message if available
+        if self.current_lcd_message:
+            lcd_info = f"`{self.current_lcd_message['message']}`\n*Sent by {self.current_lcd_message['sender_name']}*"
+            embed.add_field(name="📺 Current LCD Message", value=lcd_info, inline=False)
+        
         embed.set_footer(text="Automatic OctoPrint Monitor")
 
         snapshot_file = None
@@ -382,14 +413,30 @@ class OctoPrintMonitor(commands.Cog):
     # ---------------------------
     # Send message to channel
     # ---------------------------
-    async def _send_update(self, channel, data, title_prefix="🖨️ OctoPrint Status Update"):
+    async def _send_update(self, channel, data, title_prefix="🖨️ OctoPrint Status Update", update_existing=False):
         embed, snapshot_file = self._format_embed(data, title_prefix=title_prefix)
         view = EStopView(self.bot, cog=self)
         try:
+            # Try to update existing message if requested and available
+            if update_existing and self.last_status_message_id:
+                try:
+                    message = await channel.fetch_message(self.last_status_message_id)
+                    if snapshot_file:
+                        await message.edit(embed=embed, attachments=[snapshot_file], view=view)
+                    else:
+                        await message.edit(embed=embed, attachments=[], view=view)
+                    return True
+                except (discord.NotFound, discord.HTTPException):
+                    # Message not found or can't edit, fall through to send new
+                    self.last_status_message_id = None
+                    pass
+            
+            # Send new message
             if snapshot_file:
-                await channel.send(embed=embed, file=snapshot_file, view=view)
+                sent = await channel.send(embed=embed, file=snapshot_file, view=view)
             else:
-                await channel.send(embed=embed, view=view)
+                sent = await channel.send(embed=embed, view=view)
+            self.last_status_message_id = sent.id
             return True
         except Exception as e:
             print(f"Failed to send update: {e}")
