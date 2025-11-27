@@ -59,14 +59,19 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
         if user_id in self.cog.lcd_cooldowns:
             last_used = self.cog.lcd_cooldowns[user_id]
             time_since = datetime.utcnow() - last_used
-            cooldown_delta = timedelta(hours=self.cog.lcd_cooldown_hours)
+            cooldown_delta = timedelta(minutes=self.cog.lcd_cooldown_minutes)
             if time_since < cooldown_delta:
                 remaining = cooldown_delta - time_since
-                hours = int(remaining.total_seconds() // 3600)
-                minutes = int((remaining.total_seconds() % 3600) // 60)
-                log_button_click(interaction.user, "Send LCD Message", "Cooldown active (modal)", "Denied", f"Message: {message_text}, {hours}h {minutes}m remaining")
+                total_seconds = int(remaining.total_seconds())
+                minutes = total_seconds // 60
+                seconds = total_seconds % 60
+                if minutes > 0:
+                    time_str = f"{minutes}m {seconds}s" if seconds > 0 else f"{minutes}m"
+                else:
+                    time_str = f"{seconds}s"
+                log_button_click(interaction.user, "Send LCD Message", "Cooldown active (modal)", "Denied", f"Message: {message_text}, {time_str} remaining")
                 await interaction.response.send_message(
-                    f"⏰ You can send another message in {hours}h {minutes}m. ({self.cog.lcd_cooldown_hours}hr cooldown per person)",
+                    f"⏰ You can send another message in {time_str}. ({self.cog.lcd_cooldown_minutes}min cooldown per person)",
                     ephemeral=True
                 )
                 return
@@ -90,7 +95,7 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
         if result == "OK":
             log_button_click(interaction.user, "Send LCD Message", "Message sent", "Success", f"Message: {message_text}")
             await interaction.response.send_message(
-                f"✅ Message sent to printer LCD: `{message_text}`\n⏰ Next use available in {self.cog.lcd_cooldown_hours} hours.",
+                f"✅ Message sent to printer LCD: `{message_text}`\n⏰ Next use available in {self.cog.lcd_cooldown_minutes} minutes.",
                 ephemeral=True
             )
         else:
@@ -202,14 +207,19 @@ class EStopView(discord.ui.View):
         if user_id in self.cog.lcd_cooldowns:
             last_used = self.cog.lcd_cooldowns[user_id]
             time_since = datetime.utcnow() - last_used
-            cooldown_delta = timedelta(hours=self.cog.lcd_cooldown_hours)
+            cooldown_delta = timedelta(minutes=self.cog.lcd_cooldown_minutes)
             if time_since < cooldown_delta:
                 remaining = cooldown_delta - time_since
-                hours = int(remaining.total_seconds() // 3600)
-                minutes = int((remaining.total_seconds() % 3600) // 60)
-                log_button_click(interaction.user, "Send LCD Message", "Cooldown active", "Denied", f"{hours}h {minutes}m remaining")
+                total_seconds = int(remaining.total_seconds())
+                minutes = total_seconds // 60
+                seconds = total_seconds % 60
+                if minutes > 0:
+                    time_str = f"{minutes}m {seconds}s" if seconds > 0 else f"{minutes}m"
+                else:
+                    time_str = f"{seconds}s"
+                log_button_click(interaction.user, "Send LCD Message", "Cooldown active", "Denied", f"{time_str} remaining")
                 await interaction.response.send_message(
-                    f"⏰ You can send another message in {hours}h {minutes}m. ({self.cog.lcd_cooldown_hours}hr cooldown per person)",
+                    f"⏰ You can send another message in {time_str}. ({self.cog.lcd_cooldown_minutes}min cooldown per person)",
                     ephemeral=True
                 )
                 return
@@ -237,8 +247,8 @@ class OctoPrintMonitor(commands.Cog):
         self.api_key = os.getenv("OCTOPRINT_API_KEY")
         self.snapshot_url = os.getenv("OCTOPRINT_SNAPSHOT_URL")
         
-        # LCD message cooldown (in hours, default 24)
-        self.lcd_cooldown_hours = int(os.getenv("OCTOPRINT_LCD_COOLDOWN_HOURS", "24"))
+        # LCD message cooldown (in minutes, default 10)
+        self.lcd_cooldown_minutes = int(os.getenv("OCTOPRINT_LCD_COOLDOWN_MINUTES", "10"))
         
         # State tracking e
         self.last_connected = None
