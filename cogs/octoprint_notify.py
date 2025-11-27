@@ -2,10 +2,34 @@ import os
 import discord
 from discord.ext import commands, tasks
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import asyncio
 from io import BytesIO
+
+# ---------------------------
+# Logging setup
+# ---------------------------
+LOGS_DIR = os.path.join(os.path.dirname(__file__), "../logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOGS_DIR, "octoprint_buttons.log")
+
+def log_button_click(user: discord.User, button_name: str, action: str, result: str = "", details: str = ""):
+    """Log button click events to local file."""
+    try:
+        ts = datetime.now(timezone.utc).isoformat()
+        user_info = f"{user} ({user.id})"
+        log_line = f"[{ts}] {user_info} | Button: {button_name} | Action: {action}"
+        if result:
+            log_line += f" | Result: {result}"
+        if details:
+            log_line += f" | Details: {details}"
+        log_line += "\n"
+        
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception as e:
+        print(f"Failed to log button click: {e}")
 
 # ---------------------------
 # Authorized E-STOP users
@@ -29,17 +53,20 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = interaction.user.id
+        message_text = self.message.value.strip()
         
         # Double-check cooldown (in case of race condition)
         if user_id in self.cog.lcd_cooldowns:
             last_used = self.cog.lcd_cooldowns[user_id]
             time_since = datetime.utcnow() - last_used
-            if time_since < timedelta(hours=24):
-                remaining = timedelta(hours=24) - time_since
+            cooldown_delta = timedelta(hours=self.cog.lcd_cooldown_hours)
+            if time_since < cooldown_delta:
+                remaining = cooldown_delta - time_since
                 hours = int(remaining.total_seconds() // 3600)
                 minutes = int((remaining.total_seconds() % 3600) // 60)
+                log_button_click(interaction.user, "Send LCD Message", "Cooldown active (modal)", "Denied", f"Message: {message_text}, {hours}h {minutes}m remaining")
                 await interaction.response.send_message(
-                    f"⏰ You can send another message in {hours}h {minutes}m. (24hr cooldown per person)",
+                    f"⏰ You can send another message in {hours}h {minutes}m. ({self.cog.lcd_cooldown_hours}hr cooldown per person)",
                     ephemeral=True
                 )
                 return
@@ -49,11 +76,11 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
         connected = data.get("connected", False)
         
         if not connected:
+            log_button_click(interaction.user, "Send LCD Message", "Printer offline (modal)", "Failed", f"Message: {message_text}")
             await interaction.response.send_message("Printer went offline. Cannot send message.", ephemeral=True)
             return
         
         # Send M117 G-code command to display message on LCD
-        message_text = self.message.value.strip()
         gcode_command = f"M117 {message_text}"
         result = self.cog._send_gcode(gcode_command)
         
@@ -61,11 +88,13 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
         self.cog.lcd_cooldowns[user_id] = datetime.utcnow()
         
         if result == "OK":
+            log_button_click(interaction.user, "Send LCD Message", "Message sent", "Success", f"Message: {message_text}")
             await interaction.response.send_message(
-                f"✅ Message sent to printer LCD: `{message_text}`\n⏰ Next use available in 24 hours.",
+                f"✅ Message sent to printer LCD: `{message_text}`\n⏰ Next use available in {self.cog.lcd_cooldown_hours} hours.",
                 ephemeral=True
             )
         else:
+            log_button_click(interaction.user, "Send LCD Message", "Send failed", "Error", f"Message: {message_text}, Error: {result}")
             await interaction.response.send_message(
                 f"❌ Failed to send message: {result}",
                 ephemeral=True
@@ -84,12 +113,15 @@ class EStopView(discord.ui.View):
     async def estop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
         if user_id not in ESTOP_ALLOWED:
+            log_button_click(interaction.user, "EMERGENCY STOP", "Unauthorized attempt", "Denied")
             await interaction.response.send_message("You are not authorized to request an E-STOP.", ephemeral=True)
             return
 
         token = str(random.randint(100000, 999999))
         self.bot.active_tokens[user_id] = token
 
+        log_button_click(interaction.user, "EMERGENCY STOP", "Token generated", "Pending confirmation", f"Token: {token}")
+        
         await interaction.response.send_message(
             f"⚠️ Confirmation required: Send the token `{token}` in chat within 60s to execute E-STOP.",
             ephemeral=True
@@ -102,9 +134,11 @@ class EStopView(discord.ui.View):
 
     @discord.ui.button(label="Update Image", style=discord.ButtonStyle.secondary, custom_id="update_image_btn")
     async def update_image_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        log_button_click(interaction.user, "Update Image", "Button clicked")
         await interaction.response.defer()
         
         if not self.cog:
+            log_button_click(interaction.user, "Update Image", "Error", "Cog reference not available")
             await interaction.followup.send("Error: Cog reference not available.", ephemeral=True)
             return
         
@@ -113,6 +147,7 @@ class EStopView(discord.ui.View):
         connected = data.get("connected", False)
         
         if not connected:
+            log_button_click(interaction.user, "Update Image", "Printer offline", "Failed")
             await interaction.followup.send("Printer is offline. Cannot update image.", ephemeral=True)
             return
         
@@ -127,6 +162,7 @@ class EStopView(discord.ui.View):
                     fp.seek(0)
                     snapshot_file = discord.File(fp, filename="snapshot.jpg")
             except Exception as e:
+                log_button_click(interaction.user, "Update Image", "Snapshot fetch failed", "Error", str(e))
                 await interaction.followup.send(f"Failed to fetch snapshot: {e}", ephemeral=True)
                 return
         
@@ -138,19 +174,26 @@ class EStopView(discord.ui.View):
             if embed and snapshot_file:
                 embed.set_image(url="attachment://snapshot.jpg")
                 await message.edit(embed=embed, attachments=[snapshot_file], view=self)
+                log_button_click(interaction.user, "Update Image", "Image updated", "Success")
                 await interaction.followup.send("Image updated!", ephemeral=True)
             elif embed:
                 embed.set_image(url=None)
                 await message.edit(embed=embed, attachments=[], view=self)
+                log_button_click(interaction.user, "Update Image", "Image removed", "Snapshot unavailable")
                 await interaction.followup.send("Image removed (snapshot unavailable).", ephemeral=True)
             else:
+                log_button_click(interaction.user, "Update Image", "No embed found", "Failed")
                 await interaction.followup.send("No embed found to update.", ephemeral=True)
         except Exception as e:
+            log_button_click(interaction.user, "Update Image", "Update failed", "Error", str(e))
             await interaction.followup.send(f"Failed to update message: {e}", ephemeral=True)
 
     @discord.ui.button(label="Send LCD Message", style=discord.ButtonStyle.primary, custom_id="lcd_message_btn")
     async def lcd_message_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        log_button_click(interaction.user, "Send LCD Message", "Button clicked")
+        
         if not self.cog:
+            log_button_click(interaction.user, "Send LCD Message", "Error", "Cog reference not available")
             await interaction.response.send_message("Error: Cog reference not available.", ephemeral=True)
             return
         
@@ -159,12 +202,14 @@ class EStopView(discord.ui.View):
         if user_id in self.cog.lcd_cooldowns:
             last_used = self.cog.lcd_cooldowns[user_id]
             time_since = datetime.utcnow() - last_used
-            if time_since < timedelta(hours=24):
-                remaining = timedelta(hours=24) - time_since
+            cooldown_delta = timedelta(hours=self.cog.lcd_cooldown_hours)
+            if time_since < cooldown_delta:
+                remaining = cooldown_delta - time_since
                 hours = int(remaining.total_seconds() // 3600)
                 minutes = int((remaining.total_seconds() % 3600) // 60)
+                log_button_click(interaction.user, "Send LCD Message", "Cooldown active", "Denied", f"{hours}h {minutes}m remaining")
                 await interaction.response.send_message(
-                    f"⏰ You can send another message in {hours}h {minutes}m. (24hr cooldown per person)",
+                    f"⏰ You can send another message in {hours}h {minutes}m. ({self.cog.lcd_cooldown_hours}hr cooldown per person)",
                     ephemeral=True
                 )
                 return
@@ -174,6 +219,7 @@ class EStopView(discord.ui.View):
         connected = data.get("connected", False)
         
         if not connected:
+            log_button_click(interaction.user, "Send LCD Message", "Printer offline", "Failed")
             await interaction.response.send_message("Printer is offline. Cannot send message.", ephemeral=True)
             return
         
@@ -190,6 +236,9 @@ class OctoPrintMonitor(commands.Cog):
         self.api = os.getenv("OCTOPRINT_URL").rstrip("/")
         self.api_key = os.getenv("OCTOPRINT_API_KEY")
         self.snapshot_url = os.getenv("OCTOPRINT_SNAPSHOT_URL")
+        
+        # LCD message cooldown (in hours, default 24)
+        self.lcd_cooldown_hours = int(os.getenv("OCTOPRINT_LCD_COOLDOWN_HOURS", "24"))
         
         # State tracking e
         self.last_connected = None
@@ -495,6 +544,7 @@ class OctoPrintMonitor(commands.Cog):
                 # Execute E-STOP
                 result = self._send_gcode("M112")
                 self.bot.active_tokens.pop(user_id, None)
+                log_button_click(message.author, "EMERGENCY STOP", "Token confirmed - E-STOP executed", result, f"Token: {token}")
                 channel = message.channel
                 mentions_text = " ".join(f"<@{uid}>" for uid in ESTOP_ALLOWED)
                 embed = discord.Embed(
