@@ -4,18 +4,153 @@ from discord import app_commands
 import os
 import datetime
 import aiosqlite
-from typing import Optional
+import json
+from typing import Optional, Dict, List
+from collections import defaultdict
 
 AFK_LOG_CHANNEL_ID = 1343686645815181382
 AFK_ADMIN_ROLE_IDS = {1329910241835352064}  # Only this role can use afkremove
 AFK_LOG_FILE = os.path.join("logs", "afk.txt")
 AFK_DB_FILE = os.path.join("data", "afk.db")
+AFK_ACTIVITY_FILE = os.path.join("data", "activity_tracking.json")
 AFK_PREFIX = "[AFK] "
 
 class AFK(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.afk_messages = {}  # user_id: (message, timestamp)
+        self.activity_data = {}  # user_id: List[{"status": str, "timestamp": str}]
+        self.load_activity_data()
+
+    def load_activity_data(self):
+        """Load activity tracking data from JSON file."""
+        if os.path.exists(AFK_ACTIVITY_FILE):
+            try:
+                with open(AFK_ACTIVITY_FILE, "r", encoding="utf-8") as f:
+                    self.activity_data = json.load(f)
+            except Exception:
+                self.activity_data = {}
+        else:
+            self.activity_data = {}
+
+    def save_activity_data(self):
+        """Save activity tracking data to JSON file."""
+        try:
+            with open(AFK_ACTIVITY_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.activity_data, f, indent=2)
+        except Exception as e:
+            print(f"Error saving activity data: {e}")
+
+    def record_activity(self, user_id: int, status: str):
+        """Record a user's activity status change."""
+        if user_id not in self.activity_data:
+            self.activity_data[user_id] = []
+        
+        now = datetime.datetime.utcnow()
+        timestamp = now.isoformat()
+        
+        # Throttle: don't record if last event was less than 1 minute ago with same status
+        if self.activity_data[user_id]:
+            last_entry = self.activity_data[user_id][-1]
+            if last_entry["status"] == status:
+                try:
+                    last_time = datetime.datetime.fromisoformat(last_entry["timestamp"])
+                    if (now - last_time).total_seconds() < 60:
+                        return  # Too soon, skip
+                except Exception:
+                    pass
+        
+        self.activity_data[user_id].append({
+            "status": status,
+            "timestamp": timestamp
+        })
+        
+        # Keep only last 30 days of data to prevent file from growing too large
+        cutoff = (now - datetime.timedelta(days=30)).isoformat()
+        self.activity_data[user_id] = [
+            entry for entry in self.activity_data[user_id]
+            if entry["timestamp"] >= cutoff
+        ]
+        
+        self.save_activity_data()
+
+    def get_usually_active_time(self, user_id: int) -> Optional[str]:
+        """Calculate and return the usually active time frame for a user."""
+        if user_id not in self.activity_data or not self.activity_data[user_id]:
+            return None
+        
+        # Count activity by hour (UTC)
+        hour_counts = defaultdict(int)
+        online_entries = [e for e in self.activity_data[user_id] if e["status"] == "online"]
+        
+        if len(online_entries) < 5:  # Need at least 5 data points
+            return None
+        
+        for entry in online_entries:
+            try:
+                dt = datetime.datetime.fromisoformat(entry["timestamp"])
+                hour = dt.hour
+                hour_counts[hour] += 1
+            except Exception:
+                continue
+        
+        if not hour_counts:
+            return None
+        
+        # Find the most active hours
+        sorted_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)
+        if not sorted_hours:
+            return None
+        
+        # Get hours that are at least 50% as active as the most active hour
+        max_count = sorted_hours[0][1]
+        threshold = max(1, max_count * 0.5)
+        active_hours = [h for h, count in sorted_hours if count >= threshold]
+        
+        if not active_hours:
+            return None
+        
+        # Find the continuous range
+        active_hours.sort()
+        if len(active_hours) == 1:
+            start_hour = active_hours[0]
+            end_hour = active_hours[0]
+        else:
+            # Find the longest continuous range
+            start_hour = active_hours[0]
+            end_hour = active_hours[0]
+            current_start = active_hours[0]
+            current_end = active_hours[0]
+            
+            for i in range(1, len(active_hours)):
+                if active_hours[i] == current_end + 1:
+                    current_end = active_hours[i]
+                else:
+                    if current_end - current_start > end_hour - start_hour:
+                        start_hour = current_start
+                        end_hour = current_end
+                    current_start = active_hours[i]
+                    current_end = active_hours[i]
+            
+            if current_end - current_start > end_hour - start_hour:
+                start_hour = current_start
+                end_hour = current_end
+        
+        # Format as short time (e.g., "2:00 PM - 8:00 PM")
+        def format_hour(hour):
+            if hour == 0:
+                return "12:00 AM"
+            elif hour < 12:
+                return f"{hour}:00 AM"
+            elif hour == 12:
+                return "12:00 PM"
+            else:
+                return f"{hour - 12}:00 PM"
+        
+        if start_hour == end_hour:
+            return format_hour(start_hour)
+        else:
+            return f"{format_hour(start_hour)} - {format_hour(end_hour)}"
 
     async def cog_load(self):
         os.makedirs("data", exist_ok=True)
@@ -102,6 +237,10 @@ class AFK(commands.Cog):
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
+        # Add usually active time if available
+        usually_active = self.get_usually_active_time(ctx.author.id)
+        if usually_active:
+            embed.add_field(name="Usually Active", value=usually_active, inline=False)
         embed.set_footer(text="Use !afkremove or send a message to remove AFK.")
         await ctx.send(embed=embed)
         self.log_afk_action("Set", ctx.author)
@@ -119,6 +258,10 @@ class AFK(commands.Cog):
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
+        # Add usually active time if available
+        usually_active = self.get_usually_active_time(interaction.user.id)
+        if usually_active:
+            embed.add_field(name="Usually Active", value=usually_active, inline=False)
         embed.set_footer(text="Use /afkremove or send a message to remove AFK.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         self.log_afk_action("Set", interaction.user)
@@ -167,10 +310,75 @@ class AFK(commands.Cog):
         else:
             await interaction.response.send_message(f"{member.mention} is not AFK.", ephemeral=True)
 
+    @app_commands.command(name="usuallyactive", description="Check when a user is usually active online.")
+    @app_commands.describe(member="The member to check (defaults to yourself)")
+    async def usually_active_slash(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
+        """Show when a user is usually active online."""
+        target = member or interaction.user
+        usually_active = self.get_usually_active_time(target.id)
+        
+        embed = discord.Embed(
+            title="🕐 Usually Active",
+            color=discord.Color.blurple()
+        )
+        embed.set_author(name=str(target), icon_url=target.display_avatar.url)
+        
+        if usually_active:
+            embed.description = f"**Usually Active:** {usually_active}"
+            embed.set_footer(text="Based on recent activity data (UTC time)")
+        else:
+            embed.description = "Not enough activity data available yet.\n\nActivity tracking requires at least 5 online events to calculate usually active times."
+            embed.set_footer(text="Activity is tracked automatically when you come online")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_presence_update(self, before: discord.Member, after: discord.Member):
+        """Track when users come online or go offline."""
+        if after.bot:
+            return
+        
+        # Only track if status actually changed
+        if before.status == after.status:
+            return
+        
+        # Track online status
+        if after.status == discord.Status.online:
+            self.record_activity(after.id, "online")
+        elif after.status in (discord.Status.offline, discord.Status.invisible):
+            # Only record offline if they were previously online (not idle/dnd)
+            if before.status == discord.Status.online:
+                self.record_activity(after.id, "offline")
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
             return
+
+        # Track activity when user sends a message (they're online)
+        # Only track once per hour to avoid spam
+        if message.author.status == discord.Status.online:
+            user_id = message.author.id
+            if user_id in self.activity_data:
+                # Check if we already recorded activity in the last hour
+                now = datetime.datetime.utcnow()
+                recent_entries = [
+                    e for e in self.activity_data[user_id][-10:]  # Check last 10 entries
+                    if e["status"] == "online"
+                ]
+                if recent_entries:
+                    try:
+                        last_online = datetime.datetime.fromisoformat(recent_entries[-1]["timestamp"])
+                        if (now - last_online).total_seconds() < 3600:  # Less than 1 hour
+                            pass  # Skip, already recorded recently
+                        else:
+                            self.record_activity(user_id, "online")
+                    except Exception:
+                        self.record_activity(user_id, "online")
+                else:
+                    self.record_activity(user_id, "online")
+            else:
+                self.record_activity(user_id, "online")
 
         # If someone is mentioned and is AFK, respond with their AFK message (no pings)
         mentioned_ids = {user.id for user in message.mentions if not user.bot}
@@ -182,6 +390,10 @@ class AFK(commands.Cog):
                     description=f"**That user is currently AFK:**\n> {afk_text}",
                     color=discord.Color.blurple()
                 )
+                # Add usually active time if available
+                usually_active = self.get_usually_active_time(user_id)
+                if usually_active:
+                    embed.add_field(name="Usually Active", value=usually_active, inline=False)
                 embed.set_footer(text="They will see your message when they return.")
                 await message.channel.send(embed=embed)
 
@@ -194,6 +406,10 @@ class AFK(commands.Cog):
                 color=discord.Color.green()
             )
             embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
+            # Add usually active time if available
+            usually_active = self.get_usually_active_time(message.author.id)
+            if usually_active:
+                embed.add_field(name="Usually Active", value=usually_active, inline=False)
             await message.channel.send(embed=embed)
             self.log_afk_action("Removed (Self)", message.author)
             if message.guild:
