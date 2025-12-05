@@ -27,8 +27,11 @@ class AFK(commands.Cog):
         if os.path.exists(AFK_ACTIVITY_FILE):
             try:
                 with open(AFK_ACTIVITY_FILE, "r", encoding="utf-8") as f:
-                    self.activity_data = json.load(f)
-            except Exception:
+                    data = json.load(f)
+                    # Convert string keys to int keys
+                    self.activity_data = {int(k): v for k, v in data.items()}
+            except Exception as e:
+                print(f"Error loading activity data: {e}")
                 self.activity_data = {}
         else:
             self.activity_data = {}
@@ -76,81 +79,91 @@ class AFK(commands.Cog):
 
     def get_usually_active_time(self, user_id: int) -> Optional[str]:
         """Calculate and return the usually active time frame for a user."""
-        if user_id not in self.activity_data or not self.activity_data[user_id]:
-            return None
-        
-        # Count activity by hour (UTC)
-        hour_counts = defaultdict(int)
-        online_entries = [e for e in self.activity_data[user_id] if e["status"] == "online"]
-        
-        if len(online_entries) < 5:  # Need at least 5 data points
-            return None
-        
-        for entry in online_entries:
-            try:
-                dt = datetime.datetime.fromisoformat(entry["timestamp"])
-                hour = dt.hour
-                hour_counts[hour] += 1
-            except Exception:
-                continue
-        
-        if not hour_counts:
-            return None
-        
-        # Find the most active hours
-        sorted_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)
-        if not sorted_hours:
-            return None
-        
-        # Get hours that are at least 50% as active as the most active hour
-        max_count = sorted_hours[0][1]
-        threshold = max(1, max_count * 0.5)
-        active_hours = [h for h, count in sorted_hours if count >= threshold]
-        
-        if not active_hours:
-            return None
-        
-        # Find the continuous range
-        active_hours.sort()
-        if len(active_hours) == 1:
-            start_hour = active_hours[0]
-            end_hour = active_hours[0]
-        else:
-            # Find the longest continuous range
-            start_hour = active_hours[0]
-            end_hour = active_hours[0]
-            current_start = active_hours[0]
-            current_end = active_hours[0]
+        try:
+            # Ensure user_id is an int
+            user_id = int(user_id)
             
-            for i in range(1, len(active_hours)):
-                if active_hours[i] == current_end + 1:
-                    current_end = active_hours[i]
-                else:
-                    if current_end - current_start > end_hour - start_hour:
-                        start_hour = current_start
-                        end_hour = current_end
-                    current_start = active_hours[i]
-                    current_end = active_hours[i]
+            if user_id not in self.activity_data or not self.activity_data[user_id]:
+                return None
             
-            if current_end - current_start > end_hour - start_hour:
-                start_hour = current_start
-                end_hour = current_end
-        
-        # Format as short time (e.g., "2:00 PM - 8:00 PM")
-        def format_hour(hour):
-            if hour == 0:
-                return "12:00 AM"
-            elif hour < 12:
-                return f"{hour}:00 AM"
-            elif hour == 12:
-                return "12:00 PM"
+            # Count activity by hour (UTC)
+            hour_counts = defaultdict(int)
+            online_entries = [e for e in self.activity_data[user_id] if e.get("status") == "online"]
+            
+            if len(online_entries) < 5:  # Need at least 5 data points
+                return None
+            
+            for entry in online_entries:
+                try:
+                    timestamp_str = entry.get("timestamp")
+                    if not timestamp_str:
+                        continue
+                    dt = datetime.datetime.fromisoformat(timestamp_str)
+                    hour = dt.hour
+                    hour_counts[hour] += 1
+                except Exception:
+                    continue
+            
+            if not hour_counts:
+                return None
+            
+            # Find the most active hours
+            sorted_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)
+            if not sorted_hours:
+                return None
+            
+            # Get hours that are at least 50% as active as the most active hour
+            max_count = sorted_hours[0][1]
+            threshold = max(1, max_count * 0.5)
+            active_hours = [h for h, count in sorted_hours if count >= threshold]
+            
+            if not active_hours:
+                return None
+            
+            # Find the continuous range
+            active_hours.sort()
+            if len(active_hours) == 1:
+                start_hour = active_hours[0]
+                end_hour = active_hours[0]
             else:
-                return f"{hour - 12}:00 PM"
-        
-        if start_hour == end_hour:
-            return format_hour(start_hour)
-        else:
-            return f"{format_hour(start_hour)} - {format_hour(end_hour)}"
+                # Find the longest continuous range
+                start_hour = active_hours[0]
+                end_hour = active_hours[0]
+                current_start = active_hours[0]
+                current_end = active_hours[0]
+                
+                for i in range(1, len(active_hours)):
+                    if active_hours[i] == current_end + 1:
+                        current_end = active_hours[i]
+                    else:
+                        if current_end - current_start > end_hour - start_hour:
+                            start_hour = current_start
+                            end_hour = current_end
+                        current_start = active_hours[i]
+                        current_end = active_hours[i]
+                
+                if current_end - current_start > end_hour - start_hour:
+                    start_hour = current_start
+                    end_hour = current_end
+            
+            # Format as short time (e.g., "2:00 PM - 8:00 PM")
+            def format_hour(hour):
+                if hour == 0:
+                    return "12:00 AM"
+                elif hour < 12:
+                    return f"{hour}:00 AM"
+                elif hour == 12:
+                    return "12:00 PM"
+                else:
+                    return f"{hour - 12}:00 PM"
+            
+            if start_hour == end_hour:
+                return format_hour(start_hour)
+            else:
+                return f"{format_hour(start_hour)} - {format_hour(end_hour)}"
+        except Exception as e:
+            print(f"Error in get_usually_active_time for user {user_id}: {e}")
+            return None
 
     async def cog_load(self):
         os.makedirs("data", exist_ok=True)
@@ -391,9 +404,13 @@ class AFK(commands.Cog):
                     color=discord.Color.blurple()
                 )
                 # Add usually active time if available
-                usually_active = self.get_usually_active_time(user_id)
-                if usually_active:
-                    embed.add_field(name="Usually Active", value=usually_active, inline=False)
+                try:
+                    usually_active = self.get_usually_active_time(user_id)
+                    if usually_active:
+                        embed.add_field(name="Usually Active", value=usually_active, inline=False)
+                except Exception as e:
+                    # Silently fail if there's an error calculating usually active time
+                    print(f"Error getting usually active time for user {user_id}: {e}")
                 embed.set_footer(text="They will see your message when they return.")
                 await message.channel.send(embed=embed)
 
@@ -407,9 +424,12 @@ class AFK(commands.Cog):
             )
             embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
             # Add usually active time if available
-            usually_active = self.get_usually_active_time(message.author.id)
-            if usually_active:
-                embed.add_field(name="Usually Active", value=usually_active, inline=False)
+            try:
+                usually_active = self.get_usually_active_time(message.author.id)
+                if usually_active:
+                    embed.add_field(name="Usually Active", value=usually_active, inline=False)
+            except Exception as e:
+                print(f"Error getting usually active time for user {message.author.id}: {e}")
             await message.channel.send(embed=embed)
             self.log_afk_action("Removed (Self)", message.author)
             if message.guild:

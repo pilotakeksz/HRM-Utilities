@@ -5,10 +5,18 @@ from discord import app_commands
 import time
 from io import BytesIO
 import asyncio
+import os
+import json
+from datetime import datetime, timezone
+from typing import Optional
 try:
     from PIL import Image
 except Exception:
     Image = None
+try:
+    import pytz
+except ImportError:
+    pytz = None
 
 import aiohttp
 import zipfile
@@ -19,6 +27,147 @@ import re
 
 # Set this to a specific user ID if you want to allow a particular user, or set to None to disable
 ALLOWED_TUNA_USER_ID = 840949634071658507 #tuna id yes
+
+TIMEZONE_DATA_FILE = os.path.join("data", "timezones.json")
+
+def ensure_data_dir():
+    os.makedirs("data", exist_ok=True)
+
+def load_timezones():
+    """Load timezone data from JSON file."""
+    ensure_data_dir()
+    if os.path.exists(TIMEZONE_DATA_FILE):
+        try:
+            with open(TIMEZONE_DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_timezones(data):
+    """Save timezone data to JSON file."""
+    ensure_data_dir()
+    try:
+        with open(TIMEZONE_DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Error saving timezones: {e}")
+
+def parse_timezone_input(input_str: str) -> Optional[str]:
+    """Parse timezone input from various formats.
+    Returns timezone string (e.g., 'America/New_York') or None if invalid.
+    """
+    if not pytz:
+        return None
+    
+    input_str = input_str.strip()
+    
+    # Try direct timezone name first (e.g., "America/New_York", "Europe/London")
+    try:
+        tz = pytz.timezone(input_str)
+        return input_str
+    except Exception:
+        pass
+    
+    # Try common abbreviations
+    abbrev_map = {
+        "EST": "America/New_York",
+        "EDT": "America/New_York",
+        "CST": "America/Chicago",
+        "CDT": "America/Chicago",
+        "MST": "America/Denver",
+        "MDT": "America/Denver",
+        "PST": "America/Los_Angeles",
+        "PDT": "America/Los_Angeles",
+        "GMT": "Europe/London",
+        "UTC": "UTC",
+        "BST": "Europe/London",
+        "CET": "Europe/Paris",
+        "CEST": "Europe/Paris",
+        "JST": "Asia/Tokyo",
+        "AEST": "Australia/Sydney",
+        "AEDT": "Australia/Sydney",
+    }
+    
+    upper_input = input_str.upper()
+    if upper_input in abbrev_map:
+        return abbrev_map[upper_input]
+    
+    # Try searching by country/region name
+    # Common mappings
+    region_map = {
+        "new york": "America/New_York",
+        "los angeles": "America/Los_Angeles",
+        "chicago": "America/Chicago",
+        "denver": "America/Denver",
+        "london": "Europe/London",
+        "paris": "Europe/Paris",
+        "tokyo": "Asia/Tokyo",
+        "sydney": "Australia/Sydney",
+        "toronto": "America/Toronto",
+        "vancouver": "America/Vancouver",
+        "mexico city": "America/Mexico_City",
+        "sao paulo": "America/Sao_Paulo",
+        "berlin": "Europe/Berlin",
+        "madrid": "Europe/Madrid",
+        "rome": "Europe/Rome",
+        "moscow": "Europe/Moscow",
+        "dubai": "Asia/Dubai",
+        "singapore": "Asia/Singapore",
+        "hong kong": "Asia/Hong_Kong",
+        "beijing": "Asia/Shanghai",
+        "shanghai": "Asia/Shanghai",
+    }
+    
+    lower_input = input_str.lower()
+    if lower_input in region_map:
+        return region_map[lower_input]
+    
+    # Try fuzzy search in pytz timezones
+    all_timezones = pytz.all_timezones
+    lower_input = input_str.lower()
+    for tz_name in all_timezones:
+        if lower_input in tz_name.lower() or tz_name.lower().endswith(f"/{lower_input}"):
+            return tz_name
+    
+    return None
+
+def get_user_timezone(user_id: int) -> Optional[str]:
+    """Get user's timezone string."""
+    data = load_timezones()
+    return data.get(str(user_id))
+
+def set_user_timezone(user_id: int, tz_string: str):
+    """Set user's timezone."""
+    data = load_timezones()
+    data[str(user_id)] = tz_string
+    save_timezones(data)
+
+def format_timezone_info(tz_string: str) -> str:
+    """Format timezone information for display."""
+    if not pytz:
+        return tz_string
+    
+    try:
+        tz = pytz.timezone(tz_string)
+        now = datetime.now(tz)
+        offset = now.utcoffset()
+        offset_hours = offset.total_seconds() / 3600
+        
+        # Format offset
+        if offset_hours >= 0:
+            offset_str = f"+{int(offset_hours)}"
+        else:
+            offset_str = str(int(offset_hours))
+        
+        # Get abbreviation if available
+        abbrev = now.strftime("%Z") or ""
+        if abbrev:
+            abbrev = f" ({abbrev})"
+        
+        return f"{tz_string}{abbrev} — UTC{offset_str}"
+    except Exception:
+        return tz_string
 
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -56,6 +205,116 @@ class MiscCog(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="timezone", description="View or set your timezone.")
+    @app_commands.describe(
+        member="Member to view timezone for (optional)",
+        timezone_input="Timezone to set (country, region, abbreviation, or current time)"
+    )
+    async def timezone(self, interaction: discord.Interaction, member: Optional[discord.Member] = None, timezone_input: Optional[str] = None):
+        """View or set timezone."""
+        if not pytz:
+            await interaction.response.send_message("❌ pytz library is not installed. Please install it with `pip install pytz`.", ephemeral=True)
+            return
+        
+        # If timezone_input is provided, set timezone
+        if timezone_input:
+            tz_string = parse_timezone_input(timezone_input)
+            if not tz_string:
+                await interaction.response.send_message(
+                    f"❌ Could not parse timezone: `{timezone_input}`\n\n"
+                    "Try using:\n"
+                    "• Full timezone name (e.g., `America/New_York`, `Europe/London`)\n"
+                    "• Abbreviation (e.g., `EST`, `PST`, `GMT`)\n"
+                    "• City name (e.g., `New York`, `London`, `Tokyo`)",
+                    ephemeral=True
+                )
+                return
+            
+            set_user_timezone(interaction.user.id, tz_string)
+            embed = discord.Embed(
+                title="✅ Timezone Set",
+                description=f"Your timezone has been set to:\n**{format_timezone_info(tz_string)}**",
+                color=discord.Color.green()
+            )
+            if pytz:
+                try:
+                    tz = pytz.timezone(tz_string)
+                    now = datetime.now(tz)
+                    embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+                except Exception:
+                    pass
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Otherwise, view timezone
+        target_user = member or interaction.user
+        tz_string = get_user_timezone(target_user.id)
+        
+        embed = discord.Embed(
+            title="🕐 Timezone",
+            color=discord.Color.blue()
+        )
+        embed.set_author(name=str(target_user), icon_url=target_user.display_avatar.url)
+        
+        if tz_string:
+            embed.description = f"**Timezone:** {format_timezone_info(tz_string)}"
+            if pytz:
+                try:
+                    tz = pytz.timezone(tz_string)
+                    now = datetime.now(tz)
+                    embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+                    embed.add_field(name="UTC Offset", value=f"UTC{now.strftime('%z')}", inline=True)
+                except Exception:
+                    pass
+        else:
+            embed.description = "No timezone set."
+            embed.add_field(
+                name="How to set",
+                value="Use `/timezone timezone_input:<your_timezone>`\n\n"
+                      "Examples:\n"
+                      "• `/timezone timezone_input:America/New_York`\n"
+                      "• `/timezone timezone_input:EST`\n"
+                      "• `/timezone timezone_input:London`",
+                inline=False
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="timezone_set", description="Set your timezone.")
+    @app_commands.describe(timezone_input="Timezone (country, region, abbreviation, or current time)")
+    async def timezone_set(self, interaction: discord.Interaction, timezone_input: str):
+        """Set your timezone."""
+        if not pytz:
+            await interaction.response.send_message("❌ pytz library is not installed. Please install it with `pip install pytz`.", ephemeral=True)
+            return
+        
+        tz_string = parse_timezone_input(timezone_input)
+        if not tz_string:
+            await interaction.response.send_message(
+                f"❌ Could not parse timezone: `{timezone_input}`\n\n"
+                "Try using:\n"
+                "• Full timezone name (e.g., `America/New_York`, `Europe/London`)\n"
+                "• Abbreviation (e.g., `EST`, `PST`, `GMT`)\n"
+                "• City name (e.g., `New York`, `London`, `Tokyo`)",
+                ephemeral=True
+            )
+            return
+        
+        set_user_timezone(interaction.user.id, tz_string)
+        embed = discord.Embed(
+            title="✅ Timezone Set",
+            description=f"Your timezone has been set to:\n**{format_timezone_info(tz_string)}**",
+            color=discord.Color.green()
+        )
+        if pytz:
+            try:
+                tz = pytz.timezone(tz_string)
+                now = datetime.now(tz)
+                embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+            except Exception:
+                pass
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @commands.command(name="ping")
     async def ping_prefix(self, ctx):
         """Simple ping command to check bot responsiveness."""
@@ -65,6 +324,79 @@ class MiscCog(commands.Cog):
             description=f"Latency: {latency}ms",
             color=discord.Color.green()
         )
+        await ctx.send(embed=embed)
+
+    @commands.group(name="tz", invoke_without_command=True)
+    async def tz(self, ctx, member: Optional[discord.Member] = None):
+        """View timezone for yourself or another user."""
+        if not pytz:
+            await ctx.send("❌ pytz library is not installed. Please install it with `pip install pytz`.")
+            return
+        
+        target_user = member or ctx.author
+        tz_string = get_user_timezone(target_user.id)
+        
+        embed = discord.Embed(
+            title="🕐 Timezone",
+            color=discord.Color.blue()
+        )
+        embed.set_author(name=str(target_user), icon_url=target_user.display_avatar.url)
+        
+        if tz_string:
+            embed.description = f"**Timezone:** {format_timezone_info(tz_string)}"
+            if pytz:
+                try:
+                    tz = pytz.timezone(tz_string)
+                    now = datetime.now(tz)
+                    embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+                    embed.add_field(name="UTC Offset", value=f"UTC{now.strftime('%z')}", inline=True)
+                except Exception:
+                    pass
+        else:
+            embed.description = "No timezone set."
+            embed.add_field(
+                name="How to set",
+                value="Use `!tz set <timezone>` or `/timezone_set`\n\n"
+                      "Examples:\n"
+                      "• `!tz set America/New_York`\n"
+                      "• `!tz set EST`\n"
+                      "• `!tz set London`",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+
+    @tz.command(name="set")
+    async def tz_set(self, ctx, *, timezone_input: str):
+        """Set your timezone."""
+        if not pytz:
+            await ctx.send("❌ pytz library is not installed. Please install it with `pip install pytz`.")
+            return
+        
+        tz_string = parse_timezone_input(timezone_input)
+        if not tz_string:
+            await ctx.send(
+                f"❌ Could not parse timezone: `{timezone_input}`\n\n"
+                "Try using:\n"
+                "• Full timezone name (e.g., `America/New_York`, `Europe/London`)\n"
+                "• Abbreviation (e.g., `EST`, `PST`, `GMT`)\n"
+                "• City name (e.g., `New York`, `London`, `Tokyo`)"
+            )
+            return
+        
+        set_user_timezone(ctx.author.id, tz_string)
+        embed = discord.Embed(
+            title="✅ Timezone Set",
+            description=f"Your timezone has been set to:\n**{format_timezone_info(tz_string)}**",
+            color=discord.Color.green()
+        )
+        if pytz:
+            try:
+                tz = pytz.timezone(tz_string)
+                now = datetime.now(tz)
+                embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+            except Exception:
+                pass
         await ctx.send(embed=embed)
 
     @commands.command(name="uptime")
