@@ -2176,9 +2176,9 @@ class ShiftCog(commands.Cog):
     @app_commands.describe(personnel="The personnel to excuse")
     async def shift_excuse(self, interaction: discord.Interaction, personnel: discord.Member):
         """Excuse a personnel for one shift wave. Only valid until shifts reset."""
-        # Check if user is the specific admin
-        ALLOWED_ADMIN_ID = 1355842403134603275
-        if interaction.user.id != ALLOWED_ADMIN_ID:
+        # Check if user has the admin role
+        ALLOWED_ADMIN_ROLE_ID = 1355842403134603275
+        if not any(r.id == ALLOWED_ADMIN_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
         
@@ -2237,9 +2237,9 @@ class ShiftCog(commands.Cog):
     @app_commands.describe(personnel="The personnel to revoke excuse from")
     async def shift_excuse_revoke(self, interaction: discord.Interaction, personnel: discord.Member):
         """Revoke a shift excuse for a personnel."""
-        # Check if user is the specific admin
-        ALLOWED_ADMIN_ID = 1355842403134603275
-        if interaction.user.id != ALLOWED_ADMIN_ID:
+        # Check if user has the admin role
+        ALLOWED_ADMIN_ROLE_ID = 1355842403134603275
+        if not any(r.id == ALLOWED_ADMIN_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
         
