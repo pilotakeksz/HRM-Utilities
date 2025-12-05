@@ -155,6 +155,8 @@ class Store:
             self.meta["cooldown_extensions"] = {}  # {user_id: extension_seconds}
         if "admin_cooldowns" not in self.meta:
             self.meta["admin_cooldowns"] = {}  # {user_id: admin_specified_days}
+        if "excuses" not in self.meta:
+            self.meta["excuses"] = {}  # {user_id: reset_ts} - excuses tied to shift wave
 
     def save(self):
         with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -296,6 +298,33 @@ class Store:
             self.meta["infractions"][str(user_id)] = {"demotions": 0, "strikes": 0, "warns": 0}
         self.meta["infractions"][str(user_id)][infraction_type] += 1
         self.save()
+
+    def is_excused(self, user_id: int) -> bool:
+        """Check if a user is excused for the current shift wave."""
+        current_reset_ts = self.meta.get("last_reset_ts", ts_to_int(utcnow()))
+        excuse_reset_ts = self.meta.get("excuses", {}).get(str(user_id))
+        if excuse_reset_ts is None:
+            return False
+        # Excuse is valid only if it's for the current shift wave
+        return excuse_reset_ts == current_reset_ts
+
+    def add_excuse(self, user_id: int):
+        """Add an excuse for a user for the current shift wave."""
+        current_reset_ts = self.meta.get("last_reset_ts", ts_to_int(utcnow()))
+        if "excuses" not in self.meta:
+            self.meta["excuses"] = {}
+        self.meta["excuses"][str(user_id)] = current_reset_ts
+        self.save()
+
+    def remove_excuse(self, user_id: int) -> bool:
+        """Remove an excuse for a user. Returns True if excuse was removed, False if none existed."""
+        if "excuses" not in self.meta:
+            self.meta["excuses"] = {}
+        if str(user_id) in self.meta["excuses"]:
+            del self.meta["excuses"][str(user_id)]
+            self.save()
+            return True
+        return False
 
 
 # -------------------- UI VIEWS --------------------
@@ -1502,6 +1531,10 @@ class ShiftCog(commands.Cog):
             if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
                 continue  # Exempt from infractions above 15 minutes
             
+            # Check if excused for this shift wave
+            if self.store.is_excused(member.id):
+                continue  # Excused from infractions for this shift wave
+            
             # Infractions
             if total_seconds < quota_minutes * 60:
                 minutes_short = quota_minutes - (total_seconds / 60)
@@ -2137,6 +2170,119 @@ class ShiftCog(commands.Cog):
                     embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # --------------- SHIFT EXCUSE COMMANDS ---------------
+    @app_commands.command(name="shift_excuse", description="Excuse a personnel for one shift wave (admin only).")
+    @app_commands.describe(personnel="The personnel to excuse")
+    async def shift_excuse(self, interaction: discord.Interaction, personnel: discord.Member):
+        """Excuse a personnel for one shift wave. Only valid until shifts reset."""
+        # Check if user is the specific admin
+        ALLOWED_ADMIN_ID = 1355842403134603275
+        if interaction.user.id != ALLOWED_ADMIN_ID:
+            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+            return
+        
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        # Check if personnel has the manage role
+        manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+        if not manage_role or manage_role not in personnel.roles:
+            await interaction.response.send_message(f"{personnel.mention} does not have the personnel role.", ephemeral=True)
+            return
+        
+        # Check if already excused for this wave
+        if self.store.is_excused(personnel.id):
+            current_reset_ts = self.store.meta.get("last_reset_ts", ts_to_int(utcnow()))
+            await interaction.response.send_message(
+                embed=self.embed_warn(
+                    f"{personnel.mention} is already excused for this shift wave.\n"
+                    f"Excuse will expire when shifts reset (last reset: <t:{current_reset_ts}:F>)."
+                ),
+                ephemeral=True
+            )
+            return
+        
+        # Add excuse
+        self.store.add_excuse(personnel.id)
+        current_reset_ts = self.store.meta.get("last_reset_ts", ts_to_int(utcnow()))
+        
+        await self.log_event(
+            guild,
+            f"✅ Admin {interaction.user.mention} excused {personnel.mention} for shift wave (reset: <t:{current_reset_ts}:F>)."
+        )
+        
+        embed = self.base_embed("Shift Excuse Added", colour_ok())
+        embed.description = f"{personnel.mention} has been excused for this shift wave."
+        embed.add_field(name="Valid Until", value="Next shift reset", inline=False)
+        embed.add_field(name="Last Reset", value=f"<t:{current_reset_ts}:F>", inline=True)
+        embed.set_footer(text="This excuse will expire when shifts reset.")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        # DM the personnel
+        try:
+            dm_embed = self.base_embed("Shift Excuse", colour_ok())
+            dm_embed.description = "You have been excused for this shift wave."
+            dm_embed.add_field(name="Valid Until", value="Next shift reset", inline=False)
+            dm_embed.add_field(name="Last Reset", value=f"<t:{current_reset_ts}:F>", inline=True)
+            dm_embed.set_footer(text="This excuse will expire when shifts reset.")
+            await personnel.send(embed=dm_embed)
+        except Exception:
+            pass
+
+    @app_commands.command(name="shift_excuse_revoke", description="Revoke a shift excuse (admin only).")
+    @app_commands.describe(personnel="The personnel to revoke excuse from")
+    async def shift_excuse_revoke(self, interaction: discord.Interaction, personnel: discord.Member):
+        """Revoke a shift excuse for a personnel."""
+        # Check if user is the specific admin
+        ALLOWED_ADMIN_ID = 1355842403134603275
+        if interaction.user.id != ALLOWED_ADMIN_ID:
+            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+            return
+        
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        # Check if personnel has an excuse
+        if not self.store.is_excused(personnel.id):
+            await interaction.response.send_message(
+                embed=self.embed_warn(f"{personnel.mention} does not have an active excuse for this shift wave."),
+                ephemeral=True
+            )
+            return
+        
+        # Remove excuse
+        removed = self.store.remove_excuse(personnel.id)
+        
+        if removed:
+            await self.log_event(
+                guild,
+                f"❌ Admin {interaction.user.mention} revoked shift excuse for {personnel.mention}."
+            )
+            
+            embed = self.base_embed("Shift Excuse Revoked", colour_warn())
+            embed.description = f"Shift excuse has been revoked for {personnel.mention}."
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            # DM the personnel
+            try:
+                dm_embed = self.base_embed("Shift Excuse Revoked", colour_warn())
+                dm_embed.description = "Your shift excuse has been revoked."
+                dm_embed.set_footer(text="You are no longer excused for this shift wave.")
+                await personnel.send(embed=dm_embed)
+            except Exception:
+                pass
+        else:
+            await interaction.response.send_message(
+                embed=self.embed_err("Failed to revoke excuse."),
+                ephemeral=True
+            )
 
     # --------------- LEADERBOARD (PING USERS) ---------------
     # already mentions users via <@igitd> in lines eee
