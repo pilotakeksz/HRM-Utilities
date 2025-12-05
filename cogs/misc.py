@@ -1203,5 +1203,157 @@ class MiscCog(commands.Cog):
         
         await ctx.send(embed=embed)
 
+    @tuna.command(name="timestamp_short")
+    @commands.has_guild_permissions(administrator=True)
+    async def tuna_timestamp_short(self, ctx, *, datetime_input: str):
+        """Create a Discord timestamp with short time format. (admins only)
+        Usage: !tuna timestamp_short <date/time>
+        
+        Creates a short time format (9:41 AM) timestamp.
+        
+        Examples:
+        - !tuna timestamp_short 2024-12-25 15:30
+        - !tuna timestamp_short Dec 25 2024 3:30 PM
+        - !tuna timestamp_short tomorrow 3pm
+        - !tuna timestamp_short in 2 hours
+        """
+        # Parse format - always use 't' for short time
+        format_char = 't'
+        datetime_str = datetime_input.strip()
+        
+        # Try to parse the datetime
+        parsed_dt = None
+        
+        # Try common formats
+        formats_to_try = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y/%m/%d %H:%M",
+            "%m/%d/%Y %H:%M:%S",
+            "%m/%d/%Y %H:%M",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+            "%B %d, %Y %H:%M:%S",
+            "%B %d, %Y %H:%M",
+            "%b %d, %Y %H:%M:%S",
+            "%b %d, %Y %H:%M",
+            "%d %B %Y %H:%M:%S",
+            "%d %B %Y %H:%M",
+            "%d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M",
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+        ]
+        
+        for fmt in formats_to_try:
+            try:
+                parsed_dt = datetime.strptime(datetime_str, fmt)
+                # Assume local timezone if not specified
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                break
+            except ValueError:
+                continue
+        
+        # Try relative time parsing (e.g., "tomorrow", "in 2 hours", "next week")
+        if parsed_dt is None:
+            now = datetime.now(timezone.utc)
+            lower_input = datetime_str.lower()
+            
+            # Handle "tomorrow", "today", etc.
+            if "tomorrow" in lower_input:
+                parsed_dt = now + timedelta(days=1)
+                # Try to extract time
+                time_match = re.search(r'(\d{1,2})\s*(am|pm|:?\d{0,2})', lower_input, re.IGNORECASE)
+                if time_match:
+                    hour = int(time_match.group(1))
+                    if "pm" in lower_input and hour < 12:
+                        hour += 12
+                    elif "am" in lower_input and hour == 12:
+                        hour = 0
+                    parsed_dt = parsed_dt.replace(hour=hour, minute=0, second=0)
+            elif "today" in lower_input:
+                parsed_dt = now
+                time_match = re.search(r'(\d{1,2})\s*(am|pm|:?\d{0,2})', lower_input, re.IGNORECASE)
+                if time_match:
+                    hour = int(time_match.group(1))
+                    if "pm" in lower_input and hour < 12:
+                        hour += 12
+                    elif "am" in lower_input and hour == 12:
+                        hour = 0
+                    parsed_dt = parsed_dt.replace(hour=hour, minute=0, second=0)
+            elif "in" in lower_input:
+                # Parse relative time like "in 2 hours", "in 3 days"
+                delta = timedelta()
+                hour_match = re.search(r'(\d+)\s*hour', lower_input)
+                day_match = re.search(r'(\d+)\s*day', lower_input)
+                minute_match = re.search(r'(\d+)\s*minute', lower_input)
+                week_match = re.search(r'(\d+)\s*week', lower_input)
+                
+                if hour_match:
+                    delta += timedelta(hours=int(hour_match.group(1)))
+                if day_match:
+                    delta += timedelta(days=int(day_match.group(1)))
+                if minute_match:
+                    delta += timedelta(minutes=int(minute_match.group(1)))
+                if week_match:
+                    delta += timedelta(weeks=int(week_match.group(1)))
+                
+                if delta.total_seconds() > 0:
+                    parsed_dt = now + delta
+        
+        if parsed_dt is None:
+            await ctx.send(
+                f"❌ Could not parse date/time: `{datetime_input}`\n\n"
+                "Try formats like:\n"
+                "• `2024-12-25 15:30`\n"
+                "• `Dec 25 2024 3:30 PM`\n"
+                "• `tomorrow 3pm`\n"
+                "• `in 2 hours`"
+            )
+            return
+        
+        # Convert to Unix timestamp
+        timestamp = int(parsed_dt.timestamp())
+        
+        # Generate Discord timestamp code with short time format
+        timestamp_code = f"<t:{timestamp}:{format_char}>"
+        
+        # Create embed with preview
+        embed = discord.Embed(
+            title="🕐 Discord Timestamp (Short Time)",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="Code",
+            value=f"`{timestamp_code}`",
+            inline=False
+        )
+        embed.add_field(
+            name="Preview",
+            value=timestamp_code,
+            inline=False
+        )
+        embed.add_field(
+            name="Format",
+            value="Short Time (t)",
+            inline=True
+        )
+        embed.add_field(
+            name="Unix Timestamp",
+            value=str(timestamp),
+            inline=True
+        )
+        embed.add_field(
+            name="Parsed Date/Time",
+            value=parsed_dt.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))

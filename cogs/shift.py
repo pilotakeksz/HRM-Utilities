@@ -17,10 +17,20 @@ ROLE_MANAGE_REQUIRED = 1329910329701830686  # can use /shift manage
 ROLE_SHIFT_ON = 1329910276912447608          # role when on shift
 ROLE_BREAK = 1329910278195777557              # role when on break
 ROLE_ADMIN = 1355842403134603275              # can use /shift admin and /shift logging
+ROLE_ON_DUTY = 1439405727461671055            # on-duty reminder role
 
 LOG_CHANNEL_ID = 1329910573739147296          # logs channel
 MSG_COUNT_CHANNEL_ID = 1329910508182179900     # message-count channel
 PROMOTIONS_CHANNEL_ID = 1329910502205427806    # promotions channel for ping tracking
+SHIFT_REMINDER_CHANNEL_ID = 1439406099110297771  # channel for 15-min shift reminders
+# Allowed channel/category for shift commands (non-admins)
+ALLOWED_SHIFT_CHANNEL_ID = 1329910518659551272
+ALLOWED_SHIFT_CATEGORIES = [
+    1330504054744416308,
+    1340667032835723285,
+    1409528345728651428,
+    1329910434823933983,
+]
 
 # Quotas (minutes)
 DEFAULT_QUOTA = 45
@@ -290,9 +300,27 @@ class Store:
 
 # -------------------- UI VIEWS --------------------
 class ShiftManageView(discord.ui.View):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, owner_id: Optional[int] = None):
         super().__init__(timeout=None)
         self.bot = bot
+        # If owner_id is provided, only that user may interact with this view's components.
+        # If None, no restriction is enforced (used for persistent registration).
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Allow only the owner (invoker of the /shift_manage command) to press buttons.
+        If owner_id is None, allow all interactions (for persistent view registration).
+        """
+        if self.owner_id is None:
+            return True
+        if interaction.user.id != self.owner_id:
+            try:
+                await interaction.response.send_message("Only the user who opened this panel can use these buttons.", ephemeral=True)
+            except Exception:
+                # In case interaction already responded; just ignore silently.
+                pass
+            return False
+        return True
 
     async def refresh_buttons(self, interaction: discord.Interaction, logging_enabled: bool, on_shift: bool, on_break: bool):
         # update button disabled states based on current status
@@ -330,7 +358,28 @@ class ShiftManageView(discord.ui.View):
         # Business logic
         st = cog.store.get_user_state(user.id)
         if st:
-            # already on shift
+            # If user is on break, allow Start Shift to resume (get off break)
+            if st.get("on_break"):
+                # toggle_break will resume and update timestamps
+                cog.store.toggle_break(user.id)
+                role_on = guild.get_role(ROLE_SHIFT_ON)
+                role_break = guild.get_role(ROLE_BREAK)
+                try:
+                    if role_break and role_break in user.roles:
+                        await user.remove_roles(role_break, reason="Resumed shift")
+                    if role_on and role_on not in user.roles:
+                        await user.add_roles(role_on, reason="Resumed shift")
+                except discord.Forbidden:
+                    pass
+                await cog.log_event(guild, f"⏯️ {user.mention} resumed a shift (returned from break).")
+                embed = await cog.build_manage_embed(user)
+                await interaction.response.edit_message(embed=embed, view=self)
+                try:
+                    await cog.update_on_duty_message()
+                except Exception:
+                    pass
+                return
+            # already actively on shift
             await interaction.response.edit_message(embed=cog.embed_warn("You're already on shift."), view=self)
             return
         cog.store.start_shift(user.id)
@@ -349,6 +398,10 @@ class ShiftManageView(discord.ui.View):
         # update UI with stats
         embed = await cog.build_manage_embed(user)
         await interaction.response.edit_message(embed=embed, view=self)
+        try:
+            await cog.update_on_duty_message()
+        except Exception:
+            pass
 
     @discord.ui.button(label="Toggle Break", style=discord.ButtonStyle.secondary, custom_id="shift_break")
     async def break_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -407,9 +460,8 @@ class ShiftManageView(discord.ui.View):
         if not st:
             await interaction.response.edit_message(embed=cog.embed_warn("You are not on a shift."), view=self)
             return
-        if st.get("on_break"):
-            await interaction.response.edit_message(embed=cog.embed_warn("You cannot stop while on break. End break first."), view=self)
-            return
+
+        # Remove the break check so shifts can be ended while on break
         record = cog.store.stop_shift(user.id)
         role_on = guild.get_role(ROLE_SHIFT_ON)
         role_break = guild.get_role(ROLE_BREAK)
@@ -423,6 +475,10 @@ class ShiftManageView(discord.ui.View):
         await cog.log_event(guild, f"🔴 {user.mention} stopped their shift. ID: `{record['id']}` Duration: **{human_td(record['duration'])}**")
         embed = await cog.build_manage_embed(user)
         await interaction.response.edit_message(embed=embed, view=self)
+        try:
+            await cog.update_on_duty_message()
+        except Exception:
+            pass
 
 class ShiftLeaderboardView(discord.ui.View):
     def __init__(self, cog, guild):
@@ -655,6 +711,74 @@ class ShiftListsView(discord.ui.View):
         
         return "\n".join(lines)
 
+# -------------------- SHIFT REMINDER VIEW --------------------
+class ShiftReminderView(discord.ui.View):
+    def __init__(self, cog, user_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.user_id = user_id
+
+    @discord.ui.button(label="End Shift", style=discord.ButtonStyle.danger, custom_id="shift_reminder_end")
+    async def end_shift_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only allow the user who clicked to be the one ending their shift
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Only the person on shift can end it.", ephemeral=True)
+            return
+        
+        # Stop their shift
+        st = self.cog.store.get_user_state(self.user_id)
+        if not st:
+            await interaction.response.send_message("You are not on a shift.", ephemeral=True)
+            return
+        
+        record = self.cog.store.stop_shift(self.user_id)
+        guild = interaction.guild
+        if guild:
+            role_on = guild.get_role(ROLE_SHIFT_ON)
+            role_break = guild.get_role(ROLE_BREAK)
+            try:
+                if role_on and role_on in interaction.user.roles:
+                    await interaction.user.remove_roles(role_on)
+                if role_break and role_break in interaction.user.roles:
+                    await interaction.user.remove_roles(role_break)
+            except discord.Forbidden:
+                pass
+            await self.cog.log_event(guild, f"🔴 {interaction.user.mention} ended their shift via reminder. ID: `{record['id']}` Duration: **{human_td(record['duration'])}**")
+        
+        await interaction.response.send_message(f"✅ Your shift has been ended. Duration: **{human_td(record['duration'])}**", ephemeral=True)
+
+
+class ChannelEndShiftView(discord.ui.View):
+    """View attached to the channel reminder message. The single button ends
+    the shift for whoever clicks it (if they have an active shift)."""
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="End My Shift", style=discord.ButtonStyle.danger, custom_id="channel_end_shift")
+    async def end_my_shift(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user = interaction.user
+        st = self.cog.store.get_user_state(user.id)
+        if not st:
+            await interaction.response.send_message("You are not currently on a shift.", ephemeral=True)
+            return
+
+        record = self.cog.store.stop_shift(user.id)
+        guild = interaction.guild
+        if guild:
+            role_on = guild.get_role(ROLE_SHIFT_ON)
+            role_break = guild.get_role(ROLE_BREAK)
+            try:
+                if role_on and role_on in user.roles:
+                    await user.remove_roles(role_on)
+                if role_break and role_break in user.roles:
+                    await user.remove_roles(role_break)
+            except discord.Forbidden:
+                pass
+            await self.cog.log_event(guild, f"🔴 {user.mention} ended their shift via channel reminder. ID: `{record['id']}` Duration: **{human_td(record['duration'])}**")
+
+        await interaction.response.send_message(f"✅ Your shift has been ended. Duration: **{human_td(record['duration'])}**", ephemeral=True)
+
 # -------------------- MAIN COG --------------------
 class ShiftCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -662,6 +786,8 @@ class ShiftCog(commands.Cog):
         self.store = Store()
         # re-add persistent view on startup
         self.bot.add_view(ShiftManageView(bot))
+        # Start the 15-minute shift reminder task
+        self.shift_reminder_task = bot.loop.create_task(self.shift_reminder_loop())
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -718,6 +844,84 @@ class ShiftCog(commands.Cog):
         if updated:
             self.store.save()
 
+    async def shift_reminder_loop(self):
+        """Background task that runs every 15 minutes at :00, :15, :30, :45 to remind on-duty users they are still on shift."""
+        await self.bot.wait_until_ready()
+        while True:
+            try:
+                now = utcnow()
+                # Compute the next quarter-hour timestamp (:00, :15, :30, :45) and sleep until then
+                from datetime import timedelta
+                # Determine the start of the current quarter
+                quarter_start_minute = (now.minute // 15) * 15
+                quarter_start = now.replace(minute=quarter_start_minute, second=0, microsecond=0)
+                next_quarter = quarter_start + timedelta(minutes=15)
+                delta_seconds = (next_quarter - now).total_seconds()
+                if delta_seconds <= 0:
+                    delta_seconds = 15 * 60
+                # Sleep until the next exact quarter (accounts for seconds/microseconds)
+                await asyncio.sleep(delta_seconds)
+                
+                # Get the guild and channel
+                try:
+                    channel = self.bot.get_channel(SHIFT_REMINDER_CHANNEL_ID) or await self.bot.fetch_channel(SHIFT_REMINDER_CHANNEL_ID)
+                    if not isinstance(channel, discord.TextChannel):
+                        continue
+                    
+                    guild = channel.guild
+                    
+                    # Get all users currently on shift
+                    on_shift_users = []
+                    for uid_str, st in self.store.state.items():
+                        uid = int(uid_str)
+                        member = guild.get_member(uid)
+                        if member and any(r.id == ROLE_ON_DUTY for r in member.roles):
+                            total_seconds = st["accum"]
+                            if not st["on_break"]:
+                                total_seconds += max(0, ts_to_int(utcnow()) - st["last_ts"])
+                            on_shift_users.append((member, st["start_ts"], total_seconds))
+                    
+                    if not on_shift_users:
+                        continue
+                    
+                    # Build the reminder message (ping the on-duty role if available)
+                    role = guild.get_role(ROLE_ON_DUTY)
+                    mentions = " ".join([f"<@{member.id}>" for member, _, _ in on_shift_users])
+                    content = role.mention if role and role.members else mentions
+
+                    # Create embed with shift times
+                    embed = self.base_embed("Shift Reminder", colour_info())
+                    embed.description = f"**Remember you are still on shift!** {mentions}"
+                    
+                    # Add field with all users on shift and their elapsed times
+                    shift_lines = []
+                    for member, start_ts, elapsed in on_shift_users:
+                        shift_lines.append(f"> <@{member.id}> — {human_td(elapsed)}")
+                    
+                    embed.add_field(name="Currently On Shift", value="\n".join(shift_lines), inline=False)
+                    
+                    # Send message with a view containing end shift button for each user
+                    try:
+                        msg = await channel.send(content=content, embed=embed, view=ChannelEndShiftView(self))
+                    except Exception:
+                        # Fallback: send without content if mention failed
+                        msg = await channel.send(embed=embed, view=ChannelEndShiftView(self))
+                    
+                    # For each user, send a copy of the message with their personal end shift button
+                    for member, _, _ in on_shift_users:
+                        view = ShiftReminderView(self, member.id)
+                        try:
+                            await member.send(embed=embed, view=view)
+                        except Exception:
+                            pass  # User may have DMs disabled
+                
+                except Exception as e:
+                    print(f"Error in shift_reminder_loop: {e}")
+            
+            except Exception as e:
+                print(f"Shift reminder loop error: {e}")
+                await asyncio.sleep(60)  # Retry after 1 minute on error
+
     # ---------- EMBED HELPERS ----------
     def base_embed(self, title: str, colour: discord.Colour) -> discord.Embed:
         e = discord.Embed(title=title, colour=colour, timestamp=utcnow())
@@ -751,6 +955,70 @@ class ShiftCog(commands.Cog):
             emb.description = message
             await ch.send(embed=emb)
 
+    async def update_on_duty_message(self):
+        """Maintain a single reminder message in `SHIFT_REMINDER_CHANNEL_ID` showing
+        current on-duty members (those who have `ROLE_ON_DUTY`). If none are on duty,
+        remove the message. Saves message id in `self.store.meta['on_duty_msg_id']`.
+        """
+        try:
+            channel = self.bot.get_channel(SHIFT_REMINDER_CHANNEL_ID) or await self.bot.fetch_channel(SHIFT_REMINDER_CHANNEL_ID)
+        except Exception:
+            return
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        guild = channel.guild
+        if not guild:
+            return
+
+        role = guild.get_role(ROLE_ON_DUTY)
+        members = role.members if role else []
+
+        # Build embed
+        if members:
+            embed = self.base_embed("On Duty Now", colour_info())
+            embed.description = f"{role.mention} — Current on-duty personnel"
+            lines = []
+            for m in members:
+                st = self.store.get_user_state(m.id)
+                if st:
+                    elapsed = st.get("accum", 0)
+                    if not st.get("on_break"):
+                        elapsed += max(0, ts_to_int(utcnow()) - st.get("last_ts", ts_to_int(utcnow())))
+                    lines.append(f"> {m.mention} — {human_td(elapsed)}")
+                else:
+                    lines.append(f"> {m.mention} — on duty")
+            embed.add_field(name="Currently On Shift", value="\n".join(lines), inline=False)
+
+            # Edit or send
+            msg_id = self.store.meta.get("on_duty_msg_id")
+            try:
+                if msg_id:
+                    try:
+                        msg = await channel.fetch_message(msg_id)
+                        await msg.edit(content=role.mention, embed=embed, view=ChannelEndShiftView(self))
+                    except Exception:
+                        sent = await channel.send(content=role.mention, embed=embed, view=ChannelEndShiftView(self))
+                        self.store.meta["on_duty_msg_id"] = sent.id
+                        self.store.save()
+                else:
+                    sent = await channel.send(content=role.mention, embed=embed, view=ChannelEndShiftView(self))
+                    self.store.meta["on_duty_msg_id"] = sent.id
+                    self.store.save()
+            except Exception:
+                pass
+        else:
+            # no members; remove existing message if any
+            msg_id = self.store.meta.get("on_duty_msg_id")
+            if msg_id:
+                try:
+                    msg = await channel.fetch_message(msg_id)
+                    await msg.delete()
+                except Exception:
+                    pass
+                self.store.meta.pop("on_duty_msg_id", None)
+                self.store.save()
+
     # ---------- COMMANDS ----------
     @app_commands.command(name="shift_manage", description="Open the shift management panel.")
     async def shift_manage(self, interaction: discord.Interaction):
@@ -759,11 +1027,21 @@ class ShiftCog(commands.Cog):
         if guild is None:
             await interaction.response.send_message("Guild only.", ephemeral=True)
             return
+        # Restrict channel/category for non-admins
+        if not any(r.id == ROLE_ADMIN for r in user.roles):
+            ch = interaction.channel or guild.get_channel(interaction.channel_id)
+            cat_id = getattr(ch, "category_id", None)
+            if not (ch and (ch.id == ALLOWED_SHIFT_CHANNEL_ID or cat_id in ALLOWED_SHIFT_CATEGORIES)):
+                await interaction.response.send_message(
+                    f"This command can only be used in <#{ALLOWED_SHIFT_CHANNEL_ID}> or channels inside the allowed categories. Admins may bypass.",
+                    ephemeral=True,
+                )
+                return
         if not any(r.id == ROLE_MANAGE_REQUIRED for r in user.roles):  # type: ignore
             await interaction.response.send_message("You do not have the required role to manage shifts.", ephemeral=True)
             return
         # if logging disabled, end all current shifts and log - handled by /shift logging, but buttons should be disabled
-        view = ShiftManageView(self.bot)
+        view = ShiftManageView(self.bot, owner_id=user.id)
         embed = await self.build_manage_embed(user)
         msg = await interaction.response.send_message(embed=embed, view=view)
 
@@ -798,6 +1076,30 @@ class ShiftCog(commands.Cog):
                 value=f"{human_td(elapsed)} (<t:{elapsed_ts}:R>)",
                 inline=True
             )
+        
+        # Add total shift time for the week and leaderboard placement
+        total_seconds = self.store.total_for_user(user.id)
+        e.add_field(name="Total This Week", value=human_td(total_seconds), inline=True)
+        
+        # Calculate leaderboard placement
+        guild = user.guild
+        if guild:
+            manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
+            if manage_role:
+                # Build leaderboard data
+                totals: Dict[int, int] = {}
+                for member in manage_role.members:
+                    total = self.store.total_for_user(member.id)
+                    totals[member.id] = total
+                
+                # Sort by total (descending)
+                sorted_users = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+                
+                # Find user's rank
+                rank = next((i + 1 for i, (uid, _) in enumerate(sorted_users) if uid == user.id), None)
+                if rank:
+                    e.add_field(name="Leaderboard Placement", value=f"#{rank} / {len(sorted_users)}", inline=True)
+        
         e.set_footer(text=f"User: {user.display_name}")
         return e
 
@@ -1190,15 +1492,15 @@ class ShiftCog(commands.Cog):
             quota_minutes = await self._get_quota(member)
             mids = {r.id for r in member.roles}
 
-            # Exemption logic
-            if QUOTA_ROLE_0 in mids or QUOTA_ROLE_ADMIN_0 in mids:
-                continue  # Fully exempt
-            if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
-                continue  # Exempt above 15 minutes
-
-            # Promotion eligibility
+            # Promotion eligibility (check before exemptions so reduced activity role can still be promoted)
             if total_seconds >= 90 * 60 and self.store.can_be_promoted(member.id, member.roles):
                 promo_candidates.append((member, total_seconds))
+
+            # Exemption logic (only applies to infractions, not promotions)
+            if QUOTA_ROLE_0 in mids or QUOTA_ROLE_ADMIN_0 in mids:
+                continue  # Fully exempt from infractions
+            if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
+                continue  # Exempt from infractions above 15 minutes
             
             # Infractions
             if total_seconds < quota_minutes * 60:
@@ -1301,10 +1603,21 @@ class ShiftCog(commands.Cog):
     # ---------------- OTHER COMMANDS ----------------
     @app_commands.command(name="shift_leaderboard", description="Show the shift leaderboard.")
     async def shift_leaderboard(self, interaction: discord.Interaction):
+        user = interaction.user
         guild = interaction.guild
         if guild is None:
             await interaction.response.send_message("Guild only.", ephemeral=True)
             return
+        # Restrict channel/category for non-admins (same as /shift_manage)
+        if not any(r.id == ROLE_ADMIN for r in user.roles):
+            ch = interaction.channel or guild.get_channel(interaction.channel_id)
+            cat_id = getattr(ch, "category_id", None)
+            if not (ch and (ch.id == ALLOWED_SHIFT_CHANNEL_ID or cat_id in ALLOWED_SHIFT_CATEGORIES)):
+                await interaction.response.send_message(
+                    f"This command can only be used in <#{ALLOWED_SHIFT_CHANNEL_ID}> or channels inside the allowed categories. Admins may bypass.",
+                    ephemeral=True,
+                )
+                return
         lines = await self._build_leaderboard_lines(guild, filter_mode="all")
         emb = self.base_embed("Shift Leaderboard", colour_info())
         emb.description = "\n".join(lines)
@@ -1313,10 +1626,21 @@ class ShiftCog(commands.Cog):
 
     @app_commands.command(name="shift_online", description="Show who is currently on shift and for how long.")
     async def shift_online(self, interaction: discord.Interaction):
+        user = interaction.user
         guild = interaction.guild
         if guild is None:
             await interaction.response.send_message("Guild only.", ephemeral=True)
             return
+        # Restrict channel/category for non-admins
+        if not any(r.id == ROLE_ADMIN for r in user.roles):
+            ch = interaction.channel or guild.get_channel(interaction.channel_id)
+            cat_id = getattr(ch, "category_id", None)
+            if not (ch and (ch.id == ALLOWED_SHIFT_CHANNEL_ID or cat_id in ALLOWED_SHIFT_CATEGORIES)):
+                await interaction.response.send_message(
+                    f"This command can only be used in <#{ALLOWED_SHIFT_CHANNEL_ID}> or channels inside the allowed categories. Admins may bypass.",
+                    ephemeral=True,
+                )
+                return
         rows = []
         for uid_str, st in self.store.state.items():
             uid = int(uid_str)
@@ -1547,6 +1871,70 @@ class ShiftCog(commands.Cog):
                 embed.add_field(name="Remaining", value=human_td(remaining), inline=True)
         
         await ctx.send(embed=embed)
+
+    @commands.command(name="test")
+    async def test(self, ctx: commands.Context):
+        """Admin-only test command restricted to user 840949634071658507.
+        Sends a one-off shift reminder to the configured reminder channel (for testing).
+        """
+        ALLOWED_USER = 840949634071658507
+        if ctx.author.id != ALLOWED_USER:
+            return
+
+        try:
+            channel = self.bot.get_channel(SHIFT_REMINDER_CHANNEL_ID) or await self.bot.fetch_channel(SHIFT_REMINDER_CHANNEL_ID)
+            if not isinstance(channel, discord.TextChannel):
+                await ctx.send("Reminder channel not available.")
+                return
+
+            guild = channel.guild
+            # Primary: members who have the ON_DUTY role
+            on_duty_role = guild.get_role(ROLE_ON_DUTY)
+            on_shift_users = []
+            if on_duty_role:
+                for member in on_duty_role.members:
+                    # compute elapsed if we have a store record
+                    st = self.store.get_user_state(member.id)
+                    if st:
+                        total_seconds = st.get("accum", 0)
+                        if not st.get("on_break"):
+                            total_seconds += max(0, ts_to_int(utcnow()) - st.get("last_ts", ts_to_int(utcnow())))
+                    else:
+                        total_seconds = 0
+                    on_shift_users.append((member, st.get("start_ts") if st else None, total_seconds))
+
+            # If role not present or no members, fall back to any active shift records
+            if not on_shift_users:
+                for uid_str, st in self.store.state.items():
+                    uid = int(uid_str)
+                    member = guild.get_member(uid)
+                    if not member:
+                        continue
+                    total_seconds = st.get("accum", 0)
+                    if not st.get("on_break"):
+                        total_seconds += max(0, ts_to_int(utcnow()) - st.get("last_ts", ts_to_int(utcnow())))
+                    on_shift_users.append((member, st.get("start_ts"), total_seconds))
+
+            if not on_shift_users:
+                await ctx.send("No users currently on shift.")
+                return
+
+            mentions = " ".join([f"<@{member.id}>" for member, _, _ in on_shift_users])
+            embed = self.base_embed("Shift Reminder (test)", colour_info())
+            embed.description = f"**Remember you are still on shift!** {mentions}"
+            shift_lines = [f"> <@{member.id}> — {human_td(elapsed)}" for member, _, elapsed in on_shift_users]
+            embed.add_field(name="Currently On Shift", value="\n".join(shift_lines), inline=False)
+
+            # attach a channel view so users can end their own shift from the channel message
+            role = (guild.get_role(ROLE_ON_DUTY) if guild else None)
+            content = role.mention if role and role.members else ""
+            try:
+                await channel.send(content=content, embed=embed, view=ChannelEndShiftView(self))
+            except Exception:
+                await channel.send(embed=embed, view=ChannelEndShiftView(self))
+            await ctx.send("Test reminder sent.")
+        except Exception as e:
+            await ctx.send(f"Failed to send test reminder: {e}")
 
     @app_commands.command(name="cooldown", description="Show promotion cooldown for you or another user.")
     @app_commands.describe(user="User to check (optional)")
