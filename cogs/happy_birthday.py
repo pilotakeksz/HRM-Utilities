@@ -75,16 +75,11 @@ class HappyBirthday(commands.Cog):
             # Fetch the target user
             target_user = await self.bot.fetch_user(target_user_id)
             
-            # Create embed with GIF and message
-            embed = discord.Embed(
-                title="🎉 HAPPY BIRTHDAY ALARM TRIGGERED 🎉",
-                color=discord.Color.gold()
-            )
-            embed.set_image(url=self.config.get("gif_url", DEFAULT_GIF_URL))
-            embed.set_footer(text="This message was triggered by a message in the server")
+            # Send DM with GIF URL as plain message
+            gif_url = self.config.get("gif_url", DEFAULT_GIF_URL)
+            message_content = f"🎉 **HAPPY BIRTHDAY ALARM TRIGGERED** 🎉\n\n{gif_url}"
             
-            # Send DM
-            await target_user.send(embed=embed)
+            await target_user.send(message_content)
         except discord.NotFound:
             print(f"Target user ID {target_user_id} not found")
         except discord.Forbidden:
@@ -150,7 +145,7 @@ class HappyBirthday(commands.Cog):
         self.save_config()
         
         await interaction.response.send_message(
-            f"✅ Birthday GIF URL updated!\n**Note:** Make sure this is a direct image/GIF URL that Discord can display in embeds.",
+            f"✅ Birthday GIF URL updated!\n**Note:** Make sure this is a direct image/GIF URL that Discord can display.",
             ephemeral=True
         )
     

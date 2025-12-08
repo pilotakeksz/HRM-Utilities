@@ -45,27 +45,26 @@ class AFK(commands.Cog):
         except Exception as e:
             print(f"Error saving activity data: {e}")
 
-    def record_activity(self, user_id: int, status: str):
-        """Record a user's activity status change."""
+    def record_message_activity(self, user_id: int):
+        """Record when a user sends a message in the server."""
         if user_id not in self.activity_data:
             self.activity_data[user_id] = []
         
         now = datetime.datetime.utcnow()
         timestamp = now.isoformat()
         
-        # Throttle: don't record if last event was less than 1 minute ago with same status
+        # Throttle: don't record if last message was less than 1 hour ago
+        # This prevents spam while still capturing meaningful activity patterns
         if self.activity_data[user_id]:
             last_entry = self.activity_data[user_id][-1]
-            if last_entry["status"] == status:
-                try:
-                    last_time = datetime.datetime.fromisoformat(last_entry["timestamp"])
-                    if (now - last_time).total_seconds() < 60:
-                        return  # Too soon, skip
-                except Exception:
-                    pass
+            try:
+                last_time = datetime.datetime.fromisoformat(last_entry["timestamp"])
+                if (now - last_time).total_seconds() < 3600:  # Less than 1 hour
+                    return  # Too soon, skip
+            except Exception:
+                pass
         
         self.activity_data[user_id].append({
-            "status": status,
             "timestamp": timestamp
         })
         
@@ -79,7 +78,7 @@ class AFK(commands.Cog):
         self.save_activity_data()
 
     def get_usually_active_time(self, user_id: int) -> Optional[str]:
-        """Calculate and return the usually active time frame for a user."""
+        """Calculate and return the usually active time frame for a user based on message activity."""
         try:
             # Ensure user_id is an int
             user_id = int(user_id)
@@ -87,14 +86,14 @@ class AFK(commands.Cog):
             if user_id not in self.activity_data or not self.activity_data[user_id]:
                 return None
             
-            # Count activity by hour (UTC)
+            # Count message activity by hour (UTC)
             hour_counts = defaultdict(int)
-            online_entries = [e for e in self.activity_data[user_id] if e.get("status") == "online"]
+            message_entries = self.activity_data[user_id]
             
-            if len(online_entries) < 5:  # Need at least 5 data points
+            if len(message_entries) < 5:  # Need at least 5 message data points
                 return None
             
-            for entry in online_entries:
+            for entry in message_entries:
                 try:
                     timestamp_str = entry.get("timestamp")
                     if not timestamp_str:
@@ -324,10 +323,10 @@ class AFK(commands.Cog):
         else:
             await interaction.response.send_message(f"{member.mention} is not AFK.", ephemeral=True)
 
-    @app_commands.command(name="usuallyactive", description="Check when a user is usually active online.")
+    @app_commands.command(name="usuallyactive", description="Check when a user usually sends messages in the server.")
     @app_commands.describe(member="The member to check (defaults to yourself)")
     async def usually_active_slash(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
-        """Show when a user is usually active online."""
+        """Show when a user usually sends messages in the server."""
         target = member or interaction.user
         usually_active = self.get_usually_active_time(target.id)
         
@@ -339,60 +338,24 @@ class AFK(commands.Cog):
         
         if usually_active:
             embed.description = f"**Usually Active:** {usually_active}"
-            embed.set_footer(text="Based on recent activity data (UTC time)")
+            embed.set_footer(text="Based on message activity in the server (UTC time)")
         else:
-            embed.description = "Not enough activity data available yet.\n\nActivity tracking requires at least 5 online events to calculate usually active times."
-            embed.set_footer(text="Activity is tracked automatically when you come online")
+            embed.description = "Not enough activity data available yet.\n\nActivity tracking requires at least 5 messages to calculate usually active times."
+            embed.set_footer(text="Activity is tracked automatically when you send messages in the server")
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @commands.Cog.listener()
-    async def on_presence_update(self, before: discord.Member, after: discord.Member):
-        """Track when users come online or go offline."""
-        if after.bot:
-            return
-        
-        # Only track if status actually changed
-        if before.status == after.status:
-            return
-        
-        # Track online status
-        if after.status == discord.Status.online:
-            self.record_activity(after.id, "online")
-        elif after.status in (discord.Status.offline, discord.Status.invisible):
-            # Only record offline if they were previously online (not idle/dnd)
-            if before.status == discord.Status.online:
-                self.record_activity(after.id, "offline")
+    # Removed on_presence_update listener - now tracking based on messages only
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
             return
 
-        # Track activity when user sends a message (they're online)
-        # Only track once per hour to avoid spam
-        if message.author.status == discord.Status.online:
-            user_id = message.author.id
-            if user_id in self.activity_data:
-                # Check if we already recorded activity in the last hour
-                now = datetime.datetime.utcnow()
-                recent_entries = [
-                    e for e in self.activity_data[user_id][-10:]  # Check last 10 entries
-                    if e["status"] == "online"
-                ]
-                if recent_entries:
-                    try:
-                        last_online = datetime.datetime.fromisoformat(recent_entries[-1]["timestamp"])
-                        if (now - last_online).total_seconds() < 3600:  # Less than 1 hour
-                            pass  # Skip, already recorded recently
-                        else:
-                            self.record_activity(user_id, "online")
-                    except Exception:
-                        self.record_activity(user_id, "online")
-                else:
-                    self.record_activity(user_id, "online")
-            else:
-                self.record_activity(user_id, "online")
+        # Track message activity for "usually active" calculation
+        # Only tracks messages in guilds (not DMs)
+        if message.guild:
+            self.record_message_activity(message.author.id)
 
         # If someone is mentioned and is AFK, respond with their AFK message (no pings)
         mentioned_ids = {user.id for user in message.mentions if not user.bot}
