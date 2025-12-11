@@ -236,7 +236,11 @@ class Welcome(commands.Cog):
             embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
             embed.timestamp = datetime.datetime.utcnow()
 
-            content = f"{role.mention} **WE'VE REACHED {member_count} MEMBERS!** 🎉🎊🎉"
+            # Only ping the role if it's not a test run
+            if is_test:
+                content = f"**WE'VE REACHED {member_count} MEMBERS!** 🎉🎊🎉"
+            else:
+                content = f"{role.mention} **WE'VE REACHED {member_count} MEMBERS!** 🎉🎊🎉"
             
             await channel.send(content=content, embed=embed)
             print(f"Sent milestone message for {member_count} members in guild {guild.id}")
