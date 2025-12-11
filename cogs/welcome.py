@@ -2,12 +2,15 @@ import discord
 from discord.ext import commands
 import os
 import datetime
+import json
 
 FOOTER_TEXT = "Maplecliff National Guard"  
 FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 EMBED_COLOR = 0xd0b47b
-MILESTONE_ROLE_ID = 1329910229374337074
+MILESTONE_ROLE_ID = 1331667130000605278
 MILESTONE_MEMBER_COUNT = 500
+MILESTONE_COOLDOWN_HOURS = 48
+MILESTONE_DATA_FILE = os.path.join("data", "milestone_data.json")
 
 # Read env vars with safe fallbacks. If ROLE_ID_ON_JOIN isn't set, fall back to the
 # commonly used role for new members (1329910383678328922).
@@ -52,7 +55,51 @@ class WelcomeView(discord.ui.View):
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.milestone_sent = set()  # Track which guilds have already hit the milestone
+        self.last_milestone_time = {}  # Track when last milestone was sent per guild (guild_id -> timestamp)
+        self.load_milestone_data()
+
+    def load_milestone_data(self):
+        """Load milestone data from JSON file."""
+        if os.path.exists(MILESTONE_DATA_FILE):
+            try:
+                with open(MILESTONE_DATA_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    # Convert string keys to int keys and ISO strings to datetime objects
+                    self.last_milestone_time = {
+                        int(guild_id): datetime.datetime.fromisoformat(timestamp_str)
+                        for guild_id, timestamp_str in data.items()
+                    }
+            except Exception as e:
+                print(f"Error loading milestone data: {e}")
+                self.last_milestone_time = {}
+        else:
+            self.last_milestone_time = {}
+
+    def save_milestone_data(self):
+        """Save milestone data to JSON file."""
+        try:
+            os.makedirs("data", exist_ok=True)
+            # Convert datetime objects to ISO strings for JSON
+            data = {
+                str(guild_id): timestamp.isoformat()
+                for guild_id, timestamp in self.last_milestone_time.items()
+            }
+            with open(MILESTONE_DATA_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Error saving milestone data: {e}")
+
+    def can_send_milestone(self, guild_id: int) -> bool:
+        """Check if enough time has passed since last milestone (48 hours)."""
+        if guild_id not in self.last_milestone_time:
+            return True  # Never sent before, can send
+        
+        last_time = self.last_milestone_time[guild_id]
+        now = datetime.datetime.utcnow()
+        time_diff = now - last_time
+        
+        # Check if 48 hours have passed
+        return time_diff.total_seconds() >= (MILESTONE_COOLDOWN_HOURS * 3600)
 
     @commands.command(name="welcome")
     async def test_welcome(self, ctx): #test command
@@ -149,13 +196,21 @@ class Welcome(commands.Cog):
         else:
             print("Welcome channel not found.")
 
-        # Check for 500 member milestone
-        if member_count == MILESTONE_MEMBER_COUNT and member.guild.id not in self.milestone_sent:
-            await self.send_milestone_message(member.guild, member_count)
-            self.milestone_sent.add(member.guild.id)
+        # Check for 500 member milestone (only if 48 hours have passed since last milestone)
+        if member_count == MILESTONE_MEMBER_COUNT and self.can_send_milestone(member.guild.id):
+            await self.send_milestone_message(member.guild, member_count, is_test=False)
+            # Update the timestamp for this guild
+            self.last_milestone_time[member.guild.id] = datetime.datetime.utcnow()
+            self.save_milestone_data()
 
-    async def send_milestone_message(self, guild: discord.Guild, member_count: int):
-        """Send a special message when the server hits exactly 500 members."""
+    async def send_milestone_message(self, guild: discord.Guild, member_count: int, is_test: bool = False):
+        """Send a special message when the server hits exactly 500 members.
+        
+        Args:
+            guild: The Discord guild
+            member_count: The member count to display
+            is_test: If True, this is a test run and won't update the cooldown timestamp
+        """
         try:
             role = guild.get_role(MILESTONE_ROLE_ID)
             if not role:
@@ -173,8 +228,8 @@ class Welcome(commands.Cog):
                 title="🎉 MILESTONE ACHIEVED! 🎉",
                 description=f"# **WE'VE HIT {member_count} MEMBERS!**\n\n"
                            f"🎊 **Congratulations to everyone!** 🎊\n\n"
-                           f"This is an incredible achievement for the Maplecliff National Guard community!\n"
-                           f"Thank you to all our members for making this server amazing!",
+                           f"This is an incredible achievement for the Maplecliff National Guard!\n"
+                           f"Thank you to all our members and personnel for making this server what it is today!",
                 color=0xFFD700  # Gold color for celebration
             )
             embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
@@ -191,9 +246,10 @@ class Welcome(commands.Cog):
     @commands.command(name="test500")
     @commands.has_guild_permissions(administrator=True)
     async def test_milestone(self, ctx):
-        """Test command to send the 500 member milestone message (admin only)."""
-        await self.send_milestone_message(ctx.guild, MILESTONE_MEMBER_COUNT)
-        await ctx.send("✅ Milestone test message sent!", delete_after=5)
+        """Test command to send the 500 member milestone message (admin only).
+        Test runs do not count towards the 48-hour cooldown."""
+        await self.send_milestone_message(ctx.guild, MILESTONE_MEMBER_COUNT, is_test=True)
+        await ctx.send("✅ Milestone test message sent! (This does not affect the 48-hour cooldown)", delete_after=5)
 
 async def setup(bot):
     await bot.add_cog(Welcome(bot))

@@ -1065,7 +1065,7 @@ class ShiftCog(commands.Cog):
                     f"This command can only be used in <#{ALLOWED_SHIFT_CHANNEL_ID}> or channels inside the allowed categories. Admins may bypass.",
                     ephemeral=True,
                 )
-                return
+            return
         if not any(r.id == ROLE_MANAGE_REQUIRED for r in user.roles):  # type: ignore
             await interaction.response.send_message("You do not have the required role to manage shifts.", ephemeral=True)
             return
@@ -1530,7 +1530,7 @@ class ShiftCog(commands.Cog):
                 continue  # Fully exempt from infractions
             if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
                 continue  # Exempt from infractions above 15 minutes
-            
+
             # Check if excused for this shift wave
             if self.store.is_excused(member.id):
                 continue  # Excused from infractions for this shift wave
@@ -1650,7 +1650,7 @@ class ShiftCog(commands.Cog):
                     f"This command can only be used in <#{ALLOWED_SHIFT_CHANNEL_ID}> or channels inside the allowed categories. Admins may bypass.",
                     ephemeral=True,
                 )
-                return
+            return
         lines = await self._build_leaderboard_lines(guild, filter_mode="all")
         emb = self.base_embed("Shift Leaderboard", colour_info())
         emb.description = "\n".join(lines)
@@ -1673,7 +1673,7 @@ class ShiftCog(commands.Cog):
                     f"This command can only be used in <#{ALLOWED_SHIFT_CHANNEL_ID}> or channels inside the allowed categories. Admins may bypass.",
                     ephemeral=True,
                 )
-                return
+            return
         rows = []
         for uid_str, st in self.store.state.items():
             uid = int(uid_str)
