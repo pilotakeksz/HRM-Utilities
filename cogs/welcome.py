@@ -1,10 +1,13 @@
 import discord
 from discord.ext import commands
 import os
+import datetime
 
 FOOTER_TEXT = "Maplecliff National Guard"  
 FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 EMBED_COLOR = 0xd0b47b
+MILESTONE_ROLE_ID = 1331645964339122197
+MILESTONE_MEMBER_COUNT = 500
 
 # Read env vars with safe fallbacks. If ROLE_ID_ON_JOIN isn't set, fall back to the
 # commonly used role for new members (1329910383678328922).
@@ -49,6 +52,7 @@ class WelcomeView(discord.ui.View):
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.milestone_sent = set()  # Track which guilds have already hit the milestone
 
     @commands.command(name="welcome")
     async def test_welcome(self, ctx): #test command
@@ -144,6 +148,52 @@ class Welcome(commands.Cog):
                 print(f"Failed to send welcome message: {e}")
         else:
             print("Welcome channel not found.")
+
+        # Check for 500 member milestone
+        if member_count == MILESTONE_MEMBER_COUNT and member.guild.id not in self.milestone_sent:
+            await self.send_milestone_message(member.guild, member_count)
+            self.milestone_sent.add(member.guild.id)
+
+    async def send_milestone_message(self, guild: discord.Guild, member_count: int):
+        """Send a special message when the server hits exactly 500 members."""
+        try:
+            role = guild.get_role(MILESTONE_ROLE_ID)
+            if not role:
+                print(f"Milestone role {MILESTONE_ROLE_ID} not found in guild {guild.id}")
+                return
+
+            # Try to send in welcome channel, fallback to system channel
+            channel = guild.get_channel(WELCOME_CHANNEL_ID) or guild.system_channel
+            if not channel:
+                print(f"No channel found to send milestone message in guild {guild.id}")
+                return
+
+            # Create special milestone embed
+            embed = discord.Embed(
+                title="🎉 MILESTONE ACHIEVED! 🎉",
+                description=f"# **WE'VE HIT {member_count} MEMBERS!**\n\n"
+                           f"🎊 **Congratulations to everyone!** 🎊\n\n"
+                           f"This is an incredible achievement for the Maplecliff National Guard community!\n"
+                           f"Thank you to all our members for making this server amazing!",
+                color=0xFFD700  # Gold color for celebration
+            )
+            embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+            embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
+            embed.timestamp = datetime.datetime.utcnow()
+
+            content = f"{role.mention} **WE'VE REACHED {member_count} MEMBERS!** 🎉🎊🎉"
+            
+            await channel.send(content=content, embed=embed)
+            print(f"Sent milestone message for {member_count} members in guild {guild.id}")
+        except Exception as e:
+            print(f"Failed to send milestone message: {e}")
+
+    @commands.command(name="test500")
+    @commands.has_guild_permissions(administrator=True)
+    async def test_milestone(self, ctx):
+        """Test command to send the 500 member milestone message (admin only)."""
+        await self.send_milestone_message(ctx.guild, MILESTONE_MEMBER_COUNT)
+        await ctx.send("✅ Milestone test message sent!", delete_after=5)
 
 async def setup(bot):
     await bot.add_cog(Welcome(bot))
