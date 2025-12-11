@@ -6,7 +6,7 @@ import datetime
 FOOTER_TEXT = "Maplecliff National Guard"  
 FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
 EMBED_COLOR = 0xd0b47b
-MILESTONE_ROLE_ID = 1331645964339122197
+MILESTONE_ROLE_ID = 1329910229374337074
 MILESTONE_MEMBER_COUNT = 500
 
 # Read env vars with safe fallbacks. If ROLE_ID_ON_JOIN isn't set, fall back to the

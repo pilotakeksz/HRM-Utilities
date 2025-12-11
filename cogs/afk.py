@@ -146,21 +146,21 @@ class AFK(commands.Cog):
                     start_hour = current_start
                     end_hour = current_end
             
-            # Format as short time (e.g., "2:00 PM - 8:00 PM")
-            def format_hour(hour):
-                if hour == 0:
-                    return "12:00 AM"
-                elif hour < 12:
-                    return f"{hour}:00 AM"
-                elif hour == 12:
-                    return "12:00 PM"
-                else:
-                    return f"{hour - 12}:00 PM"
+            # Format as Discord timestamps (short time format)
+            # Create timestamps for today at the specified hours (UTC)
+            now = datetime.datetime.utcnow()
+            
+            def create_timestamp(hour):
+                """Create a Discord timestamp for today at the specified hour."""
+                # Create datetime for today at the specified hour in UTC
+                dt = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+                timestamp = int(dt.timestamp())
+                return f"<t:{timestamp}:t>"
             
             if start_hour == end_hour:
-                return format_hour(start_hour)
+                return create_timestamp(start_hour)
             else:
-                return f"{format_hour(start_hour)} - {format_hour(end_hour)}"
+                return f"{create_timestamp(start_hour)} - {create_timestamp(end_hour)}"
         except Exception as e:
             print(f"Error in get_usually_active_time for user {user_id}: {e}")
             return None
