@@ -342,7 +342,7 @@ async def on_ready():
         embed.set_footer(text="Developed with love by Tuna 🐟")
 
         # Decide where to send: only send to the main version channel if we are actually able to ping the role (rate OK).
-        role_id_to_ping = 1371198982935806033
+        role_id_to_ping = 1329910398459052176
         ping_data_path = os.path.join("data", "version_ping.json")
         os.makedirs("data", exist_ok=True)
         ping_data = {"last_ping_ts": 0, "daily_count": 0, "day": ""}
@@ -360,12 +360,15 @@ async def on_ready():
 
         now_ts = int(datetime.now(timezone.utc).timestamp())
         can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 43200) and (int(ping_data.get("daily_count", 0)) < 5)
+        # If this process should never dev-ping (e.g. the production or alternate bot), avoid pinging the role
+        NO_DEV_PING_BOT_ID = 1403146651543015445
+        is_dev_ping_blocked = (bot.user is not None and getattr(bot.user, "id", None) == NO_DEV_PING_BOT_ID)
 
         # Fetch channels
         version_channel = bot.get_channel(version_channel_id)
         secondary_channel = bot.get_channel(secondary_channel_id)
 
-        if can_ping and version_channel:
+        if can_ping and version_channel and not is_dev_ping_blocked:
             # Send to main version channel with role ping and update ping counters
             try:
                 content = f"<@&{role_id_to_ping}>"
@@ -387,7 +390,14 @@ async def on_ready():
                         print(f"Failed to send to secondary channel as fallback: {e2}")
         else:
             # Do NOT send to main version channel when we can't ping; send to secondary channel without ping
-            if secondary_channel:
+            # Special-case: if dev ping is blocked, send to main channel WITHOUT ping instead (if available)
+            if is_dev_ping_blocked and version_channel:
+                try:
+                    await version_channel.send(embed=embed)
+                    print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT dev ping due to bot config")
+                except Exception as e:
+                    print(f"Failed to send version to main channel without ping: {e}")
+            elif secondary_channel:
                 try:
                     await secondary_channel.send(embed=embed)
                     print(f"Version {version_string} sent to secondary channel {secondary_channel_id} without ping")
@@ -619,26 +629,28 @@ async def _reload_all_cogs() -> dict:
     return results
 
 
-@bot.tree.command(name="deploy", description="Pull latest from git and reload cogs (owner only).")
-async def deploy(interaction: discord.Interaction):
-    if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
+@bot.group(name="tuna", invoke_without_command=True)
+async def tuna(ctx: commands.Context):
+    """Tuna admin group. Use `!tuna deploy` or `!tuna reboot`."""
+    await ctx.send("Usage: `!tuna deploy` or `!tuna reboot`")
+
+
+@tuna.command(name="deploy")
+async def tuna_deploy(ctx: commands.Context):
+    """Pull latest from git and reload cogs (owner only)."""
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.send("Only the bot owner can use this command.")
         return
 
-    await interaction.response.defer(ephemeral=True)
+    status_msg = await ctx.send("🔄 Running deploy (git pull + reload cogs)...")
     repo_path = os.path.dirname(__file__)
     code, out, err = await _run_git_pull(repo_path)
 
     out_text = out.strip()[:1500] if out else "(no stdout)"
     err_text = err.strip()[:1500] if err else "(no stderr)"
 
-    # If git pull succeeded (0) or had merge conflicts but still changed files, attempt reload
-    reload_results = {}
-    if code == 0:
-        reload_results = await _reload_all_cogs()
-    else:
-        # still attempt reload so manual updates can be pushed some other way
-        reload_results = await _reload_all_cogs()
+    # Try to reload cogs regardless of `git pull` exit status
+    reload_results = await _reload_all_cogs()
 
     # Summarize
     msg = f"Git pull exit code: {code}\n\nStdout:\n{out_text}\n\nStderr:\n{err_text}\n\n"
@@ -653,20 +665,25 @@ async def deploy(interaction: discord.Interaction):
     else:
         msg += "Failed:\nNone"
 
-    # Truncate because followup messages have limits
-    await interaction.followup.send(f"```\n{msg[:1900]}\n```", ephemeral=True)
+    # Update status message with results
+    try:
+        await status_msg.edit(content=f"```\n{msg[:1900]}\n```")
+    except Exception:
+        # fallback to sending a new message
+        await ctx.send(f"```\n{msg[:1900]}\n```")
 
 
-@bot.tree.command(name="reboot", description="Reboot the bot process (owner only).")
-async def reboot(interaction: discord.Interaction):
-    if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
+@tuna.command(name="reboot")
+async def tuna_reboot(ctx: commands.Context):
+    """Reboot the bot process (owner only)."""
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.send("Only the bot owner can use this command.")
         return
 
+    # Send an acknowledgement
     try:
-        await interaction.response.send_message("✅ Rebooting bot...", ephemeral=True)
+        await ctx.send("✅ Rebooting bot...")
     except Exception:
-        # If response has already been deferred or sent, ignore
         pass
 
     # Give Discord time to accept the response
