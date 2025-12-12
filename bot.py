@@ -339,7 +339,7 @@ async def on_ready():
             embed.add_field(name="Updated Cogs", value=cogs_list, inline=False)
         else:
             embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
-        embed.set_footer(text="Developed with love by Tuna 🐟")
+        embed.set_footer(text="Developed with love by tuna_admin 🐟")
 
         # Decide where to send: only send to the main version channel if we are actually able to ping the role (rate OK).
         role_id_to_ping = 1329910398459052176
@@ -629,13 +629,13 @@ async def _reload_all_cogs() -> dict:
     return results
 
 
-@bot.group(name="tuna", invoke_without_command=True)
-async def tuna(ctx: commands.Context):
-    """Tuna admin group. Use `!tuna deploy` or `!tuna reboot`."""
-    await ctx.send("Usage: `!tuna deploy` or `!tuna reboot`")
+@bot.group(name="tuna_admin", invoke_without_command=True)
+async def tuna_admin(ctx: commands.Context):
+    """tuna_admin admin group. Use `!tuna_admin deploy` or `!tuna_admin reboot`."""
+    await ctx.send("Usage: `!tuna_admin deploy` or `!tuna_admin reboot`")
 
 
-@tuna.command(name="deploy")
+@tuna_admin.command(name="deploy")
 async def tuna_deploy(ctx: commands.Context):
     """Pull latest from git and reload cogs (owner only)."""
     if ctx.author.id != BOT_OWNER_ID:
@@ -673,7 +673,7 @@ async def tuna_deploy(ctx: commands.Context):
         await ctx.send(f"```\n{msg[:1900]}\n```")
 
 
-@tuna.command(name="reboot")
+@tuna_admin.command(name="reboot")
 async def tuna_reboot(ctx: commands.Context):
     """Reboot the bot process (owner only)."""
     if ctx.author.id != BOT_OWNER_ID:
