@@ -539,5 +539,150 @@ async def sync_commands(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ Sync failed: {e}", ephemeral=True)
 
+# Owner-only helper and deployment commands
+BOT_OWNER_ID = 840949634071658507
+
+
+async def _get_cog_directories() -> list:
+    """Return list of cog directory names as used in startup (falls back to ['cogs'])."""
+    env_cogs_path = os.path.join(os.path.dirname(__file__), ".env.cogs")
+    cog_directories = []
+    if os.path.exists(env_cogs_path):
+        try:
+            with open(env_cogs_path, "r", encoding="utf-8") as f:
+                raw_lines = [ln.strip() for ln in f if ln.strip() and not ln.strip().startswith("#")]
+            for ln in raw_lines:
+                if "=" in ln:
+                    _, rhs = ln.split("=", 1)
+                    ln = rhs.strip()
+                for part in ln.split(","):
+                    part = part.strip()
+                    if part:
+                        cog_directories.append(part)
+        except Exception:
+            cog_directories = ["cogs"]
+    else:
+        cog_directories = ["cogs"]
+    return cog_directories
+
+
+async def _gather_cog_list() -> list:
+    """Return a list of cog extension names (e.g., 'cogs.shift')."""
+    cogs = []
+    dirs = await _get_cog_directories()
+    for directory in dirs:
+        if directory == "embed-builder-web":
+            cogs.append("embed-builder-web.embed_new")
+            continue
+        dir_path = os.path.join(os.path.dirname(__file__), directory)
+        if not os.path.exists(dir_path):
+            continue
+        for filename in os.listdir(dir_path):
+            if filename.endswith('.py') and not filename.startswith('_'):
+                cogs.append(f"{directory}.{filename[:-3]}")
+    cogs.sort()
+    return cogs
+
+
+async def _run_git_pull(repo_path: str) -> tuple:
+    """Run 'git pull' in repo_path and return (returncode, stdout, stderr)."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "pull", cwd=repo_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+        return proc.returncode, (out.decode(errors='replace') if out else ""), (err.decode(errors='replace') if err else "")
+    except FileNotFoundError:
+        return 127, "", "git not found"
+    except Exception as e:
+        return 1, "", str(e)
+
+
+async def _reload_all_cogs() -> dict:
+    """Attempt to reload or load all cogs; return dict with 'reloaded', 'loaded', 'failed'."""
+    results = {"reloaded": [], "loaded": [], "failed": []}
+    cogs = await _gather_cog_list()
+    for cog in cogs:
+        try:
+            await bot.reload_extension(cog)
+            results["reloaded"].append(cog)
+        except commands.ExtensionNotLoaded:
+            try:
+                await bot.load_extension(cog)
+                results["loaded"].append(cog)
+            except Exception as e:
+                results["failed"].append((cog, str(e)))
+        except Exception as e:
+            results["failed"].append((cog, str(e)))
+    return results
+
+
+@bot.tree.command(name="deploy", description="Pull latest from git and reload cogs (owner only).")
+async def deploy(interaction: discord.Interaction):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    repo_path = os.path.dirname(__file__)
+    code, out, err = await _run_git_pull(repo_path)
+
+    out_text = out.strip()[:1500] if out else "(no stdout)"
+    err_text = err.strip()[:1500] if err else "(no stderr)"
+
+    # If git pull succeeded (0) or had merge conflicts but still changed files, attempt reload
+    reload_results = {}
+    if code == 0:
+        reload_results = await _reload_all_cogs()
+    else:
+        # still attempt reload so manual updates can be pushed some other way
+        reload_results = await _reload_all_cogs()
+
+    # Summarize
+    msg = f"Git pull exit code: {code}\n\nStdout:\n{out_text}\n\nStderr:\n{err_text}\n\n"
+    def _fmt_list(lst):
+        return "\n".join(lst) if lst else "None"
+
+    msg += "Reloaded:\n" + _fmt_list(reload_results.get("reloaded", [])) + "\n\n"
+    msg += "Loaded:\n" + _fmt_list(reload_results.get("loaded", [])) + "\n\n"
+    failed = reload_results.get("failed", [])
+    if failed:
+        msg += "Failed:\n" + "\n".join(f"{c}: {e}" for c, e in failed)
+    else:
+        msg += "Failed:\nNone"
+
+    # Truncate because followup messages have limits
+    await interaction.followup.send(f"```\n{msg[:1900]}\n```", ephemeral=True)
+
+
+@bot.tree.command(name="reboot", description="Reboot the bot process (owner only).")
+async def reboot(interaction: discord.Interaction):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("Only the bot owner can use this command.", ephemeral=True)
+        return
+
+    try:
+        await interaction.response.send_message("✅ Rebooting bot...", ephemeral=True)
+    except Exception:
+        # If response has already been deferred or sent, ignore
+        pass
+
+    # Give Discord time to accept the response
+    await asyncio.sleep(0.5)
+
+    # Close the bot cleanly and execv to restart the process.
+    try:
+        await bot.close()
+    except Exception as e:
+        print(f"Error while closing bot for reboot: {e}")
+
+    try:
+        print("Re-execing process to reboot bot.")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception as e:
+        print(f"Failed to execv for reboot: {e}")
+
 if __name__ == "__main__":
     asyncio.run(main())
