@@ -27,7 +27,7 @@ else:
     except ValueError:
         raise ValueError("APPLICATION_ID must be an integer")
 
-# Load the base64-encoded Discord bot token and decode ite
+# Load the base64-encoded Discord bot token and decode it
 encoded_token = os.getenv("DISCORD_BOT_TOKEN_BASE64")
 if not encoded_token:
     raise ValueError("No DISCORD_BOT_TOKEN_BASE64 found in environment variables")
