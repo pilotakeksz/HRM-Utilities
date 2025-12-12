@@ -106,7 +106,7 @@ async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[dis
         except Exception as e:
             print(f"Failed to send command log embed: {e}")
  
-        # Append to local file 
+        # Append to local file b 
         try:
             os.makedirs(LOGS_FOLDER, exist_ok=True)
             path = os.path.join(LOGS_FOLDER, f"commands_{date.today().isoformat()}.log")
