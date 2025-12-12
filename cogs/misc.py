@@ -5,10 +5,18 @@ from discord import app_commands
 import time
 from io import BytesIO
 import asyncio
+import os
+import json
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 try:
     from PIL import Image
 except Exception:
     Image = None
+try:
+    import pytz
+except ImportError:
+    pytz = None
 
 import aiohttp
 import zipfile
@@ -19,6 +27,147 @@ import re
 
 # Set this to a specific user ID if you want to allow a particular user, or set to None to disable
 ALLOWED_TUNA_USER_ID = 840949634071658507 #tuna id yes
+
+TIMEZONE_DATA_FILE = os.path.join("data", "timezones.json")
+
+def ensure_data_dir():
+    os.makedirs("data", exist_ok=True)
+
+def load_timezones():
+    """Load timezone data from JSON file."""
+    ensure_data_dir()
+    if os.path.exists(TIMEZONE_DATA_FILE):
+        try:
+            with open(TIMEZONE_DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_timezones(data):
+    """Save timezone data to JSON file."""
+    ensure_data_dir()
+    try:
+        with open(TIMEZONE_DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Error saving timezones: {e}")
+
+def parse_timezone_input(input_str: str) -> Optional[str]:
+    """Parse timezone input from various formats.
+    Returns timezone string (e.g., 'America/New_York') or None if invalid.
+    """
+    if not pytz:
+        return None
+    
+    input_str = input_str.strip()
+    
+    # Try direct timezone name first (e.g., "America/New_York", "Europe/London")
+    try:
+        tz = pytz.timezone(input_str)
+        return input_str
+    except Exception:
+        pass
+    
+    # Try common abbreviations
+    abbrev_map = {
+        "EST": "America/New_York",
+        "EDT": "America/New_York",
+        "CST": "America/Chicago",
+        "CDT": "America/Chicago",
+        "MST": "America/Denver",
+        "MDT": "America/Denver",
+        "PST": "America/Los_Angeles",
+        "PDT": "America/Los_Angeles",
+        "GMT": "Europe/London",
+        "UTC": "UTC",
+        "BST": "Europe/London",
+        "CET": "Europe/Paris",
+        "CEST": "Europe/Paris",
+        "JST": "Asia/Tokyo",
+        "AEST": "Australia/Sydney",
+        "AEDT": "Australia/Sydney",
+    }
+    
+    upper_input = input_str.upper()
+    if upper_input in abbrev_map:
+        return abbrev_map[upper_input]
+    
+    # Try searching by country/region name
+    # Common mappings
+    region_map = {
+        "new york": "America/New_York",
+        "los angeles": "America/Los_Angeles",
+        "chicago": "America/Chicago",
+        "denver": "America/Denver",
+        "london": "Europe/London",
+        "paris": "Europe/Paris",
+        "tokyo": "Asia/Tokyo",
+        "sydney": "Australia/Sydney",
+        "toronto": "America/Toronto",
+        "vancouver": "America/Vancouver",
+        "mexico city": "America/Mexico_City",
+        "sao paulo": "America/Sao_Paulo",
+        "berlin": "Europe/Berlin",
+        "madrid": "Europe/Madrid",
+        "rome": "Europe/Rome",
+        "moscow": "Europe/Moscow",
+        "dubai": "Asia/Dubai",
+        "singapore": "Asia/Singapore",
+        "hong kong": "Asia/Hong_Kong",
+        "beijing": "Asia/Shanghai",
+        "shanghai": "Asia/Shanghai",
+    }
+    
+    lower_input = input_str.lower()
+    if lower_input in region_map:
+        return region_map[lower_input]
+    
+    # Try fuzzy search in pytz timezones
+    all_timezones = pytz.all_timezones
+    lower_input = input_str.lower()
+    for tz_name in all_timezones:
+        if lower_input in tz_name.lower() or tz_name.lower().endswith(f"/{lower_input}"):
+            return tz_name
+    
+    return None
+
+def get_user_timezone(user_id: int) -> Optional[str]:
+    """Get user's timezone string."""
+    data = load_timezones()
+    return data.get(str(user_id))
+
+def set_user_timezone(user_id: int, tz_string: str):
+    """Set user's timezone."""
+    data = load_timezones()
+    data[str(user_id)] = tz_string
+    save_timezones(data)
+
+def format_timezone_info(tz_string: str) -> str:
+    """Format timezone information for display."""
+    if not pytz:
+        return tz_string
+    
+    try:
+        tz = pytz.timezone(tz_string)
+        now = datetime.now(tz)
+        offset = now.utcoffset()
+        offset_hours = offset.total_seconds() / 3600
+        
+        # Format offset
+        if offset_hours >= 0:
+            offset_str = f"+{int(offset_hours)}"
+        else:
+            offset_str = str(int(offset_hours))
+        
+        # Get abbreviation if available
+        abbrev = now.strftime("%Z") or ""
+        if abbrev:
+            abbrev = f" ({abbrev})"
+        
+        return f"{tz_string}{abbrev} — UTC{offset_str}"
+    except Exception:
+        return tz_string
 
 class MiscCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -56,6 +205,116 @@ class MiscCog(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="timezone", description="View or set your timezone.")
+    @app_commands.describe(
+        member="Member to view timezone for (optional)",
+        timezone_input="Timezone to set (country, region, abbreviation, or current time)"
+    )
+    async def timezone(self, interaction: discord.Interaction, member: Optional[discord.Member] = None, timezone_input: Optional[str] = None):
+        """View or set timezone."""
+        if not pytz:
+            await interaction.response.send_message("❌ pytz library is not installed. Please install it with `pip install pytz`.", ephemeral=True)
+            return
+        
+        # If timezone_input is provided, set timezone
+        if timezone_input:
+            tz_string = parse_timezone_input(timezone_input)
+            if not tz_string:
+                await interaction.response.send_message(
+                    f"❌ Could not parse timezone: `{timezone_input}`\n\n"
+                    "Try using:\n"
+                    "• Full timezone name (e.g., `America/New_York`, `Europe/London`)\n"
+                    "• Abbreviation (e.g., `EST`, `PST`, `GMT`)\n"
+                    "• City name (e.g., `New York`, `London`, `Tokyo`)",
+                    ephemeral=True
+                )
+                return
+            
+            set_user_timezone(interaction.user.id, tz_string)
+            embed = discord.Embed(
+                title="✅ Timezone Set",
+                description=f"Your timezone has been set to:\n**{format_timezone_info(tz_string)}**",
+                color=discord.Color.green()
+            )
+            if pytz:
+                try:
+                    tz = pytz.timezone(tz_string)
+                    now = datetime.now(tz)
+                    embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+                except Exception:
+                    pass
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Otherwise, view timezone
+        target_user = member or interaction.user
+        tz_string = get_user_timezone(target_user.id)
+        
+        embed = discord.Embed(
+            title="🕐 Timezone",
+            color=discord.Color.blue()
+        )
+        embed.set_author(name=str(target_user), icon_url=target_user.display_avatar.url)
+        
+        if tz_string:
+            embed.description = f"**Timezone:** {format_timezone_info(tz_string)}"
+            if pytz:
+                try:
+                    tz = pytz.timezone(tz_string)
+                    now = datetime.now(tz)
+                    embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+                    embed.add_field(name="UTC Offset", value=f"UTC{now.strftime('%z')}", inline=True)
+                except Exception:
+                    pass
+        else:
+            embed.description = "No timezone set."
+            embed.add_field(
+                name="How to set",
+                value="Use `/timezone timezone_input:<your_timezone>`\n\n"
+                      "Examples:\n"
+                      "• `/timezone timezone_input:America/New_York`\n"
+                      "• `/timezone timezone_input:EST`\n"
+                      "• `/timezone timezone_input:London`",
+                inline=False
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="timezone_set", description="Set your timezone.")
+    @app_commands.describe(timezone_input="Timezone (country, region, abbreviation, or current time)")
+    async def timezone_set(self, interaction: discord.Interaction, timezone_input: str):
+        """Set your timezone."""
+        if not pytz:
+            await interaction.response.send_message("❌ pytz library is not installed. Please install it with `pip install pytz`.", ephemeral=True)
+            return
+        
+        tz_string = parse_timezone_input(timezone_input)
+        if not tz_string:
+            await interaction.response.send_message(
+                f"❌ Could not parse timezone: `{timezone_input}`\n\n"
+                "Try using:\n"
+                "• Full timezone name (e.g., `America/New_York`, `Europe/London`)\n"
+                "• Abbreviation (e.g., `EST`, `PST`, `GMT`)\n"
+                "• City name (e.g., `New York`, `London`, `Tokyo`)",
+                ephemeral=True
+            )
+            return
+        
+        set_user_timezone(interaction.user.id, tz_string)
+        embed = discord.Embed(
+            title="✅ Timezone Set",
+            description=f"Your timezone has been set to:\n**{format_timezone_info(tz_string)}**",
+            color=discord.Color.green()
+        )
+        if pytz:
+            try:
+                tz = pytz.timezone(tz_string)
+                now = datetime.now(tz)
+                embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+            except Exception:
+                pass
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @commands.command(name="ping")
     async def ping_prefix(self, ctx):
         """Simple ping command to check bot responsiveness."""
@@ -65,6 +324,80 @@ class MiscCog(commands.Cog):
             description=f"Latency: {latency}ms",
             color=discord.Color.green()
         )
+        await ctx.send(embed=embed)
+
+    @commands.group(name="tz", invoke_without_command=True)
+    async def tz(self, ctx, member: Optional[discord.Member] = None):
+        """View timezone for yourself or another user."""
+        if not pytz:
+            await ctx.send("❌ pytz library is not installed. Please install it with `pip install pytz`.")
+            return
+        
+        target_user = member or ctx.author
+        tz_string = get_user_timezone(target_user.id)
+        
+        embed = discord.Embed(
+            title="🕐 Timezone",
+            color=discord.Color.blue()
+        )
+        embed.set_author(name=str(target_user), icon_url=target_user.display_avatar.url)
+        
+        if tz_string:
+            embed.description = f"**Timezone:** {format_timezone_info(tz_string)}"
+            if pytz:
+                try:
+                    tz = pytz.timezone(tz_string)
+                    now = datetime.now(tz)
+                    # Convert to UTC timestamp for Discord timestamp
+                    timestamp = int(now.timestamp())
+                    embed.add_field(name="Current Time", value=f"<t:{timestamp}:F>", inline=False)
+                except Exception:
+                    pass
+        else:
+            embed.description = "No timezone set."
+            embed.add_field(
+                name="How to set",
+                value="Use `!tz set <timezone>` or `/timezone_set`\n\n"
+                      "Examples:\n"
+                      "• `!tz set America/New_York`\n"
+                      "• `!tz set EST`\n"
+                      "• `!tz set London`",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+
+    @tz.command(name="set")
+    async def tz_set(self, ctx, *, timezone_input: str):
+        """Set your timezone."""
+        if not pytz:
+            await ctx.send("❌ pytz library is not installed. Please install it with `pip install pytz`.")
+            return
+        
+        tz_string = parse_timezone_input(timezone_input)
+        if not tz_string:
+            await ctx.send(
+                f"❌ Could not parse timezone: `{timezone_input}`\n\n"
+                "Try using:\n"
+                "• Full timezone name (e.g., `America/New_York`, `Europe/London`)\n"
+                "• Abbreviation (e.g., `EST`, `PST`, `GMT`)\n"
+                "• City name (e.g., `New York`, `London`, `Tokyo`)"
+            )
+            return
+        
+        set_user_timezone(ctx.author.id, tz_string)
+        embed = discord.Embed(
+            title="✅ Timezone Set",
+            description=f"Your timezone has been set to:\n**{format_timezone_info(tz_string)}**",
+            color=discord.Color.green()
+        )
+        if pytz:
+            try:
+                tz = pytz.timezone(tz_string)
+                now = datetime.now(tz)
+                embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
+            except Exception:
+                pass
         await ctx.send(embed=embed)
 
     @commands.command(name="uptime")
@@ -700,6 +1033,327 @@ class MiscCog(commands.Cog):
         except Exception as exc:
             await msg.edit(content="Failed to create emoji zip.")
             await ctx.send(f"Error: {exc}")
+
+    @tuna.command(name="timestamp")
+    @commands.has_guild_permissions(administrator=True)
+    async def tuna_timestamp(self, ctx, *, datetime_input: str):
+        """Create a Discord timestamp. (admins only)
+        Usage: !tuna timestamp <date/time> [format]
+        
+        Formats:
+        - t: Short time (9:41 AM)
+        - T: Long time (9:41:30 AM)
+        - d: Short date (06/20/2021)
+        - D: Long date (June 20, 2021)
+        - f: Short date/time (June 20, 2021 9:41 AM) [default]
+        - F: Long date/time (Monday, June 20, 2021 9:41 AM)
+        - R: Relative time (in 2 hours, 3 days ago)
+        
+        Examples:
+        - !tuna timestamp 2024-12-25 15:30
+        - !tuna timestamp Dec 25 2024 3:30 PM
+        - !tuna timestamp 2024-12-25 15:30 R
+        - !tuna timestamp tomorrow 3pm F
+        """
+        # Parse format if provided (last character if it's a single letter)
+        format_char = 'f'  # default
+        datetime_str = datetime_input.strip()
+        
+        # Check if last word is a format character
+        parts = datetime_str.split()
+        if len(parts) > 1 and len(parts[-1]) == 1 and parts[-1].upper() in ['T', 'D', 'F', 'R']:
+            format_char = parts[-1].upper()
+            datetime_str = ' '.join(parts[:-1])
+        elif len(parts) > 1 and parts[-1].lower() in ['t', 'd', 'f', 'r']:
+            format_char = parts[-1].lower()
+            datetime_str = ' '.join(parts[:-1])
+        
+        # Try to parse the datetime
+        parsed_dt = None
+        
+        # Try common formats
+        formats_to_try = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y/%m/%d %H:%M",
+            "%m/%d/%Y %H:%M:%S",
+            "%m/%d/%Y %H:%M",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+            "%B %d, %Y %H:%M:%S",
+            "%B %d, %Y %H:%M",
+            "%b %d, %Y %H:%M:%S",
+            "%b %d, %Y %H:%M",
+            "%d %B %Y %H:%M:%S",
+            "%d %B %Y %H:%M",
+            "%d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M",
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+        ]
+        
+        for fmt in formats_to_try:
+            try:
+                parsed_dt = datetime.strptime(datetime_str, fmt)
+                # Assume local timezone if not specified
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                break
+            except ValueError:
+                continue
+        
+        # Try relative time parsing (e.g., "tomorrow", "in 2 hours", "next week")
+        if parsed_dt is None:
+            now = datetime.now(timezone.utc)
+            lower_input = datetime_str.lower()
+            
+            # Handle "tomorrow", "today", etc.
+            if "tomorrow" in lower_input:
+                parsed_dt = now + timedelta(days=1)
+                # Try to extract time
+                time_match = re.search(r'(\d{1,2})\s*(am|pm|:?\d{0,2})', lower_input, re.IGNORECASE)
+                if time_match:
+                    hour = int(time_match.group(1))
+                    if "pm" in lower_input and hour < 12:
+                        hour += 12
+                    elif "am" in lower_input and hour == 12:
+                        hour = 0
+                    parsed_dt = parsed_dt.replace(hour=hour, minute=0, second=0)
+            elif "today" in lower_input:
+                parsed_dt = now
+                time_match = re.search(r'(\d{1,2})\s*(am|pm|:?\d{0,2})', lower_input, re.IGNORECASE)
+                if time_match:
+                    hour = int(time_match.group(1))
+                    if "pm" in lower_input and hour < 12:
+                        hour += 12
+                    elif "am" in lower_input and hour == 12:
+                        hour = 0
+                    parsed_dt = parsed_dt.replace(hour=hour, minute=0, second=0)
+            elif "in" in lower_input:
+                # Parse relative time like "in 2 hours", "in 3 days"
+                delta = timedelta()
+                hour_match = re.search(r'(\d+)\s*hour', lower_input)
+                day_match = re.search(r'(\d+)\s*day', lower_input)
+                minute_match = re.search(r'(\d+)\s*minute', lower_input)
+                week_match = re.search(r'(\d+)\s*week', lower_input)
+                
+                if hour_match:
+                    delta += timedelta(hours=int(hour_match.group(1)))
+                if day_match:
+                    delta += timedelta(days=int(day_match.group(1)))
+                if minute_match:
+                    delta += timedelta(minutes=int(minute_match.group(1)))
+                if week_match:
+                    delta += timedelta(weeks=int(week_match.group(1)))
+                
+                if delta.total_seconds() > 0:
+                    parsed_dt = now + delta
+        
+        if parsed_dt is None:
+            await ctx.send(
+                f"❌ Could not parse date/time: `{datetime_input}`\n\n"
+                "Try formats like:\n"
+                "• `2024-12-25 15:30`\n"
+                "• `Dec 25 2024 3:30 PM`\n"
+                "• `tomorrow 3pm`\n"
+                "• `in 2 hours`\n\n"
+                "Add format at end: `t`, `T`, `d`, `D`, `f`, `F`, or `R`"
+            )
+            return
+        
+        # Convert to Unix timestamp
+        timestamp = int(parsed_dt.timestamp())
+        
+        # Generate Discord timestamp code
+        timestamp_code = f"<t:{timestamp}:{format_char}>"
+        
+        # Create embed with preview
+        embed = discord.Embed(
+            title="🕐 Discord Timestamp",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="Code",
+            value=f"`{timestamp_code}`",
+            inline=False
+        )
+        embed.add_field(
+            name="Preview",
+            value=timestamp_code,
+            inline=False
+        )
+        embed.add_field(
+            name="Format",
+            value=format_char.upper(),
+            inline=True
+        )
+        embed.add_field(
+            name="Unix Timestamp",
+            value=str(timestamp),
+            inline=True
+        )
+        embed.add_field(
+            name="Parsed Date/Time",
+            value=parsed_dt.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+
+    @tuna.command(name="timestamp_short")
+    @commands.has_guild_permissions(administrator=True)
+    async def tuna_timestamp_short(self, ctx, *, datetime_input: str):
+        """Create a Discord timestamp with short time format. (admins only)
+        Usage: !tuna timestamp_short <date/time>
+        
+        Creates a short time format (9:41 AM) timestamp.
+        
+        Examples:
+        - !tuna timestamp_short 2024-12-25 15:30
+        - !tuna timestamp_short Dec 25 2024 3:30 PM
+        - !tuna timestamp_short tomorrow 3pm
+        - !tuna timestamp_short in 2 hours
+        """
+        # Parse format - always use 't' for short time
+        format_char = 't'
+        datetime_str = datetime_input.strip()
+        
+        # Try to parse the datetime
+        parsed_dt = None
+        
+        # Try common formats
+        formats_to_try = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y/%m/%d %H:%M",
+            "%m/%d/%Y %H:%M:%S",
+            "%m/%d/%Y %H:%M",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+            "%B %d, %Y %H:%M:%S",
+            "%B %d, %Y %H:%M",
+            "%b %d, %Y %H:%M:%S",
+            "%b %d, %Y %H:%M",
+            "%d %B %Y %H:%M:%S",
+            "%d %B %Y %H:%M",
+            "%d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M",
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+        ]
+        
+        for fmt in formats_to_try:
+            try:
+                parsed_dt = datetime.strptime(datetime_str, fmt)
+                # Assume local timezone if not specified
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                break
+            except ValueError:
+                continue
+        
+        # Try relative time parsing (e.g., "tomorrow", "in 2 hours", "next week")
+        if parsed_dt is None:
+            now = datetime.now(timezone.utc)
+            lower_input = datetime_str.lower()
+            
+            # Handle "tomorrow", "today", etc.
+            if "tomorrow" in lower_input:
+                parsed_dt = now + timedelta(days=1)
+                # Try to extract time
+                time_match = re.search(r'(\d{1,2})\s*(am|pm|:?\d{0,2})', lower_input, re.IGNORECASE)
+                if time_match:
+                    hour = int(time_match.group(1))
+                    if "pm" in lower_input and hour < 12:
+                        hour += 12
+                    elif "am" in lower_input and hour == 12:
+                        hour = 0
+                    parsed_dt = parsed_dt.replace(hour=hour, minute=0, second=0)
+            elif "today" in lower_input:
+                parsed_dt = now
+                time_match = re.search(r'(\d{1,2})\s*(am|pm|:?\d{0,2})', lower_input, re.IGNORECASE)
+                if time_match:
+                    hour = int(time_match.group(1))
+                    if "pm" in lower_input and hour < 12:
+                        hour += 12
+                    elif "am" in lower_input and hour == 12:
+                        hour = 0
+                    parsed_dt = parsed_dt.replace(hour=hour, minute=0, second=0)
+            elif "in" in lower_input:
+                # Parse relative time like "in 2 hours", "in 3 days"
+                delta = timedelta()
+                hour_match = re.search(r'(\d+)\s*hour', lower_input)
+                day_match = re.search(r'(\d+)\s*day', lower_input)
+                minute_match = re.search(r'(\d+)\s*minute', lower_input)
+                week_match = re.search(r'(\d+)\s*week', lower_input)
+                
+                if hour_match:
+                    delta += timedelta(hours=int(hour_match.group(1)))
+                if day_match:
+                    delta += timedelta(days=int(day_match.group(1)))
+                if minute_match:
+                    delta += timedelta(minutes=int(minute_match.group(1)))
+                if week_match:
+                    delta += timedelta(weeks=int(week_match.group(1)))
+                
+                if delta.total_seconds() > 0:
+                    parsed_dt = now + delta
+        
+        if parsed_dt is None:
+            await ctx.send(
+                f"❌ Could not parse date/time: `{datetime_input}`\n\n"
+                "Try formats like:\n"
+                "• `2024-12-25 15:30`\n"
+                "• `Dec 25 2024 3:30 PM`\n"
+                "• `tomorrow 3pm`\n"
+                "• `in 2 hours`"
+            )
+            return
+        
+        # Convert to Unix timestamp
+        timestamp = int(parsed_dt.timestamp())
+        
+        # Generate Discord timestamp code with short time format
+        timestamp_code = f"<t:{timestamp}:{format_char}>"
+        
+        # Create embed with preview
+        embed = discord.Embed(
+            title="🕐 Discord Timestamp (Short Time)",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="Code",
+            value=f"`{timestamp_code}`",
+            inline=False
+        )
+        embed.add_field(
+            name="Preview",
+            value=timestamp_code,
+            inline=False
+        )
+        embed.add_field(
+            name="Format",
+            value="Short Time (t)",
+            inline=True
+        )
+        embed.add_field(
+            name="Unix Timestamp",
+            value=str(timestamp),
+            inline=True
+        )
+        embed.add_field(
+            name="Parsed Date/Time",
+            value=parsed_dt.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MiscCog(bot))

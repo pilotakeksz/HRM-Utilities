@@ -1,21 +1,169 @@
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 import os
 import datetime
 import aiosqlite
-from typing import Optional
+import json
+from typing import Optional, Dict, List
+from collections import defaultdict
 
 AFK_LOG_CHANNEL_ID = 1343686645815181382
 AFK_ADMIN_ROLE_IDS = {1329910241835352064}  # Only this role can use afkremove
 AFK_LOG_FILE = os.path.join("logs", "afk.txt")
 AFK_DB_FILE = os.path.join("data", "afk.db")
+AFK_ACTIVITY_FILE = os.path.join("data", "activity_tracking.json")
 AFK_PREFIX = "[AFK] "
 
 class AFK(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.afk_messages = {}  # user_id: (message, timestamp)
+        self.activity_data = {}  # user_id: List[{"status": str, "timestamp": str}]
+        self.load_activity_data()
+
+    def load_activity_data(self):
+        """Load activity tracking data from JSON file."""
+        if os.path.exists(AFK_ACTIVITY_FILE):
+            try:
+                with open(AFK_ACTIVITY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    # Convert string keys to int keys
+                    self.activity_data = {int(k): v for k, v in data.items()}
+            except Exception as e:
+                print(f"Error loading activity data: {e}")
+                self.activity_data = {}
+        else:
+            self.activity_data = {}
+
+    def save_activity_data(self):
+        """Save activity tracking data to JSON file."""
+        try:
+            with open(AFK_ACTIVITY_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.activity_data, f, indent=2)
+        except Exception as e:
+            print(f"Error saving activity data: {e}")
+
+    def record_message_activity(self, user_id: int):
+        """Record when a user sends a message in the server."""
+        if user_id not in self.activity_data:
+            self.activity_data[user_id] = []
+        
+        now = datetime.datetime.utcnow()
+        timestamp = now.isoformat()
+        
+        # Throttle: don't record if last message was less than 1 hour ago
+        # This prevents spam while still capturing meaningful activity patterns
+        if self.activity_data[user_id]:
+            last_entry = self.activity_data[user_id][-1]
+            try:
+                last_time = datetime.datetime.fromisoformat(last_entry["timestamp"])
+                if (now - last_time).total_seconds() < 3600:  # Less than 1 hour
+                    return  # Too soon, skip
+            except Exception:
+                pass
+        
+        self.activity_data[user_id].append({
+            "timestamp": timestamp
+        })
+        
+        # Keep only last 30 days of data to prevent file from growing too large
+        cutoff = (now - datetime.timedelta(days=30)).isoformat()
+        self.activity_data[user_id] = [
+            entry for entry in self.activity_data[user_id]
+            if entry["timestamp"] >= cutoff
+        ]
+        
+        self.save_activity_data()
+
+    def get_usually_active_time(self, user_id: int) -> Optional[str]:
+        """Calculate and return the usually active time frame for a user based on message activity."""
+        try:
+            # Ensure user_id is an int
+            user_id = int(user_id)
+            
+            if user_id not in self.activity_data or not self.activity_data[user_id]:
+                return None
+            
+            # Count message activity by hour (UTC)
+            hour_counts = defaultdict(int)
+            message_entries = self.activity_data[user_id]
+            
+            if len(message_entries) < 5:  # Need at least 5 message data points
+                return None
+            
+            for entry in message_entries:
+                try:
+                    timestamp_str = entry.get("timestamp")
+                    if not timestamp_str:
+                        continue
+                    dt = datetime.datetime.fromisoformat(timestamp_str)
+                    hour = dt.hour
+                    hour_counts[hour] += 1
+                except Exception:
+                    continue
+            
+            if not hour_counts:
+                return None
+            
+            # Find the most active hours
+            sorted_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)
+            if not sorted_hours:
+                return None
+            
+            # Get hours that are at least 50% as active as the most active hour
+            max_count = sorted_hours[0][1]
+            threshold = max(1, max_count * 0.5)
+            active_hours = [h for h, count in sorted_hours if count >= threshold]
+            
+            if not active_hours:
+                return None
+            
+            # Find the continuous range
+            active_hours.sort()
+            if len(active_hours) == 1:
+                start_hour = active_hours[0]
+                end_hour = active_hours[0]
+            else:
+                # Find the longest continuous range
+                start_hour = active_hours[0]
+                end_hour = active_hours[0]
+                current_start = active_hours[0]
+                current_end = active_hours[0]
+                
+                for i in range(1, len(active_hours)):
+                    if active_hours[i] == current_end + 1:
+                        current_end = active_hours[i]
+                    else:
+                        if current_end - current_start > end_hour - start_hour:
+                            start_hour = current_start
+                            end_hour = current_end
+                        current_start = active_hours[i]
+                        current_end = active_hours[i]
+                
+                if current_end - current_start > end_hour - start_hour:
+                    start_hour = current_start
+                    end_hour = current_end
+            
+            # Format as Discord timestamps (short time format)
+            # Create timestamps for today at the specified hours (UTC)
+            now = datetime.datetime.utcnow()
+            
+            def create_timestamp(hour):
+                """Create a Discord timestamp for today at the specified hour."""
+                # Create datetime for today at the specified hour in UTC
+                dt = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+                timestamp = int(dt.timestamp())
+                return f"<t:{timestamp}:t>"
+            
+            if start_hour == end_hour:
+                return create_timestamp(start_hour)
+            else:
+                return f"{create_timestamp(start_hour)} - {create_timestamp(end_hour)}"
+        except Exception as e:
+            print(f"Error in get_usually_active_time for user {user_id}: {e}")
+            return None
 
     async def cog_load(self):
         os.makedirs("data", exist_ok=True)
@@ -102,6 +250,10 @@ class AFK(commands.Cog):
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
+        # Add usually active time if available
+        usually_active = self.get_usually_active_time(ctx.author.id)
+        if usually_active:
+            embed.add_field(name="Usually Active", value=usually_active, inline=False)
         embed.set_footer(text="Use !afkremove or send a message to remove AFK.")
         await ctx.send(embed=embed)
         self.log_afk_action("Set", ctx.author)
@@ -119,6 +271,10 @@ class AFK(commands.Cog):
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
+        # Add usually active time if available
+        usually_active = self.get_usually_active_time(interaction.user.id)
+        if usually_active:
+            embed.add_field(name="Usually Active", value=usually_active, inline=False)
         embed.set_footer(text="Use /afkremove or send a message to remove AFK.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         self.log_afk_action("Set", interaction.user)
@@ -167,10 +323,39 @@ class AFK(commands.Cog):
         else:
             await interaction.response.send_message(f"{member.mention} is not AFK.", ephemeral=True)
 
+    @app_commands.command(name="usuallyactive", description="Check when a user usually sends messages in the server.")
+    @app_commands.describe(member="The member to check (defaults to yourself)")
+    async def usually_active_slash(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
+        """Show when a user usually sends messages in the server."""
+        target = member or interaction.user
+        usually_active = self.get_usually_active_time(target.id)
+        
+        embed = discord.Embed(
+            title="🕐 Usually Active",
+            color=discord.Color.blurple()
+        )
+        embed.set_author(name=str(target), icon_url=target.display_avatar.url)
+        
+        if usually_active:
+            embed.description = f"**Usually Active:** {usually_active}"
+            embed.set_footer(text="Based on message activity in the server (UTC time)")
+        else:
+            embed.description = "Not enough activity data available yet.\n\nActivity tracking requires at least 5 messages to calculate usually active times."
+            embed.set_footer(text="Activity is tracked automatically when you send messages in the server")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # Removed on_presence_update listener - now tracking based on messages only
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
             return
+
+        # Track message activity for "usually active" calculation
+        # Only tracks messages in guilds (not DMs)
+        if message.guild:
+            self.record_message_activity(message.author.id)
 
         # If someone is mentioned and is AFK, respond with their AFK message (no pings)
         mentioned_ids = {user.id for user in message.mentions if not user.bot}
@@ -182,6 +367,14 @@ class AFK(commands.Cog):
                     description=f"**That user is currently AFK:**\n> {afk_text}",
                     color=discord.Color.blurple()
                 )
+                # Add usually active time if available
+                try:
+                    usually_active = self.get_usually_active_time(user_id)
+                    if usually_active:
+                        embed.add_field(name="Usually Active", value=usually_active, inline=False)
+                except Exception as e:
+                    # Silently fail if there's an error calculating usually active time
+                    print(f"Error getting usually active time for user {user_id}: {e}")
                 embed.set_footer(text="They will see your message when they return.")
                 await message.channel.send(embed=embed)
 
@@ -194,6 +387,13 @@ class AFK(commands.Cog):
                 color=discord.Color.green()
             )
             embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
+            # Add usually active time if available
+            try:
+                usually_active = self.get_usually_active_time(message.author.id)
+                if usually_active:
+                    embed.add_field(name="Usually Active", value=usually_active, inline=False)
+            except Exception as e:
+                print(f"Error getting usually active time for user {message.author.id}: {e}")
             await message.channel.send(embed=embed)
             self.log_afk_action("Removed (Self)", message.author)
             if message.guild:

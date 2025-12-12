@@ -1554,6 +1554,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
   } catch (err) {
-    console.error("EmbedBuilder initialization failed:", err);
-  }
+    console.error("EmbedBuilder initialization failed:", err);  }
 });

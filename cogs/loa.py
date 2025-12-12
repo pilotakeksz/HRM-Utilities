@@ -328,6 +328,114 @@ class LOACog(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
+    @discord.app_commands.command(name="loa_history", description="View your LOA request history.")
+    @discord.app_commands.describe(member="Member to view history for (admin only)")
+    async def loa_history(self, interaction: discord.Interaction, member: discord.Member = None):
+        """View LOA request history for a user."""
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("Guild only.", ephemeral=True)
+            return
+        
+        # Determine target user
+        target_user = member if member else interaction.user
+        
+        # Check if viewing someone else's history (admin only)
+        if member and member != interaction.user:
+            admin_role_id = 1355842403134603275
+            if not any(r.id == admin_role_id for r in interaction.user.roles):
+                await interaction.response.send_message("You can only view your own LOA history.", ephemeral=True)
+                return
+        
+        # Load LOA requests
+        try:
+            with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
+                all_requests = json.load(f)
+        except Exception:
+            all_requests = []
+        
+        # Filter requests for target user
+        user_requests = [
+            req for req in all_requests
+            if req.get("user_id") == target_user.id
+        ]
+        
+        if not user_requests:
+            embed = discord.Embed(
+                title="LOA History",
+                description=f"No LOA requests found for {target_user.mention}.",
+                color=discord.Color.blue()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Sort by requested_at (most recent first)
+        def parse_date(req):
+            try:
+                dt = datetime.fromisoformat(req.get("requested_at", ""))
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc)
+            except Exception:
+                return datetime.min.replace(tzinfo=timezone.utc)
+        
+        user_requests.sort(key=parse_date, reverse=True)
+        
+        # Helper to parse ISO dates
+        def _parse_iso_utc(s):
+            try:
+                d = datetime.fromisoformat(s)
+                if d.tzinfo is None:
+                    return d.replace(tzinfo=timezone.utc)
+                return d.astimezone(timezone.utc)
+            except Exception:
+                return None
+        
+        # Create embed with pagination if needed
+        embed = discord.Embed(
+            title=f"LOA History - {target_user.display_name}",
+            color=discord.Color.blue()
+        )
+        embed.set_author(name=str(target_user), icon_url=target_user.display_avatar.url)
+        
+        # Limit to 10 most recent for display
+        display_requests = user_requests[:10]
+        
+        if len(user_requests) > 10:
+            embed.set_footer(text=f"Showing 10 most recent of {len(user_requests)} total requests")
+        
+        # Build description with request details
+        lines = []
+        for i, req in enumerate(display_requests, 1):
+            status = req.get("status", "Unknown")
+            reason = req.get("reason", "N/A")
+            duration = req.get("duration", 0)
+            requested_at = _parse_iso_utc(req.get("requested_at", ""))
+            end_date = _parse_iso_utc(req.get("end_date", ""))
+            
+            # Status emoji
+            if "Approved" in status or "✅" in status:
+                status_emoji = "✅"
+            elif "Denied" in status or "❌" in status:
+                status_emoji = "❌"
+            else:
+                status_emoji = "⏳"
+            
+            # Format date
+            date_str = f"<t:{int(requested_at.timestamp())}:D>" if requested_at else "Unknown"
+            
+            # Build line
+            line = f"**{i}. {status_emoji} {status}** - {duration} days\n"
+            line += f"   Requested: {date_str}"
+            if end_date:
+                line += f" | Ends: <t:{int(end_date.timestamp())}:D>"
+            line += f"\n   Reason: {reason[:100]}{'...' if len(reason) > 100 else ''}\n"
+            lines.append(line)
+        
+        embed.description = "\n".join(lines) if lines else "No requests found."
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @discord.app_commands.command(name="loa_admin", description="Admin LOA management (admin only).")
     @discord.app_commands.describe(
         user="User to manage LOA for",
