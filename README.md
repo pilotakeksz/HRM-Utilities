@@ -106,6 +106,9 @@ MIA_REDIRECT=https://discord.gg/mia-server
 # Database Paths
 ECONOMY_DB_FILE=data/economy.db
 DB_FILE=data/leveling.db
+# Tuna admin list (comma-separated user IDs allowed to run `!tuna_admin` commands)
+# Example: TUNA_ADMIN_IDS=840949634071658507,123456789012345678
+TUNA_ADMIN_IDS=840949634071658507
 ```
 
 ### Step 4: Run the Bot

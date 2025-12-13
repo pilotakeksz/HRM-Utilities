@@ -316,6 +316,7 @@ async def on_ready():
         print(f"Failed to DM console output: {e}")
     
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    print(f"Configured tuna admins: {TUNA_ADMIN_IDS}")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="Always Ready, Always There"))
     
     # Send version to specified channel
@@ -551,6 +552,18 @@ async def sync_commands(interaction: discord.Interaction):
 
 # Owner-only helper and deployment commands
 BOT_OWNER_ID = 840949634071658507
+# Allow configuring multiple users who may run tuna_admin commands via an env var
+# Format: comma-separated user IDs, e.g. "840949634071658507,123456789012345678"
+_tuna_admins_env = os.getenv("TUNA_ADMIN_IDS", "670646167448584192,735167992966676530,911072161349918720").strip()
+if _tuna_admins_env:
+    try:
+        TUNA_ADMIN_IDS = [int(x.strip()) for x in _tuna_admins_env.split(",") if x.strip()]
+    except Exception:
+        print("⚠️ Warning: failed to parse TUNA_ADMIN_IDS env var; falling back to BOT_OWNER_ID only")
+        TUNA_ADMIN_IDS = [BOT_OWNER_ID]
+else:
+    TUNA_ADMIN_IDS = [BOT_OWNER_ID]
+
 
 
 async def _get_cog_directories() -> list:
@@ -637,9 +650,9 @@ async def tuna_admin(ctx: commands.Context):
 
 @tuna_admin.command(name="deploy")
 async def tuna_deploy(ctx: commands.Context):
-    """Pull latest from git and reload cogs (owner only)."""
-    if ctx.author.id != BOT_OWNER_ID:
-        await ctx.send("Only the bot owner can use this command.")
+    """Pull latest from git and reload cogs (tuna admin only)."""
+    if ctx.author.id not in TUNA_ADMIN_IDS:
+        await ctx.send("Only configured tuna admins can use this command.")
         return
 
     status_msg = await ctx.send("🔄 Running deploy (git pull + reload cogs)...")
@@ -675,9 +688,9 @@ async def tuna_deploy(ctx: commands.Context):
 
 @tuna_admin.command(name="reboot")
 async def tuna_reboot(ctx: commands.Context):
-    """Reboot the bot process (owner only)."""
-    if ctx.author.id != BOT_OWNER_ID:
-        await ctx.send("Only the bot owner can use this command.")
+    """Reboot the bot process (tuna admin only)."""
+    if ctx.author.id not in TUNA_ADMIN_IDS:
+        await ctx.send("Only configured tuna admins can use this command.")
         return
 
     # Send an acknowledgement
