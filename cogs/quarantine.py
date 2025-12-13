@@ -512,12 +512,15 @@ class RaidProtection(commands.Cog):
         else:
             return [ts for ts in lst if ts >= cutoff]
 
-    @commands.command(name="leaderboard", help="Show top quarantined-as-special-member leaderboard, or get counts for a specific member.")
-    async def leaderboard(self, ctx, member: Optional[discord.Member] = None):
+    @commands.command(
+        name="quarantine_leaderboard",
+        aliases=["qboard", "qlb", "quarantine_lb", "leaderboard_quarantine"],
+        help="Show top quarantined-as-special-member leaderboard, or get counts for a specific member. Use an alias like !qboard, !qlb, or !quarantine_leaderboard.")
+    async def quarantine_leaderboard(self, ctx, member: Optional[discord.Member] = None):
         """Prefix command (!) to show top quarantined counts or a specific member's count.
         Usage:
-          !leaderboard - shows top 10 leaderboard
-          !leaderboard @user - shows a user's count; only admins can query other users
+          !qboard (or !quarantine_leaderboard) - shows top 10 leaderboard
+          !qboard @user - shows a user's count; only admins can query other users
         """
         # If no member provided, show top N leaderboard
         if member is None:

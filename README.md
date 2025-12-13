@@ -198,6 +198,11 @@ The bot requires the following Discord permissions:
 | `/infraction-void <id>` | Void an infraction | `/infraction-void 123` | High Command |
 | `/infraction-view <id>` | View infraction details | `/infraction-view 123` | All users (own) / HC |
 | `/infraction-list <user> [page]` | List user infractions | `/infraction-list @user 1` | All users (own) / HC |
+
+#### Quarantine / Leaderboard
+| Command | Description | Usage | Permissions |
+|---------|-------------|-------|-------------|
+| `!qboard` / `!quarantine_leaderboard` | Show top users quarantined while holding the special role, or query a user's count (`!qboard @user`) | `!qboard` / `!qboard @user` | All users (per-user queries restricted to admins for other users) |
 | `/infraction-log` | View recent infractions | `/infraction-log` | High Command |
 
 #### Blacklist System
