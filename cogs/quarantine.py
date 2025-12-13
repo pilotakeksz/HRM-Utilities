@@ -917,6 +917,88 @@ class RaidProtection(commands.Cog):
             return
 
     @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        """Detect when someone modifies roles of a quarantined user."""
+        if before.guild.id != GUILD_ID:
+            return
+        
+        # Check if roles changed
+        if before.roles == after.roles:
+            return
+        
+        # Check if the member being updated is quarantined
+        if not self.is_quarantined(after.id):
+            return
+        
+        # Get the roles that were added/removed
+        roles_before = set(before.roles)
+        roles_after = set(after.roles)
+        roles_added = roles_after - roles_before
+        roles_removed = roles_before - roles_after
+        
+        # Ignore if only the quarantine role was added (that's expected)
+        quarantine_role = after.guild.get_role(QUARANTINE_ROLE_ID)
+        if quarantine_role:
+            roles_added.discard(quarantine_role)
+            roles_removed.discard(quarantine_role)
+        
+        # If no meaningful role changes, skip
+        if not roles_added and not roles_removed:
+            return
+        
+        # Fetch the audit log actor who made the change
+        def check_target(e):
+            try:
+                return getattr(e.target, 'id', None) == after.id
+            except Exception:
+                return False
+        
+        actor = await self._fetch_audit_actor(
+            after.guild, 
+            discord.AuditLogAction.member_role_update,
+            target_check=check_target
+        )
+        
+        if actor is None:
+            logger.info(f"Role change detected on quarantined user {after.id} but actor not found in audit logs")
+            return
+        
+        # Check bypass
+        if self.has_bypass(actor):
+            return
+        
+        # Build reason with details
+        reason_parts = [f"Modified roles of quarantined user: {after.name} ({after.id})"]
+        if roles_added:
+            role_names = [r.name for r in roles_added]
+            reason_parts.append(f"Added roles: {', '.join(role_names[:5])}" + ("..." if len(role_names) > 5 else ""))
+        if roles_removed:
+            role_names = [r.name for r in roles_removed]
+            reason_parts.append(f"Removed roles: {', '.join(role_names[:5])}" + ("..." if len(role_names) > 5 else ""))
+        
+        reason = " | ".join(reason_parts)
+        
+        # Quarantine the actor
+        await self.quarantine_user(actor, reason)
+        
+        # Restore the quarantined user's roles to what they should be (remove added roles, re-add removed ones if they were original)
+        try:
+            # Remove any roles that were added
+            if roles_added:
+                await after.remove_roles(*roles_added, reason="Quarantine protection: removing unauthorized role additions")
+            
+            # Re-add roles that were removed (if they were part of the original roles)
+            if roles_removed:
+                # Check if removed roles were in the original stored roles
+                stored_data = self.quarantined_users.get(str(after.id), {})
+                original_roles = stored_data.get("roles", [])
+                roles_to_restore = [r for r in roles_removed if r.id in original_roles]
+                if roles_to_restore:
+                    await after.add_roles(*roles_to_restore, reason="Quarantine protection: restoring removed roles")
+        except Exception as e:
+            logger.error(f"Error restoring roles for quarantined user {after.id} after unauthorized change: {e}")
+
+    @commands.Cog.listener()
     async def on_guild_role_create(self, role):
         try:
             if role.guild.id != GUILD_ID:
