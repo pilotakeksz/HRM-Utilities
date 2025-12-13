@@ -701,5 +701,99 @@ async def tuna_reboot(ctx: commands.Context):
     except Exception as e:
         print(f"Failed to execv for reboot: {e}")
 
+
+@bot.command(name="tuna_troubleshoot")
+async def tuna_troubleshoot(ctx: commands.Context, role_id: Optional[int] = None):
+    """Owner-only: Inspect the role timestamp database for troubleshooting.
+    Optionally provide a role ID to filter to a single role.
+    """
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.send("Only the bot owner can use this command.")
+        return
+
+    import math
+    data_path = os.path.join(os.path.dirname(__file__), "data", "role_timestamps.json")
+    if not os.path.exists(data_path):
+        await ctx.send("No role timestamp data found at data/role_timestamps.json.")
+        return
+
+    try:
+        with open(data_path, "r", encoding="utf-8") as f:
+            raw_data = json.load(f)
+    except Exception as e:
+        await ctx.send(f"Failed to read timestamps file: {e}")
+        return
+
+    roles = raw_data.get("roles", {}) if isinstance(raw_data, dict) else {}
+    if role_id is not None:
+        roles = {str(role_id): roles.get(str(role_id), {})}
+
+    # Determine guild context: prefer GUILD_ID env, else ctx.guild, else first guild
+    guild = None
+    gid_env = os.getenv("GUILD_ID")
+    try:
+        if gid_env:
+            gid = int(gid_env)
+            guild = ctx.bot.get_guild(gid) or await ctx.bot.fetch_guild(gid)
+    except Exception:
+        guild = None
+    if guild is None:
+        guild = ctx.guild or (ctx.bot.guilds[0] if ctx.bot.guilds else None)
+
+    def human_td_seconds(seconds: int) -> str:
+        seconds = int(seconds)
+        m, s = divmod(seconds, 60)
+        h, m = divmod(m, 60)
+        d, h = divmod(h, 24)
+        parts = []
+        if d:
+            parts.append(f"{d}d")
+        if h:
+            parts.append(f"{h}h")
+        if m:
+            parts.append(f"{m}m")
+        if s and not parts:
+            parts.append(f"{s}s")
+        return " ".join(parts) if parts else "0s"
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    lines = []
+    total_cnt = 0
+    for rid, users in roles.items():
+        try:
+            rid_int = int(rid)
+        except Exception:
+            rid_int = None
+        role_name = None
+        if guild and rid_int:
+            role_obj = guild.get_role(rid_int)
+            role_name = role_obj.name if role_obj else None
+        lines.append(f"Role: {role_name or rid} (id: {rid})")
+        if not users:
+            lines.append("  (no records)")
+            continue
+        for uid, ts in users.items():
+            total_cnt += 1
+            try:
+                uid_int = int(uid)
+                ts_int = int(ts)
+                elapsed = now_ts - ts_int
+                lines.append(f"  <@{uid_int}> — set <t:{ts_int}:F> (<t:{ts_int}:R>) — {human_td_seconds(elapsed)}")
+            except Exception:
+                lines.append(f"  {uid} — {ts}")
+        lines.append("")
+
+    if not lines:
+        await ctx.send("No role timestamp entries found.")
+        return
+
+    header = f"Role timestamps: {total_cnt} entries across {len(roles)} roles"
+    out = "\n".join([header, ""] + lines)
+    # Send in chunks if too long
+    CHUNK = 1900
+    for i in range(0, len(out), CHUNK):
+        chunk = out[i:i+CHUNK]
+        await ctx.send(f"```\n{chunk}\n```")
+
 if __name__ == "__main__":
     asyncio.run(main())

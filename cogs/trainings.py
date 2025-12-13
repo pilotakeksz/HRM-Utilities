@@ -13,6 +13,24 @@ import re
 TRAINING_ROLE_ID = 1329910342301515838  # role allowed to run command
 ANNOUNCE_CHANNEL_ID = 1329910495536484374
 PING_ROLE_ID = 1329910324002029599
+TRAINING_PASS_ROLE = 1381235090461560933  # role given when trainee passes training (intermediate R/A eligible)
+RA_ROLE_TO_REMOVE = 1329910323062505534  # role to remove upon passing R/A
+
+# Roles granted after passing R/A
+RA_FINAL_ROLES = [
+    1355587926708191272,
+    1331644226781577316,
+    1329910298525696041,
+    1329910321745494038,
+]
+
+# Role allowed to record R/A results in addition to TRAINING_ROLE_ID
+RA_TRUSTED_ROLE = 1381896956548481064
+
+# Channel to post daily role list and enforcement
+ROLE_CHECK_CHANNEL_ID = 1449359020342378556
+
+ROLE_TIMESTAMP_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "role_timestamps.json")
 LOG_CHANNEL_ID = 1343686645815181382
 
 YES_EMOJI = discord.PartialEmoji(name="yes", id=1358812809558753401)
@@ -29,7 +47,7 @@ RESULT_CHANNEL_ID = 1329910498350727188  # channel to post individual result emb
 RESULTS_LOG_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 
 
-def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str):
+def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str, include_notice: bool = True):
     """Create the visual and summary embeds for a training result.
     Embeds will not include numeric IDs or timestamps; the summary embed has the same colour as the visual.
     """
@@ -52,13 +70,56 @@ def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: 
     emb2.add_field(name="<:Member:1343945679390904330> Trainer", value=trainer_text, inline=True)
     emb2.add_field(name="<:Member:1343945679390904330> Co-trainer", value=cotext, inline=True)
     emb2.add_field(name="<:Member:1343945679390904330> Trainee", value=f"> {trainee.mention}", inline=False)
-    emb2.add_field(name="📊 Result", value=f">{'<:yes:1358812809558753401> PASS' if result.lower().startswith('pass') else '<:no:1358812780890947625> FAIL'}", inline=True)
+    emb2.add_field(name="📊 Result", value=f"> {'<:yes:1358812809558753401> PASS' if result.lower().startswith('pass') else '<:no:1358812780890947625> FAIL'}", inline=True)
     if remarks:
         emb2.add_field(name="📝 Remarks", value=f"> {remarks}", inline=False)
     if notes:
         emb2.add_field(name="📌 Notes", value=f"> {notes}", inline=False)
     emb2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=691a551c&is=6919039c&hm=e3875f03b5f806cd119131d923c940d68345f15296d23fd9e3a1ef3ed633bcc8&")
+    if include_notice:
+        emb2.add_field(name="<:redflag:1343320162820165805> Notice", value=f"> Passing your training does **not** mean you are automatically personnel. You will have to pass an R/A. You may request one in <#1381232468430159993>.", inline=False)
     return emb_visual, emb2
+
+
+def load_role_timestamps() -> dict:
+    try:
+        if os.path.exists(ROLE_TIMESTAMP_FILE):
+            with open(ROLE_TIMESTAMP_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"roles": {}}
+
+
+def save_role_timestamps(data: dict):
+    try:
+        os.makedirs(os.path.dirname(ROLE_TIMESTAMP_FILE), exist_ok=True)
+        with open(ROLE_TIMESTAMP_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def set_role_timestamp(role_id: int, user_id: int, ts: Optional[int] = None):
+    data = load_role_timestamps()
+    roles = data.setdefault("roles", {})
+    r = roles.setdefault(str(role_id), {})
+    r[str(user_id)] = int(ts or datetime.now(timezone.utc).timestamp())
+    save_role_timestamps(data)
+
+
+def remove_role_timestamp(role_id: int, user_id: int):
+    data = load_role_timestamps()
+    roles = data.get("roles", {})
+    r = roles.get(str(role_id), {})
+    if str(user_id) in r:
+        del r[str(user_id)]
+        save_role_timestamps(data)
+
+
+def get_role_timestamp(role_id: int, user_id: int) -> Optional[int]:
+    data = load_role_timestamps()
+    return data.get("roles", {}).get(str(role_id), {}).get(str(user_id))
 
 
 async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
@@ -101,14 +162,15 @@ async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
             pass
 
 
-async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str):
+async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str, include_notice: bool = True, emb_visual: Optional[discord.Embed] = None, emb2: Optional[discord.Embed] = None):
     """Log a training result: post embed to RESULT_CHANNEL_ID, DM trainee, and write a local JSON log line and log to LOG_CHANNEL_ID as embed.
     Uses shared embed builder so previews and sent embeds match. Embeds do not include numeric IDs or timestamps.
     """
     ts = datetime.now(timezone.utc).isoformat()
 
-    # build embeds using module-level helper
-    emb_visual, emb2 = build_result_embeds(trainer, trainee, result, cotrainer, remarks, notes)
+    # build embeds using module-level helper unless they were provided
+    if emb_visual is None or emb2 is None:
+        emb_visual, emb2 = build_result_embeds(trainer, trainee, result, cotrainer, remarks, notes, include_notice=include_notice)
 
     # Send to RESULTS channel (both embeds in one message)
     try:
@@ -490,8 +552,9 @@ class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.guild_vote_cooldowns: Dict[int, datetime] = {}
-        # Start the schedule checker task
-        self.schedule_check_task = bot.loop.create_task(self.check_schedule())
+        # Tasks will be started after cog is added to the bot (see setup())
+        self.schedule_check_task = None
+        self.role_check_task = None
 
     training = app_commands.Group(name="training", description="Training related commands")
 
@@ -743,7 +806,7 @@ class Trainings(commands.Cog):
         trainer = interaction.user
         # Build preview embeds and ask for confirmation before sending
         try:
-            emb_visual, emb2 = build_result_embeds(trainer, trainee, result.value, cotrainer, remarks or "", notes or "")
+            emb_visual, emb2 = build_result_embeds(trainer, trainee, result.value, cotrainer, remarks or "", notes or "", include_notice=False)
             view = ConfirmResultView(self.bot, trainer, trainee, result.value, cotrainer, remarks or "", notes or "")
             # send ephemeral preview with confirmation buttons
             await interaction.response.send_message(embeds=[emb_visual, emb2], view=view, ephemeral=True)
@@ -751,6 +814,161 @@ class Trainings(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"Failed to build preview: {e}", ephemeral=True)
             await log_action(self.bot, trainer, "training_result_preview_failed", extra=str(e))
+
+    @training.command(name="ra_result", description="Record an R/A (Ride-Along) result (trainer role only)")
+    @app_commands.describe(
+        trainee="Trainee (select a member)",
+        result="Result (pass or fail)",
+        remarks="Remarks (mandatory)",
+        cotrainer="Optional co-trainer (select a member)",
+        notes="Notes (optional)"
+    )
+    @app_commands.choices(result=[
+        app_commands.Choice(name="Pass", value="pass"),
+        app_commands.Choice(name="Fail", value="fail"),
+    ])
+    async def ra_result(
+        self,
+        interaction: discord.Interaction,
+        trainee: discord.Member,
+        result: app_commands.Choice[str],
+        remarks: str,
+        cotrainer: Optional[discord.Member] = None,
+        notes: Optional[str] = "",
+    ):
+        # permission check: trainer role OR RA trusted role
+        if not any(r.id == TRAINING_ROLE_ID or r.id == RA_TRUSTED_ROLE for r in interaction.user.roles):
+            await interaction.response.send_message("You don't have permission to record R/A results.", ephemeral=True)
+            return
+
+        trainer = interaction.user
+        try:
+            # Make sure the R/A preview does NOT include the training Notice. Do NOT change the embed titles or content — pass them to confirmation so final messages match the preview exactly.
+            emb_visual, emb2 = build_result_embeds(trainer, trainee, result.value, cotrainer, remarks or "", notes or "", include_notice=False)
+            view = ConfirmRAResultView(self.bot, trainer, trainee, result.value, cotrainer, remarks or "", notes or "", emb_visual=emb_visual, emb2=emb2)
+            await interaction.response.send_message(embeds=[emb_visual, emb2], view=view, ephemeral=True)
+            await log_action(self.bot, trainer, "ra_result_preview_shown", extra=f"trainee={getattr(trainee,'id',None)} result={result.value}")
+        except Exception as e:
+            await interaction.response.send_message(f"Failed to build preview: {e}", ephemeral=True)
+            await log_action(self.bot, trainer, "ra_result_preview_failed", extra=str(e))
+
+    # NOTE: The old `/training ra` alias was removed. Use `/training ra_result` or `/training result` instead.
+
+    @training.command(name="list-tracked", description="List members with tracked training/R/A roles and their timestamps (assumes today if unknown)")
+    @app_commands.describe(role="Optional role to filter to (PING or TRAINING_PASS)", output_format="How to show results: embed or code", persist="Whether to persist missing timestamps to the database")
+    @app_commands.choices(output_format=[
+        app_commands.Choice(name="embed", value="embed"),
+        app_commands.Choice(name="code", value="code"),
+    ])
+    async def list_tracked(self, interaction: discord.Interaction, role: Optional[discord.Role] = None, output_format: str = "embed", persist: bool = False):
+        """List members for PING_ROLE_ID and TRAINING_PASS_ROLE. If a `role` is provided, only show that role.
+        If a member has no stored timestamp, the command will assume it was set today for display purposes (does not persist unless you choose to use the enforcement task).
+        """
+        # permission check: only trainers or admins
+        if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles) and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("You don't have permission to run this command.", ephemeral=True)
+            return
+
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message("This command must be run in a server/guild.", ephemeral=True)
+            return
+
+        roles_to_check = [PING_ROLE_ID, TRAINING_PASS_ROLE]
+        if role is not None:
+            if role.id not in roles_to_check:
+                await interaction.response.send_message("Only the configured training roles can be listed.", ephemeral=True)
+                return
+            roles_to_check = [role.id]
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        role_entries = []
+        persisted_count = 0
+        for rid in roles_to_check:
+            r_obj = guild.get_role(rid)
+            if not r_obj:
+                continue
+            lines = []
+            if not r_obj.members:
+                lines.append("(no members)")
+            else:
+                for m in r_obj.members:
+                    ts = get_role_timestamp(rid, m.id)
+                    missing_ts = False
+                    if ts is None:
+                        # assume it was set today for display
+                        ts = now_ts
+                        missing_ts = True
+                    # human readable
+                    elapsed = now_ts - int(ts)
+                    days = elapsed // (24*60*60)
+                    human = f"{days}d { (elapsed % (24*60*60))//3600 }h"
+                    lines.append(f"{m.mention} — set <t:{int(ts)}:F> (<t:{int(ts)}:R>) — {human}")
+                    # persist if requested
+                    if missing_ts and persist:
+                        try:
+                            set_role_timestamp(rid, m.id, ts)
+                            persisted_count += 1
+                        except Exception:
+                            await log_action(self.bot, 'system', 'persist_timestamp_failed', extra=traceback.format_exc())
+            role_entries.append((r_obj, lines))
+
+        if not role_entries:
+            await interaction.response.send_message("No tracked roles or members found.", ephemeral=True)
+            return
+
+        # send as ephemeral message to the invoker as embed or code
+        fmt = str(output_format).lower()
+        await interaction.response.defer(ephemeral=True)
+        if fmt == "code":
+            parts = []
+            for r_obj, lines in role_entries:
+                parts.append(f"**{r_obj.name}**")
+                for ln in lines:
+                    parts.append(f"• {ln}")
+                parts.append("")
+            text = "\n".join(parts)
+            CHUNK = 1900
+            for i in range(0, len(text), CHUNK):
+                chunk = text[i:i+CHUNK]
+                await interaction.followup.send(f"```\n{chunk}\n```", ephemeral=True)
+            return
+
+        # Build an Embed representation
+        emb = discord.Embed(title="Tracked Role Members", color=EMBED_COLOR)
+        for r_obj, lines in role_entries:
+            if not lines:
+                emb.add_field(name=r_obj.name, value="(no members)", inline=False)
+                continue
+            # assemble value, slice into chunks for embed field limit
+            value_lines = [f"• {ln}" for ln in lines]
+            joined = "\n".join(value_lines)
+            if len(joined) <= 1024:
+                emb.add_field(name=r_obj.name, value=joined, inline=False)
+            else:
+                # split manually
+                cur = []
+                cur_len = 0
+                chunks = []
+                for vl in value_lines:
+                    ln = vl + "\n"
+                    if cur_len + len(ln) > 1000:
+                        chunks.append(''.join(cur).rstrip())
+                        cur = [ln]
+                        cur_len = len(ln)
+                    else:
+                        cur.append(ln)
+                        cur_len += len(ln)
+                if cur:
+                    chunks.append(''.join(cur).rstrip())
+                for idx, chunkval in enumerate(chunks):
+                    title = f"{r_obj.name}{' (cont.)' if idx > 0 else ''}"
+                    emb.add_field(name=title, value=chunkval, inline=False)
+
+        await interaction.followup.send(embed=emb, ephemeral=True)
+        # If we persisted any timestamps, inform the user
+        if persist and persisted_count > 0:
+            await interaction.followup.send(f"Persisted {persisted_count} missing timestamp{'s' if persisted_count != 1 else ''}.", ephemeral=True)
 
     async def check_schedule(self):
         await self.bot.wait_until_ready()
@@ -824,13 +1042,131 @@ class Trainings(commands.Cog):
             # Check every 30 seconds
             await asyncio.sleep(30)
 
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+            """Track role assign/removal timestamps for two special roles.
+            If user gains PING_ROLE_ID or TRAINING_PASS_ROLE, set timestamp; if loses, remove timestamp.
+            """
+            try:
+                before_role_ids = {r.id for r in before.roles}
+                after_role_ids = {r.id for r in after.roles}
+                added = after_role_ids - before_role_ids
+                removed = before_role_ids - after_role_ids
+                # Track timestamps for added roles
+                for r in added:
+                    if r in (PING_ROLE_ID, TRAINING_PASS_ROLE):
+                        set_role_timestamp(r, after.id)
+                # Remove timestamps for removed roles
+                for r in removed:
+                    if r in (PING_ROLE_ID, TRAINING_PASS_ROLE):
+                        remove_role_timestamp(r, after.id)
+            except Exception:
+                await log_action(self.bot, 'system', 'on_member_update_error', extra=traceback.format_exc())
+
+    async def daily_role_check(self):
+            await self.bot.wait_until_ready()
+            # Use fixed GMT+1 offset for the noon check as requested
+            tz = timezone(timedelta(hours=1))
+            while not self.bot.is_closed():
+                try:
+                    now = datetime.now(tz)
+                    # compute next noon in timezone
+                    next_noon = now.replace(hour=12, minute=0, second=0, microsecond=0)
+                    if now >= next_noon:
+                        next_noon = next_noon + timedelta(days=1)
+                    # sleep until next_noon in UTC
+                    utc_next = next_noon.astimezone(timezone.utc)
+                    seconds = (utc_next - datetime.now(timezone.utc)).total_seconds()
+                    if seconds > 0:
+                        await asyncio.sleep(seconds)
+                    # perform check
+                    await self._perform_role_enforcement()
+                except asyncio.CancelledError:
+                    break
+                except Exception:
+                    await log_action(self.bot, 'system', 'daily_role_check_error', extra=traceback.format_exc())
+                    # avoid tight loop on errors
+                    await asyncio.sleep(60)
+
+    async def _perform_role_enforcement(self):
+            """List members of the two roles and remove if their timestamp exceeds thresholds.
+            - PING_ROLE_ID: 14 days
+            - TRAINING_PASS_ROLE: 7 days
+            Send a message to ROLE_CHECK_CHANNEL_ID listing members and their durations.
+            """
+            channel = self.bot.get_channel(ROLE_CHECK_CHANNEL_ID) or await self.bot.fetch_channel(ROLE_CHECK_CHANNEL_ID)
+            if not channel:
+                return
+            guild = channel.guild
+            if not guild:
+                return
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            data = load_role_timestamps()
+            roles_to_check = {
+                PING_ROLE_ID: 14 * 24 * 60 * 60,
+                TRAINING_PASS_ROLE: 7 * 24 * 60 * 60,
+            }
+            lines = []
+            for role_id, max_seconds in roles_to_check.items():
+                role = guild.get_role(role_id)
+                if not role:
+                    continue
+                lines.append(f"**{role.name}**")
+                # iterate members
+                for m in role.members:
+                    ts = get_role_timestamp(role_id, m.id)
+                    if ts is None:
+                        # set to now to start counting
+                        set_role_timestamp(role_id, m.id)
+                        ts = get_role_timestamp(role_id, m.id)
+                    elapsed = now_ts - ts
+                    days = elapsed // (24*60*60)
+                    # format duration
+                    human = f"{days}d { (elapsed % (24*60*60))//3600 }h"
+                    expired = elapsed > max_seconds
+                    lines.append(f"• {m.mention} — {human} {'(EXPIRED — will be removed)' if expired else ''}")
+                lines.append("")
+
+            # send message
+            if not lines:
+                await channel.send("No tracked members for role enrollment.")
+            else:
+                text = "\n".join(lines)
+                await channel.send(f"Daily role check:\n{text}")
+
+            # enforce removal for expired
+            for role_id, max_seconds in roles_to_check.items():
+                role = guild.get_role(role_id)
+                if not role:
+                    continue
+                for m in list(role.members):
+                    ts = get_role_timestamp(role_id, m.id)
+                    if ts is None:
+                        continue
+                    if now_ts - ts > max_seconds:
+                        try:
+                            await m.remove_roles(role, reason="Role expired: exceeded allowed time for training/RA")
+                            await log_action(self.bot, 'system', 'role_removed_expired', extra=f"role={role_id} user={m.id}")
+                            remove_role_timestamp(role_id, m.id)
+                        except Exception:
+                            await log_action(self.bot, 'system', 'role_remove_failed', extra=f"role={role_id} user={m.id} {traceback.format_exc()}")
+
     # Add cleanup on cog unload
     def cog_unload(self):
         if hasattr(self, 'schedule_check_task'):
             self.schedule_check_task.cancel()
+        if hasattr(self, 'role_check_task'):
+            self.role_check_task.cancel()
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(Trainings(bot))
+    cog = Trainings(bot)
+    await bot.add_cog(cog)
+    # Start background tasks once cog is fully initialized
+    try:
+        cog.schedule_check_task = bot.loop.create_task(cog.check_schedule())
+        cog.role_check_task = bot.loop.create_task(cog.daily_role_check())
+    except Exception:
+        await log_action(bot, 'system', 'start_tasks_failed', extra=traceback.format_exc())
 
 
 # -------------------- Training Results UI & Command --------------------
@@ -1065,16 +1401,143 @@ class ConfirmResultView(discord.ui.View):
         if interaction.user.id != getattr(self.trainer, 'id', None):
             await interaction.response.send_message("Only the trainer may confirm.", ephemeral=True)
             return
+        # defer before performing long-running work to avoid interaction timeouts
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
+            pass
         # disable buttons
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
         try:
             await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "")
-            await interaction.response.edit_message(content="Result sent.", view=self)
+            # If passed training, move from ping role to training-pass role (RA eligible)
+            if str(self.result).lower().startswith("pass"):
+                guild = interaction.guild
+                try:
+                    if guild:
+                        member = guild.get_member(getattr(self.trainee, 'id', None))
+                        if member:
+                            role_ping = guild.get_role(PING_ROLE_ID)
+                            role_stage = guild.get_role(TRAINING_PASS_ROLE)
+                            # remove ping role
+                            if role_ping and role_ping in member.roles:
+                                try:
+                                    await member.remove_roles(role_ping, reason="Passed training")
+                                except Exception:
+                                    pass
+                                remove_role_timestamp(role_ping.id, member.id)
+                            # add stage role
+                            if role_stage and role_stage not in member.roles:
+                                try:
+                                    await member.add_roles(role_stage, reason="Passed training")
+                                except Exception:
+                                    pass
+                                set_role_timestamp(role_stage.id, member.id)
+                                await log_action(self.bot, self.trainer, "training_role_changed", extra=f"user={member.id} removed={PING_ROLE_ID} added={TRAINING_PASS_ROLE}")
+                except Exception:
+                    await log_action(self.bot, 'system', 'training_role_change_failed', extra=traceback.format_exc())
+            try:
+                await interaction.edit_original_response(content="Result sent.", view=self)
+            except Exception:
+                try:
+                    await interaction.followup.send("Result sent.", ephemeral=True)
+                except Exception:
+                    pass
             await log_action(self.bot, self.trainer, "training_result_confirmed", extra=f"trainee={getattr(self.trainee,'id',None)} result={self.result}")
         except Exception as e:
-            await interaction.response.send_message(f"Failed to send result: {e}", ephemeral=True)
+            try:
+                await interaction.followup.send(f"Failed to send result: {e}", ephemeral=True)
+            except Exception:
+                pass
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != getattr(self.trainer, 'id', None):
+            await interaction.response.send_message("Only the trainer may cancel.", ephemeral=True)
+            return
+        await interaction.response.edit_message(content="Cancelled.", view=None)
+        self.stop()
+
+
+class ConfirmRAResultView(discord.ui.View):
+    def __init__(self, bot: commands.Bot, trainer: discord.User, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str, emb_visual: Optional[discord.Embed] = None, emb2: Optional[discord.Embed] = None, timeout: int = 120):
+        super().__init__(timeout=timeout)
+        self.bot = bot
+        self.trainer = trainer
+        self.trainee = trainee
+        self.result = result
+        self.cotrainer = cotrainer
+        self.remarks = remarks
+        self.notes = notes
+        # store the preview embeds so we can send the exact same embeds when confirming
+        self.emb_visual = emb_visual
+        self.emb2 = emb2
+
+    @discord.ui.button(label="Confirm and Send", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != getattr(self.trainer, 'id', None):
+            await interaction.response.send_message("Only the trainer may confirm.", ephemeral=True)
+            return
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
+            pass
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+        try:
+            # Send the RA result using the exact preview embeds (suppress training notice)
+            await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "", include_notice=False, emb_visual=self.emb_visual, emb2=self.emb2)
+            # If pass: remove interim roles and add final roles
+            if str(self.result).lower().startswith("pass"):
+                guild = interaction.guild
+                try:
+                    if guild:
+                        member = guild.get_member(getattr(self.trainee, 'id', None))
+                        if member:
+                            role_stage = guild.get_role(TRAINING_PASS_ROLE)
+                            role_extra = guild.get_role(RA_ROLE_TO_REMOVE)
+                            # remove stage and extra roles if present
+                            to_remove = []
+                            if role_stage and role_stage in member.roles:
+                                to_remove.append(role_stage)
+                            if role_extra and role_extra in member.roles:
+                                to_remove.append(role_extra)
+                            if to_remove:
+                                try:
+                                    await member.remove_roles(*to_remove, reason="Passed R/A")
+                                except Exception:
+                                    pass
+                            # add final roles
+                            final_objs = [guild.get_role(rid) for rid in RA_FINAL_ROLES]
+                            final_objs = [r for r in final_objs if r is not None]
+                            if final_objs:
+                                try:
+                                    await member.add_roles(*final_objs, reason="Passed R/A")
+                                except Exception:
+                                    pass
+                            # remove timestamps for removed roles
+                            remove_role_timestamp(TRAINING_PASS_ROLE, member.id)
+                            remove_role_timestamp(RA_ROLE_TO_REMOVE, member.id)
+                            await log_action(self.bot, self.trainer, "ra_role_changed", extra=f"user={member.id} removed={[r.id for r in to_remove]} added={RA_FINAL_ROLES}")
+                except Exception:
+                    await log_action(self.bot, 'system', 'ra_role_change_failed', extra=traceback.format_exc())
+            try:
+                await interaction.edit_original_response(content="R/A result sent.", view=self)
+            except Exception:
+                try:
+                    await interaction.followup.send("R/A result sent.", ephemeral=True)
+                except Exception:
+                    pass
+            await log_action(self.bot, self.trainer, "ra_result_confirmed", extra=f"trainee={getattr(self.trainee,'id',None)} result={self.result}")
+        except Exception as e:
+            try:
+                await interaction.followup.send(f"Failed to send R/A result: {e}", ephemeral=True)
+            except Exception:
+                pass
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
