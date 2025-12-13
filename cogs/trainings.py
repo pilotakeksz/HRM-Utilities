@@ -7,6 +7,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List
 import json
+import copy
 import pytz
 import re
 
@@ -162,7 +163,7 @@ async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
             pass
 
 
-async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str, include_notice: bool = True, emb_visual: Optional[discord.Embed] = None, emb2: Optional[discord.Embed] = None):
+async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User, result: str, cotrainer: Optional[discord.User], remarks: str, notes: str, include_notice: bool = True, emb_visual: Optional[discord.Embed] = None, emb2: Optional[discord.Embed] = None, emb_channel_visual: Optional[discord.Embed] = None, emb_channel_2: Optional[discord.Embed] = None, emb_dm_visual: Optional[discord.Embed] = None, emb_dm_2: Optional[discord.Embed] = None):
     """Log a training result: post embed to RESULT_CHANNEL_ID, DM trainee, and write a local JSON log line and log to LOG_CHANNEL_ID as embed.
     Uses shared embed builder so previews and sent embeds match. Embeds do not include numeric IDs or timestamps.
     """
@@ -172,18 +173,23 @@ async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User,
     if emb_visual is None or emb2 is None:
         emb_visual, emb2 = build_result_embeds(trainer, trainee, result, cotrainer, remarks, notes, include_notice=include_notice)
 
-    # Send to RESULTS channel (both embeds in one message)
+    # Send to RESULTS channel (both embeds in one message). Use channel-specific embeds if provided, otherwise use the provided or built embeds.
     try:
+        ch_visual = emb_channel_visual if emb_channel_visual is not None else emb_visual
+        ch_emb2 = emb_channel_2 if emb_channel_2 is not None else emb2
         out_ch = bot.get_channel(RESULT_CHANNEL_ID) or await bot.fetch_channel(RESULT_CHANNEL_ID)
         if out_ch:
-            await out_ch.send(content=f"{trainee.mention}", embeds=[emb_visual, emb2])
+            # Use the channel-specific embed copies (may have different titles such as Ride-Along result) for the channel post
+            await out_ch.send(content=f"{trainee.mention}", embeds=[ch_visual, ch_emb2])
     except Exception:
         pass
 
-    # DM trainee (both embeds in one message)
+    # DM trainee (both embeds in one message). Use DM-specific embeds if provided; otherwise fallback to preview embeds so the DM matches the preview shown in confirmation.
     try:
         dm = await trainee.create_dm()
-        await dm.send(embeds=[emb_visual, emb2])
+        dm_visual = emb_dm_visual if emb_dm_visual is not None else emb_visual
+        dm_emb2 = emb_dm_2 if emb_dm_2 is not None else emb2
+        await dm.send(embeds=[dm_visual, dm_emb2])
     except Exception:
         pass
 
@@ -1489,8 +1495,21 @@ class ConfirmRAResultView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
         try:
-            # Send the RA result using the exact preview embeds (suppress training notice)
-            await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "", include_notice=False, emb_visual=self.emb_visual, emb2=self.emb2)
+            # Send the RA result using the exact preview embeds for DM (suppress training notice).
+            # For the channel post, we want a labeled (Ride-Along) title while keeping the DM as the original preview.
+            channel_visual = copy.deepcopy(self.emb_visual) if self.emb_visual is not None else None
+            channel_emb2 = copy.deepcopy(self.emb2) if self.emb2 is not None else None
+            if channel_visual is not None:
+                try:
+                    channel_visual.title = f"R/A Result — {getattr(self.trainee, 'display_name', getattr(self.trainee, 'name', str(self.trainee)))}"
+                except Exception:
+                    pass
+            if channel_emb2 is not None:
+                try:
+                    channel_emb2.title = "<:MaplecliffNationalGaurd:1409463907294384169> `//` Ride-Along results"
+                except Exception:
+                    pass
+            await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "", include_notice=False, emb_visual=self.emb_visual, emb2=self.emb2, emb_channel_visual=channel_visual, emb_channel_2=channel_emb2, emb_dm_visual=channel_visual, emb_dm_2=channel_emb2)
             # If pass: remove interim roles and add final roles
             if str(self.result).lower().startswith("pass"):
                 guild = interaction.guild
