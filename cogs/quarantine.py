@@ -13,15 +13,15 @@ from collections import defaultdict
 import inspect
 
 # Constants
-IMMUNE_USER_ID = 840949634071658507 # Tuna
-IMMUNE_ROLE_ID = 1329910230066401361 # GCO
-QUARANTINE_ROLE_ID = 1432834406791254058 # Quarantine role
-ADMIN_ROLE_ID = 1355842403134603275 # GCO
-LOG_CHANNEL_ID = 1432834042755289178 # Raid log channel
-QUARANTINE_NOTIFY_CHANNEL_ID = 1432834815450943651 # Quarantine notify channel
-ALLOWED_CHANNEL_ID = 1329910457409994772 # Ticket channel
-GUILD_ID = 1329908357812981882 # MCNG  
-SPECIAL_ROLE_ID = 1329910361347854388 # Blacklist role
+IMMUNE_USER_ID = 840949634071658507
+IMMUNE_ROLE_ID = 1329910230066401361
+QUARANTINE_ROLE_ID = 1432834406791254058
+ADMIN_ROLE_ID = 1355842403134603275
+LOG_CHANNEL_ID = 1432834042755289178
+QUARANTINE_NOTIFY_CHANNEL_ID = 1432834815450943651
+ALLOWED_CHANNEL_ID = 1329910457409994772
+GUILD_ID = 1329908357812981882  # Your guild ID
+SPECIAL_ROLE_ID = 1329910361347854388
 
 # Thresholds
 SPAM_MESSAGE_THRESHOLD = 10  # messages
@@ -30,6 +30,7 @@ GIF_SPAM_THRESHOLD = 3  # gifs
 EMOJI_ADD_LIMIT = 5  # per hour
 ROLE_CHANGES_LIMIT = 30  # per hour
 CHANNEL_CREATE_LIMIT = 3  # per hour
+# Additional raid detection thresholds
 JOIN_RAID_THRESHOLD = 8  # joins
 JOIN_TIME_WINDOW = 20  # seconds
 BAN_THRESHOLD = 5  # bans by one actor
@@ -45,8 +46,6 @@ LOGS_DIR = "logs"
 QUARANTINE_FILE = os.path.join(DATA_DIR, "quarantine_data.json")
 ACTION_LOG_FILE = os.path.join(LOGS_DIR, "raid_protection.log")
 LEFT_RESTORE_FILE = os.path.join(DATA_DIR, "left_restore.json")
-LEADERBOARD_COUNTS_FILE = os.path.join(DATA_DIR, "leaderboard_quarantine_counts.json")
-OLD_LEADERBIRD_COUNTS_FILE = os.path.join(DATA_DIR, "leaderbird_quarantine_counts.json")
 
 # Ensure directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -73,10 +72,8 @@ class RaidProtection(commands.Cog):
         self.join_events = defaultdict(list)  # guild_id -> list of (timestamp, member_id)
         self.ban_events = defaultdict(list)   # actor_id -> list of timestamps
         self.quarantined_users = {}
-        self.leaderboard_counts = {}
         self.left_restore = {}
         self.load_quarantine_data()
-        self.load_leaderboard_counts()
         self.load_left_restore()
         self.check_quarantines.start()
         self.reset_counters.start()
@@ -95,43 +92,6 @@ class RaidProtection(commands.Cog):
     def save_quarantine_data(self):
         with open(QUARANTINE_FILE, 'w') as f:
             json.dump(self.quarantined_users, f)
-
-    def load_leaderboard_counts(self):
-        try:
-            # Prefer the new leaderboard filename if available
-            if os.path.exists(LEADERBOARD_COUNTS_FILE):
-                with open(LEADERBOARD_COUNTS_FILE, 'r', encoding='utf-8') as f:
-                    self.leaderboard_counts = json.load(f)
-                return
-            # Fallback: migrate old leaderbird file if present
-            if os.path.exists(OLD_LEADERBIRD_COUNTS_FILE):
-                with open(OLD_LEADERBIRD_COUNTS_FILE, 'r', encoding='utf-8') as f:
-                    self.leaderboard_counts = json.load(f)
-                # Write out to new filename (best effort)
-                try:
-                    with open(LEADERBOARD_COUNTS_FILE, 'w', encoding='utf-8') as fo:
-                        json.dump(self.leaderboard_counts, fo, indent=2)
-                except Exception:
-                    pass
-                return
-        except Exception:
-            pass
-        self.leaderboard_counts = {}
-
-    def save_leaderboard_counts(self):
-        try:
-            with open(LEADERBOARD_COUNTS_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.leaderboard_counts, f, indent=2)
-        except Exception:
-            pass
-
-    def increment_leaderboard_count(self, user_id: int):
-        key = str(user_id)
-        self.leaderboard_counts[key] = int(self.leaderboard_counts.get(key, 0)) + 1
-        try:
-            self.save_leaderboard_counts()
-        except Exception:
-            pass
 
     def load_left_restore(self):
         try:
@@ -195,14 +155,6 @@ class RaidProtection(commands.Cog):
 
         # Store roles before removing (exclude @everyone and the quarantine role itself)
         roles = [role.id for role in user.roles if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID]
-
-        # If user had the special role, increment their leaderboard quarantine count
-        try:
-            if SPECIAL_ROLE_ID in roles:
-                self.increment_leaderboard_count(user.id)
-                await self.log_action("LEADERBOARD_QUARANTINED", user, "Quarantined while holding special role")
-        except Exception:
-            pass
 
         # Remove roles top-down (highest position first) - sort by position descending
         roles_to_remove = [
@@ -511,65 +463,6 @@ class RaidProtection(commands.Cog):
             return [item for item in lst if item[0] >= cutoff]
         else:
             return [ts for ts in lst if ts >= cutoff]
-
-    @commands.command(
-        name="quarantine_leaderboard",
-        aliases=["qboard", "qlb", "quarantine_lb", "leaderboard_quarantine"],
-        help="Show top quarantined-as-special-member leaderboard, or get counts for a specific member. Use an alias like !qboard, !qlb, or !quarantine_leaderboard.")
-    async def quarantine_leaderboard(self, ctx, member: Optional[discord.Member] = None):
-        """Prefix command (!) to show top quarantined counts or a specific member's count.
-        Usage:
-          !qboard (or !quarantine_leaderboard) - shows top 10 leaderboard
-          !qboard @user - shows a user's count; only admins can query other users
-        """
-        # If no member provided, show top N leaderboard
-        if member is None:
-            # Build a top-10 leaderboard
-            try:
-                items = sorted(self.leaderboard_counts.items(), key=lambda kv: int(kv[1]), reverse=True)
-                if not items:
-                    await ctx.send("No leaderboard data available yet.")
-                    return
-                # show top 10
-                top_n = items[:10]
-                guild = ctx.guild
-                desc_lines = []
-                for i, (uid_str, cnt) in enumerate(top_n, start=1):
-                    try:
-                        uid = int(uid_str)
-                        member_obj = guild.get_member(uid) if guild else None
-                        mention = member_obj.mention if member_obj else f"<@{uid}>"
-                    except Exception:
-                        mention = uid_str
-                    desc_lines.append(f"**{i}.** {mention} — **{int(cnt)}**")
-
-                embed = discord.Embed(
-                    title="Leaderboard: times quarantined while holding special role",
-                    description="\n".join(desc_lines),
-                    colour=discord.Colour.blurple()
-                )
-                embed.set_footer(text="Top 10")
-                await ctx.send(embed=embed)
-            except Exception:
-                await ctx.send("Error building leaderboard.")
-            return
-
-        # Only admins can query other members
-        if member != ctx.author and not any(role.id == ADMIN_ROLE_ID for role in ctx.author.roles):
-            await ctx.send("You don't have permission to query other members.")
-            return
-
-        try:
-            count = int(self.leaderboard_counts.get(str(member.id), 0))
-        except Exception:
-            count = 0
-
-        embed = discord.Embed(
-            title=f"Quarantine count for {member.display_name}",
-            description=f"{member.mention} has been quarantined while holding the special role **{count}** time(s).",
-            colour=discord.Colour.blurple()
-        )
-        await ctx.send(embed=embed)
 
     @tasks.loop(minutes=5)
     async def check_quarantines(self):
@@ -1316,14 +1209,6 @@ class RaidProtection(commands.Cog):
                 self.save_quarantine_data()
 
                 await self.log_action("AUTO_BAN_ON_LEAVE", member, reason)
-
-                # increment leaderboard count if they had the special role when they left
-                try:
-                    if had_special:
-                        self.increment_leaderboard_count(member.id)
-                        await self.log_action("LEADERBOARD_QUARANTINED", member, "Auto-ban on leave while holding special role")
-                except Exception:
-                    pass
         except Exception as e:
             logger.error(f"Error in on_member_remove: {e}")
 
@@ -1563,13 +1448,6 @@ class RaidProtection(commands.Cog):
             "timestamp": datetime.now(timezone.utc).timestamp(),
             "duration": duration_seconds
         }
-        # increment leaderboard count if the user held the special role
-        try:
-            if SPECIAL_ROLE_ID in stored_roles:
-                self.increment_leaderboard_count(user.id)
-                await self.log_action("LEADERBOARD_QUARANTINED", user, "Manual quarantine while holding special role")
-        except Exception:
-            pass
         self.save_quarantine_data()
 
         # Attempt to timeout (mute) the user for the quarantine duration
