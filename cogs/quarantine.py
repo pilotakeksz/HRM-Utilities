@@ -149,17 +149,24 @@ class RaidProtection(commands.Cog):
         # Use member from here on
         user = member
 
-        if user.id == IMMUNE_USER_ID or any(role.id == IMMUNE_ROLE_ID for role in user.roles):
+        # Final bypass check - only one check needed (protected user OR protected role)
+        if self.has_bypass(user):
             return
 
         # Store roles before removing (exclude @everyone and the quarantine role itself)
         roles = [role.id for role in user.roles if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID]
 
-        # Remove roles one-by-one with error handling to avoid Unknown Role or permission errors
-        for role in list(user.roles):
-            # Skip @everyone and any already-quarantine role
-            if role == user.guild.default_role or role.id == QUARANTINE_ROLE_ID:
-                continue
+        # Remove roles top-down (highest position first) - sort by position descending
+        roles_to_remove = [
+            role for role in user.roles 
+            if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID
+        ]
+        
+        # Sort by position (highest position = highest number = remove first)
+        roles_to_remove.sort(key=lambda r: r.position, reverse=True)
+
+        # Remove roles one-by-one with error handling (top-down order)
+        for role in roles_to_remove:
             try:
                 await user.remove_roles(role, reason="Quarantine")
             except discord.NotFound:
@@ -478,37 +485,171 @@ class RaidProtection(commands.Cog):
     async def before_check_quarantines(self):
         await self.bot.wait_until_ready()
 
+    def detect_mass_ping(self, message: discord.Message):
+        """Bulletproof detection of @everyone, @here, and mass pings.
+        Returns (should_quarantine, reason)"""
+        content = message.content or ""
+        content_lower = content.lower()
+        
+        # Bulletproof @everyone/@here detection - check multiple ways
+        has_everyone = False
+        has_here = False
+        
+        # PRIMARY: Check Discord's built-in flag (most reliable - catches all @everyone/@here)
+        # Discord's mention_everyone flag is True for BOTH @everyone and @here
+        if message.mention_everyone:
+            # Check content to determine which one(s) were used
+            if "@here" in content_lower or "@\u200bhere" in content_lower or "@\u200chere" in content_lower:
+                has_here = True
+            # If mention_everyone is True, it's either @everyone or both
+            # We'll treat it as @everyone if @here isn't explicitly found
+            if not has_here or "@everyone" in content_lower:
+                has_everyone = True
+        
+        # SECONDARY: Check content for various @everyone/@here patterns (case-insensitive)
+        # This catches edge cases where Discord's flag might miss (very rare)
+        everyone_patterns = [
+            "@everyone",  # Normal
+            "@\u200beveryone", "@\u200ceveryone", "@\u200deveryone",  # Zero-width spaces
+            "@ｅｖｅｒｙｏｎｅ",  # Full-width characters
+            "@ｅveryone", "@everyｏne",  # Mixed
+            "@everyonе",  # Cyrillic 'е' instead of 'e'
+        ]
+        
+        here_patterns = [
+            "@here",  # Normal
+            "@\u200bhere", "@\u200chere", "@\u200dhere",  # Zero-width spaces
+            "@ｈｅｒｅ",  # Full-width characters
+            "@hｅre", "@herｅ",  # Mixed
+            "@hеre",  # Cyrillic 'е' instead of 'e'
+        ]
+        
+        # Check for patterns in content (backup detection)
+        if not has_everyone:
+            for pattern in everyone_patterns:
+                if pattern.lower() in content_lower:
+                    has_everyone = True
+                    break
+        
+        if not has_here:
+            for pattern in here_patterns:
+                if pattern.lower() in content_lower:
+                    has_here = True
+                    break
+        
+        # Count mentions (users + roles) - this is separate from @everyone/@here
+        mention_count = len(message.mentions) + len(message.role_mentions)
+        
+        # Check for mass mentions (lower threshold for better detection)
+        mass_mention_threshold = 8  # Lowered from 10 for better detection
+        
+        should_quarantine = False
+        reason_parts = []
+        
+        # @everyone and @here are ALWAYS quarantine-worthy
+        if has_everyone:
+            should_quarantine = True
+            reason_parts.append("@everyone detected")
+        
+        if has_here:
+            should_quarantine = True
+            reason_parts.append("@here detected")
+        
+        # Mass mentions are also quarantine-worthy
+        if mention_count >= mass_mention_threshold:
+            should_quarantine = True
+            reason_parts.append(f"Mass mention: {mention_count} mentions")
+        
+        if should_quarantine:
+            details = []
+            if has_everyone:
+                details.append("@everyone")
+            if has_here:
+                details.append("@here")
+            if message.mentions:
+                details.append(f"Users: {len(message.mentions)}")
+            if message.role_mentions:
+                role_names = [r.name for r in message.role_mentions]
+                details.append(f"Roles: {', '.join(role_names[:5])}" + ("..." if len(role_names) > 5 else ""))
+            
+            reason = "Mass ping/mention detected: " + " | ".join(reason_parts)
+            if details:
+                reason += "\nDetails: " + " | ".join(details)
+            
+            return True, reason
+        
+        return False, ""
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
             return
-            
-        # Mass ping and @everyone/@here check
-        if not self.has_bypass(message.author):
-            mention_count = len(message.mentions) + len(message.role_mentions)
-            has_everyone = message.mention_everyone
-            
-            if has_everyone or mention_count >= 10:
-                ping_details = []
-                if has_everyone:
-                    if "@everyone" in message.content:
-                        ping_details.append("@everyone")
-                    if "@here" in message.content:
-                        ping_details.append("@here")
-                
-                if message.mentions:
-                    ping_details.append(f"Users mentioned: {', '.join([f'{u.name} ({u.id})' for u in message.mentions])}")
-                if message.role_mentions:
-                    ping_details.append(f"Roles mentioned: {', '.join([f'{r.name} ({r.id})' for r in message.role_mentions])}")
-                
-                reason = "Mass ping detected\n" + "\n".join(ping_details)
+        
+        # Only check bypass once - if protected, skip all checks
+        if self.has_bypass(message.author):
+            return
+        
+        # Check if user is interacting with a quarantined user
+        # 1. Check if message mentions any quarantined users
+        for mentioned_user in message.mentions:
+            if self.is_quarantined(mentioned_user.id):
                 try:
-                    # Try to delete the message first
                     await message.delete()
                 except:
                     pass
-                await self.quarantine_user(message.author, reason)
+                await self.quarantine_user(
+                    message.author, 
+                    f"Interacted with quarantined user: {mentioned_user.name} ({mentioned_user.id})"
+                )
                 return
+        
+        # 2. Check if message is a reply to a quarantined user's message
+        if message.reference and message.reference.resolved:
+            referenced_message = message.reference.resolved
+            if isinstance(referenced_message, discord.Message) and referenced_message.author:
+                if self.is_quarantined(referenced_message.author.id):
+                    try:
+                        await message.delete()
+                    except:
+                        pass
+                    await self.quarantine_user(
+                        message.author,
+                        f"Replied to quarantined user's message: {referenced_message.author.name} ({referenced_message.author.id})"
+                    )
+                    return
+        
+        # 3. Check if message is in a thread started by a quarantined user
+        if message.channel and hasattr(message.channel, 'owner_id') and message.channel.owner_id:
+            if self.is_quarantined(message.channel.owner_id):
+                try:
+                    await message.delete()
+                except:
+                    pass
+                await self.quarantine_user(
+                    message.author,
+                    f"Interacted in thread created by quarantined user (thread owner: {message.channel.owner_id})"
+                )
+                return
+            
+        # Bulletproof mass ping and @everyone/@here check
+        should_quarantine, reason = self.detect_mass_ping(message)
+        
+        if should_quarantine:
+            try:
+                # Try to delete the message first
+                await message.delete()
+            except:
+                pass
+            await self.quarantine_user(message.author, reason)
+            return
+
+        # Check if message author is quarantined (prevent them from sending messages)
+        if self.is_quarantined(message.author.id):
+            try:
+                await message.delete()
+            except:
+                pass
+            return
 
         # Spam check
         now_dt = datetime.now(timezone.utc)
@@ -737,6 +878,43 @@ class RaidProtection(commands.Cog):
                     await self.quarantine_user(actor, "Excessive channel creation")
         except Exception as e:
             logger.error(f"Error in channel create event: {str(e)}")
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction: discord.Reaction, user):
+        """Detect when someone reacts to a quarantined user's message."""
+        if user.bot:
+            return
+        
+        # Only check bypass once - if protected, skip all checks
+        # Convert User to Member if needed for bypass check
+        if isinstance(user, discord.User) and reaction.message.guild:
+            member = reaction.message.guild.get_member(user.id)
+            if member and self.has_bypass(member):
+                return
+        elif isinstance(user, discord.Member):
+            if self.has_bypass(user):
+                return
+        
+        # Check if the message author is quarantined
+        if reaction.message.author and self.is_quarantined(reaction.message.author.id):
+            try:
+                await reaction.remove(user)
+            except:
+                pass
+            # Resolve user to member for quarantine
+            if isinstance(user, discord.User) and reaction.message.guild:
+                member = reaction.message.guild.get_member(user.id)
+                if member:
+                    await self.quarantine_user(
+                        member,
+                        f"Reacted to quarantined user's message: {reaction.message.author.name} ({reaction.message.author.id})"
+                    )
+            elif isinstance(user, discord.Member):
+                await self.quarantine_user(
+                    user,
+                    f"Reacted to quarantined user's message: {reaction.message.author.name} ({reaction.message.author.id})"
+                )
+            return
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role):
@@ -1093,6 +1271,9 @@ class RaidProtection(commands.Cog):
         
         # Build list of roles to remove (exclude @everyone and quarantine role)
         roles_to_remove = [r for r in user.roles if r != user.guild.default_role and r.id != QUARANTINE_ROLE_ID]
+        
+        # Sort roles top-down (highest position first)
+        roles_to_remove.sort(key=lambda r: r.position, reverse=True)
 
         # Send an initial public progress embed so we can update live
         try:
@@ -1107,7 +1288,7 @@ class RaidProtection(commands.Cog):
         except Exception:
             progress_msg = None
 
-        # Remove roles one by one with error handling and live updates
+        # Remove roles one by one with error handling and live updates (top-down order)
         removed_count = 0
         for role in roles_to_remove:
             try:
@@ -1423,15 +1604,29 @@ class RaidProtection(commands.Cog):
             logger.error(f"Failed to restore roles for {member.id} - {str(e)}")
             return 0
 
-    def has_bypass(self, user: discord.Member) -> bool:
-        # Support both Member and User objects. If roles aren't available (User), only check ID.
+    def has_bypass(self, user) -> bool:
+        """Check if user has bypass protection. Only checks ONE protected user OR ONE protected role."""
         try:
-            if getattr(user, 'id', None) == IMMUNE_USER_ID:
+            # Check if user ID matches protected user
+            user_id = getattr(user, 'id', None)
+            if user_id == IMMUNE_USER_ID:
                 return True
-            roles = getattr(user, 'roles', None)
-            if not roles:
-                return False
-            return any(role.id == IMMUNE_ROLE_ID for role in roles)
+            
+            # Check if user has protected role (only if we can access roles)
+            if hasattr(user, 'roles'):
+                roles = getattr(user, 'roles', None)
+                if roles:
+                    return any(role.id == IMMUNE_ROLE_ID for role in roles)
+            
+            return False
+        except Exception:
+            return False
+
+    def is_quarantined(self, user_id) -> bool:
+        """Check if a user is currently quarantined."""
+        try:
+            user_id_str = str(user_id)
+            return user_id_str in self.quarantined_users
         except Exception:
             return False
 
