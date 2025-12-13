@@ -96,42 +96,42 @@ class RaidProtection(commands.Cog):
         with open(QUARANTINE_FILE, 'w') as f:
             json.dump(self.quarantined_users, f)
 
-        def load_leaderboard_counts(self):
-            try:
-                # Prefer the new leaderboard filename if available
-                if os.path.exists(LEADERBOARD_COUNTS_FILE):
-                    with open(LEADERBOARD_COUNTS_FILE, 'r', encoding='utf-8') as f:
-                        self.leaderboard_counts = json.load(f)
-                    return
-                # Fallback: migrate old leaderbird file if present
-                if os.path.exists(OLD_LEADERBIRD_COUNTS_FILE):
-                    with open(OLD_LEADERBIRD_COUNTS_FILE, 'r', encoding='utf-8') as f:
-                        self.leaderboard_counts = json.load(f)
-                    # Write out to new filename (best effort)
-                    try:
-                        with open(LEADERBOARD_COUNTS_FILE, 'w', encoding='utf-8') as fo:
-                            json.dump(self.leaderboard_counts, fo, indent=2)
-                    except Exception:
-                        pass
-                    return
-            except Exception:
-                pass
-            self.leaderboard_counts = {}
+    def load_leaderboard_counts(self):
+        try:
+            # Prefer the new leaderboard filename if available
+            if os.path.exists(LEADERBOARD_COUNTS_FILE):
+                with open(LEADERBOARD_COUNTS_FILE, 'r', encoding='utf-8') as f:
+                    self.leaderboard_counts = json.load(f)
+                return
+            # Fallback: migrate old leaderbird file if present
+            if os.path.exists(OLD_LEADERBIRD_COUNTS_FILE):
+                with open(OLD_LEADERBIRD_COUNTS_FILE, 'r', encoding='utf-8') as f:
+                    self.leaderboard_counts = json.load(f)
+                # Write out to new filename (best effort)
+                try:
+                    with open(LEADERBOARD_COUNTS_FILE, 'w', encoding='utf-8') as fo:
+                        json.dump(self.leaderboard_counts, fo, indent=2)
+                except Exception:
+                    pass
+                return
+        except Exception:
+            pass
+        self.leaderboard_counts = {}
 
-        def save_leaderboard_counts(self):
-            try:
-                with open(LEADERBOARD_COUNTS_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(self.leaderboard_counts, f, indent=2)
-            except Exception:
-                pass
+    def save_leaderboard_counts(self):
+        try:
+            with open(LEADERBOARD_COUNTS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.leaderboard_counts, f, indent=2)
+        except Exception:
+            pass
 
-        def increment_leaderboard_count(self, user_id: int):
-            key = str(user_id)
-            self.leaderboard_counts[key] = int(self.leaderboard_counts.get(key, 0)) + 1
-            try:
-                self.save_leaderboard_counts()
-            except Exception:
-                pass
+    def increment_leaderboard_count(self, user_id: int):
+        key = str(user_id)
+        self.leaderboard_counts[key] = int(self.leaderboard_counts.get(key, 0)) + 1
+        try:
+            self.save_leaderboard_counts()
+        except Exception:
+            pass
 
     def load_left_restore(self):
         try:
