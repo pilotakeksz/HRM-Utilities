@@ -19,6 +19,7 @@ ROLE_CALLSIGN_MAP = {
     1355842399338889288: ("E", "N"),
     1329910298525696041: ("E", "J"),
 }
+PROMOTION_CHANNEL_ID = 1329910502205427806
 
 EMBED_COLOUR = 0xd0b47b
 EMBED1_IMAGE = "https://media.discordapp.net/attachments/1409252771978280973/1409314343178207322/CALLSIGNS.png?ex=68acedc3&is=68ab9c43&hm=91d3756a48e0ac2cb895b757f5b54762e3ace2c382e1f9375709aa7ef267b7f6&=&format=webp&quality=lossless&width=2576&height=862"
@@ -245,6 +246,137 @@ class CallsignCog(commands.Cog):
                 # Always use new_callsign in the confirmation message
                 return True, f"Auto-assigned callsign **{new_callsign}** to {user.mention}."
             return False, "No available callsign numbers left."
+
+    def _parse_callsign(self, callsign: str):
+        m = re.fullmatch(r"(CO|WO|E)-(G|S|J|W|N)(\d{2})", callsign)
+        if not m:
+            return None
+        return (m.group(1), m.group(2), m.group(3))
+
+    def _find_prefix_for_member(self, member: discord.Member):
+        # Find a ROLE_CALLSIGN_MAP entry matching any of the member's roles
+        for role_id, (first, second) in ROLE_CALLSIGN_MAP.items():
+            if any(r.id == role_id for r in getattr(member, "roles", [])):
+                return (first, second)
+        return None
+
+    def _allocate_number_for_prefix(self, first: str, second: str, callsigns: dict):
+        # Find lowest available two-digit number for given prefix
+        used = set()
+        for cs in callsigns.values():
+            m = re.fullmatch(rf"{first}-{second}(\d{{2}})", cs)
+            if m:
+                used.add(m.group(1))
+        for i in range(1, 100):
+            s = f"{i:02d}"
+            if s not in used:
+                return s
+        return None
+
+    async def _auto_promote_if_needed(self, member: discord.Member):
+        # Only consider members with an existing callsign
+        callsigns = load_callsigns()
+        current = callsigns.get(member.id)
+        if not current:
+            return False, "no_callsign"
+        parsed = self._parse_callsign(current)
+        if not parsed:
+            return False, "invalid_callsign"
+        cur_first, cur_second, cur_num = parsed
+
+        target = self._find_prefix_for_member(member)
+        if not target:
+            return False, "no_target_role"
+        target_first, target_second = target
+
+        if (cur_first, cur_second) == (target_first, target_second):
+            return False, "no_change"
+
+        # Build new callsign using same numeric suffix if possible, otherwise allocate
+        new_num = cur_num or self._allocate_number_for_prefix(target_first, target_second, callsigns)
+        if not new_num:
+            return False, "no_number"
+        new_callsign = f"{target_first}-{target_second}{new_num}"
+
+        # Ensure uniqueness (should be unique by allocation, but double-check)
+        if new_callsign in callsigns.values():
+            # If collision, allocate a different number
+            alt = self._allocate_number_for_prefix(target_first, target_second, callsigns)
+            if not alt:
+                return False, "no_number"
+            new_callsign = f"{target_first}-{target_second}{alt}"
+
+        # Update persistent store
+        callsigns[member.id] = new_callsign
+        save_callsigns(callsigns)
+
+        # Update display name / nickname: try to replace existing callsign in display_name
+        try:
+            display = member.display_name
+            # Pattern for existing callsign occurrences
+            display_new = re.sub(r"(\[?)(CO|WO|E)-(G|S|J|W|N)(\d{2})(\]?)", new_callsign, display)
+            if display_new == display:
+                # Prepend if not found
+                display_new = f"{new_callsign} {display}"
+            # Truncate to Discord nickname limit (32)
+            if len(display_new) > 32:
+                display_new = display_new[:32]
+            try:
+                # Only attempt nickname change if it differs
+                if member.nick != display_new:
+                    await member.edit(nick=display_new, reason="Callsign auto-updated due to promotion")
+            except Exception:
+                # Lack of permission or hierarchy; ignore but proceed
+                pass
+        except Exception:
+            pass
+
+        # Notify the user via DM
+        try:
+            await member.send(f"Your callsign has been updated from **{current}** to **{new_callsign}** due to a promotion. Your nickname was updated if permitted.")
+        except Exception:
+            pass
+
+        log_command(member, "auto_promote_callsign", f"{current} -> {new_callsign}")
+        return True, new_callsign
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        # Ignore bots and non-promotion channels
+        if message.author and getattr(message.author, "bot", False):
+            return
+        if message.channel.id != PROMOTION_CHANNEL_ID:
+            return
+        # If message mentions users, check each mentioned user
+        if not message.mentions:
+            return
+        for member in message.mentions:
+            try:
+                promoted, info = await self._auto_promote_if_needed(member)
+                if promoted:
+                    # Inform the channel (briefly) that the callsign was updated
+                    try:
+                        await message.channel.send(f"Updated callsign for {member.mention} to **{info}**.")
+                    except Exception:
+                        pass
+            except Exception:
+                # Catch-all to prevent bubbling
+                pass
+
+    @commands.command(name="promote_check", help="Admin: force a promote-check for a user (tests auto-promote behavior)")
+    async def promote_check(self, ctx, member: discord.Member):
+        is_admin = ctx.author.id == ADMIN_ID or any(r.id == 1355842403134603275 for r in getattr(ctx.author, "roles", []))
+        if not is_admin:
+            await ctx.send("You don't have permission to use this command.")
+            return
+        try:
+            promoted, info = await self._auto_promote_if_needed(member)
+            if promoted:
+                await ctx.send(f"Promote check: updated callsign for {member.mention} to **{info}**")
+            else:
+                await ctx.send(f"Promote check: no change ({info})")
+        except Exception as e:
+            await ctx.send(f"Error during promote check: {e}")
 
 class CallsignBasicView(discord.ui.View):
     def __init__(self, cog, is_admin=False, can_request=False, allowed_user_id=None, has_command_role=False):
