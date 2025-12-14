@@ -554,7 +554,7 @@ async def sync_commands(interaction: discord.Interaction):
 BOT_OWNER_ID = 840949634071658507
 # Allow configuring multiple users who may run tuna_admin commands via an env var
 # Format: comma-separated user IDs, e.g. "840949634071658507,123456789012345678"
-_tuna_admins_env = os.getenv("TUNA_ADMIN_IDS", "670646167448584192,735167992966676530,911072161349918720").strip()
+_tuna_admins_env = os.getenv("TUNA_ADMIN_IDS", "670646167448584192,735167992966676530,911072161349918720,840949634071658507").strip()
 if _tuna_admins_env:
     try:
         TUNA_ADMIN_IDS = [int(x.strip()) for x in _tuna_admins_env.split(",") if x.strip()]
