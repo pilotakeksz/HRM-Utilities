@@ -113,6 +113,10 @@ class CallsignCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.callsign_lock = asyncio.Lock()
+        # pending promotions: guild_id -> set(user_id)
+        self._promotion_pending = {}
+        self._promotion_task = None
+        self._promotion_lock = asyncio.Lock()
 
     @commands.hybrid_command(name="callsign", aliases=["cs"], description="Callsign management tool")
     @app_commands.describe(user="User to check (optional)")
@@ -243,6 +247,23 @@ class CallsignCog(commands.Cog):
                         await user.remove_roles(role, reason="Callsign assigned")
                     except Exception:
                         pass
+                # Append callsign to end of their nickname or username as ' | CS'
+                try:
+                    display = user.display_name
+                    # Remove existing ' | CS' suffix if present
+                    display = re.sub(r"\s*\|\s*(CO|WO|E)-(G|S|J|W|N)\d{2}$", "", display)
+                    new_nick = f"{display} | {new_callsign}"
+                    if len(new_nick) > 32:
+                        # Truncate base name to fit
+                        base_allowed = 32 - (3 + len(new_callsign))
+                        new_nick = f"{display[:max(0, base_allowed)]} | {new_callsign}"
+                    try:
+                        if user.nick != new_nick:
+                            await user.edit(nick=new_nick, reason="Callsign assigned")
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
                 # Always use new_callsign in the confirmation message
                 return True, f"Auto-assigned callsign **{new_callsign}** to {user.mention}."
             return False, "No available callsign numbers left."
@@ -350,18 +371,66 @@ class CallsignCog(commands.Cog):
         # If message mentions users, check each mentioned user
         if not message.mentions:
             return
-        for member in message.mentions:
-            try:
-                promoted, info = await self._auto_promote_if_needed(member)
-                if promoted:
-                    # Inform the channel (briefly) that the callsign was updated
+        guild_id = message.guild.id if message.guild else None
+        if not guild_id:
+            return
+        async with self._promotion_lock:
+            s = self._promotion_pending.get(guild_id)
+            if s is None:
+                s = set()
+                self._promotion_pending[guild_id] = s
+            for member in message.mentions:
+                try:
+                    s.add(member.id)
+                except Exception:
+                    pass
+            # Start a single delayed task if not already running
+            if self._promotion_task is None or self._promotion_task.done():
+                self._promotion_task = asyncio.create_task(self._process_pending_promotions())
+
+    async def _process_pending_promotions(self, delay_seconds: int = 600):
+        # Wait delay then process accumulated promotion mentions in batches per guild
+        try:
+            await asyncio.sleep(delay_seconds)
+            async with self._promotion_lock:
+                pending = dict(self._promotion_pending)
+                self._promotion_pending.clear()
+            for guild_id, user_ids in pending.items():
+                guild = self.bot.get_guild(guild_id)
+                if not guild:
+                    continue
+                updates = []
+                # Process sequentially with small delay to avoid rate limits
+                for uid in list(user_ids):
                     try:
-                        await message.channel.send(f"Updated callsign for {member.mention} to **{info}**.")
+                        member = guild.get_member(uid) or await guild.fetch_member(uid)
                     except Exception:
-                        pass
-            except Exception:
-                # Catch-all to prevent bubbling
-                pass
+                        continue
+                    try:
+                        promoted, info = await self._auto_promote_if_needed(member)
+                        if promoted:
+                            updates.append((member, info))
+                    except Exception:
+                        continue
+                    await asyncio.sleep(0.25)
+                # If any updates, announce in channel and then delete after 10s
+                if updates:
+                    # Choose the promotions channel in guild
+                    ch = guild.get_channel(PROMOTION_CHANNEL_ID)
+                    if ch:
+                        lines = [f"{m.mention} -> **{cs}**" for m, cs in updates]
+                        try:
+                            sent = await ch.send("Updated callsigns:\n" + "\n".join(lines))
+                            await asyncio.sleep(10)
+                            try:
+                                await sent.delete()
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                    # Also ensure DMs were sent by _auto_promote_if_needed
+        except Exception:
+            pass
 
     @commands.command(name="promote_check", help="Admin: force a promote-check for a user (tests auto-promote behavior)")
     async def promote_check(self, ctx, member: discord.Member):
