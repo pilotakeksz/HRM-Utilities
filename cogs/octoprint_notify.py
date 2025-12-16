@@ -262,7 +262,14 @@ class EStopView(discord.ui.View):
 class OctoPrintMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.api = os.getenv("OCTOPRINT_URL").rstrip("/")
+        # Read OctoPrint API URL (may be missing in some environments)
+        api_env = os.getenv("OCTOPRINT_URL")
+        if api_env:
+            self.api = api_env.rstrip("/")
+        else:
+            # Keep empty string to allow cog to load; calls to _get_status will return disconnected
+            print("⚠️ Warning: OCTOPRINT_URL not set; OctoPrint monitoring disabled until configured")
+            self.api = ""
         self.api_key = os.getenv("OCTOPRINT_API_KEY")
         self.snapshot_url = os.getenv("OCTOPRINT_SNAPSHOT_URL")
         
@@ -290,6 +297,8 @@ class OctoPrintMonitor(commands.Cog):
     # Send G-code (E-STOP)
     # ---------------------------
     def _send_gcode(self, command):
+        if not self.api:
+            return "Error: OCTOPRINT_URL not configured"
         url = f"{self.api}/api/printer/command"
         headers = {"X-Api-Key": self.api_key} if self.api_key else {}
         payload = {"command": command}
@@ -307,6 +316,10 @@ class OctoPrintMonitor(commands.Cog):
     def _get_status(self):
         headers = {"X-Api-Key": self.api_key} if self.api_key else {}
         try:
+            # If API URL missing, return disconnected status
+            if not self.api:
+                return {"connected": False}
+
             # Try to get printer status
             r = requests.get(f"{self.api}/api/printer", headers=headers, timeout=5)
             job_r = requests.get(f"{self.api}/api/job", headers=headers, timeout=5)
@@ -440,6 +453,11 @@ class OctoPrintMonitor(commands.Cog):
             return True
         except Exception as e:
             print(f"Failed to send update: {e}")
+            # If sending failed because channel missing/forbidden, print channel id for diagnostics
+            try:
+                print(f"Channel: {getattr(channel, 'id', channel)}")
+            except Exception:
+                pass
             return False
 
     # ---------------------------
