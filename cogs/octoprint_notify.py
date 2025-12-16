@@ -632,6 +632,96 @@ class OctoPrintMonitor(commands.Cog):
                 await channel.send(content=mentions_text, embed=embed)
                 await message.reply("E-STOP executed successfully.", delete_after=10)
 
+    @commands.command(name="octo_debug", help="Admin: debug OctoPrint integration and connectivity")
+    async def octo_debug(self, ctx: commands.Context):
+        # Restrict to authorized users or server admins
+        if not (ctx.author.id in ESTOP_ALLOWED or getattr(ctx.author, "guild_permissions", None) and ctx.author.guild_permissions.administrator):
+            await ctx.send("You don't have permission to use this command.")
+            return
+
+        log_button_click(ctx.author, "DEBUG", "Requested")
+
+        lines = []
+        lines.append(f"API URL: {self.api or '(unset)'}")
+        lines.append(f"API Key: {'set' if self.api_key else 'unset'}")
+        lines.append(f"Snapshot URL: {self.snapshot_url or '(unset)'}")
+        lines.append(f"Last status message id: {self.last_status_message_id}")
+        lines.append(f"Last connected: {self.last_connected}")
+        lines.append(f"Last state text: {self.last_state_text}")
+        lines.append("")
+
+        # Call internal status function
+        try:
+            st = self._get_status()
+            lines.append("_get_status() returned:")
+            try:
+                # Safe stringify small JSON-like structures
+                import json
+                st_s = json.dumps(st, default=str, indent=2)
+                for ln in st_s.splitlines():
+                    lines.append(ln)
+            except Exception:
+                lines.append(str(st))
+        except Exception as e:
+            lines.append(f"_get_status() raised: {e}")
+
+        # Try direct HTTP queries if API configured
+        if self.api:
+            try:
+                r = requests.get(f"{self.api}/api/printer", headers={"X-Api-Key": self.api_key} if self.api_key else {}, timeout=5)
+                lines.append(f"GET /api/printer: status={r.status_code}")
+                try:
+                    lines.append(str(r.json())[:1000])
+                except Exception:
+                    lines.append(r.text[:1000])
+            except Exception as e:
+                lines.append(f"GET /api/printer failed: {e}")
+
+            try:
+                r2 = requests.get(f"{self.api}/api/job", headers={"X-Api-Key": self.api_key} if self.api_key else {}, timeout=5)
+                lines.append(f"GET /api/job: status={r2.status_code}")
+                try:
+                    lines.append(str(r2.json())[:1000])
+                except Exception:
+                    lines.append(r2.text[:1000])
+            except Exception as e:
+                lines.append(f"GET /api/job failed: {e}")
+        else:
+            lines.append("API not configured; skipping live HTTP tests.")
+
+        # Try snapshot fetch
+        if self.snapshot_url:
+            try:
+                rr = requests.get(self.snapshot_url, timeout=5)
+                lines.append(f"Snapshot fetch: status={rr.status_code}, content_length={len(rr.content) if rr.content else 0}")
+            except Exception as e:
+                lines.append(f"Snapshot fetch failed: {e}")
+        else:
+            lines.append("No snapshot URL configured.")
+
+        out = "\n".join(lines)
+
+        # Send DM to requester with debug output, fallback to channel if DM fails
+        sent = False
+        try:
+            for i in range(0, len(out), 1900):
+                chunk = out[i:i+1900]
+                await ctx.author.send(f"```\n{chunk}\n```")
+            sent = True
+        except Exception:
+            sent = False
+
+        if sent:
+            await ctx.send("Debug info DM'd to you.")
+        else:
+            # Send in channel as codeblock (may be large)
+            try:
+                for i in range(0, len(out), 1900):
+                    chunk = out[i:i+1900]
+                    await ctx.send(f"```\n{chunk}\n```")
+            except Exception as e:
+                await ctx.send(f"Failed to deliver debug output: {e}")
+
 # ---------------------------
 # Setup
 # ---------------------------
