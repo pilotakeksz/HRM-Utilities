@@ -103,12 +103,12 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
             
             # Update the status embed to show the new LCD message
             try:
-                channel_id = os.getenv("OCTO_NOTIFY_CHANNEL_ID")
-                if channel_id:
-                    channel = self.cog.bot.get_channel(int(channel_id))
-                    if channel:
-                        data = self.cog._get_status()
-                        await self.cog._send_update(channel, data, update_existing=True)
+                channel = await self.cog._get_notify_channel()
+                if channel:
+                    data = self.cog._get_status()
+                    ok = await self.cog._send_update(channel, data, update_existing=True)
+                    if not ok:
+                        print("Failed to update status embed after LCD message: _send_update returned False")
             except Exception as e:
                 print(f"Failed to update status embed after LCD message: {e}")
             
@@ -424,6 +424,32 @@ class OctoPrintMonitor(commands.Cog):
         return embed, snapshot_file
 
     # ---------------------------
+    # Helper: resolve notify channel
+    # ---------------------------
+    async def _get_notify_channel(self):
+        """Return a channel object for OCTO_NOTIFY_CHANNEL_ID or None and print diagnostics."""
+        channel_id = os.getenv("OCTO_NOTIFY_CHANNEL_ID")
+        if not channel_id:
+            print("OCTO_NOTIFY_CHANNEL_ID is not set")
+            return None
+        try:
+            cid = int(channel_id)
+        except Exception as e:
+            print(f"OCTO_NOTIFY_CHANNEL_ID invalid: {channel_id} ({e})")
+            return None
+        channel = self.bot.get_channel(cid)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(cid)
+            except discord.Forbidden:
+                print(f"Forbidden: cannot access channel {cid}")
+                return None
+            except Exception as e:
+                print(f"Failed to fetch channel {cid}: {e}")
+                return None
+        return channel
+
+    # ---------------------------
     # Send message to channel
     # ---------------------------
     async def _send_update(self, channel, data, title_prefix="🖨️ OctoPrint Status Update", update_existing=False):
@@ -438,9 +464,11 @@ class OctoPrintMonitor(commands.Cog):
                         await message.edit(embed=embed, attachments=[snapshot_file], view=view)
                     else:
                         await message.edit(embed=embed, attachments=[], view=view)
+                    print(f"Updated existing status message (id={self.last_status_message_id}) in channel {getattr(channel, 'id', channel)}")
                     return True
-                except (discord.NotFound, discord.HTTPException):
+                except (discord.NotFound, discord.HTTPException) as e:
                     # Message not found or can't edit, fall through to send new
+                    print(f"Existing message not editable/found: {e}")
                     self.last_status_message_id = None
                     pass
             
@@ -450,6 +478,7 @@ class OctoPrintMonitor(commands.Cog):
             else:
                 sent = await channel.send(embed=embed, view=view)
             self.last_status_message_id = sent.id
+            print(f"Sent new status message (id={sent.id}) to channel {getattr(channel, 'id', channel)}")
             return True
         except Exception as e:
             print(f"Failed to send update: {e}")
@@ -466,16 +495,11 @@ class OctoPrintMonitor(commands.Cog):
     @tasks.loop(seconds=10)
     async def check_status(self):
         await self.bot.wait_until_ready()
-        channel_id = os.getenv("OCTO_NOTIFY_CHANNEL_ID")
-        if not channel_id:
-            return
-        channel_id = int(channel_id)
-        channel = self.bot.get_channel(channel_id)
+        channel = await self._get_notify_channel()
         if channel is None:
-            try:
-                channel = await self.bot.fetch_channel(channel_id)
-            except:
-                return
+            # Diagnostic: indicate missing channel or misconfiguration
+            print("OctoPrint: No notify channel available (OCTO_NOTIFY_CHANNEL_ID unset or not accessible). Skipping this check iteration.")
+            return
 
         # Get current status
         data = self._get_status()
@@ -505,9 +529,13 @@ class OctoPrintMonitor(commands.Cog):
         if self.last_connected is not None and self.last_connected != connected:
             # Connection state changed!
             if connected:
-                await self._send_update(channel, data, "🟢 Printer Connected")
+                ok = await self._send_update(channel, data, "🟢 Printer Connected")
+                if not ok:
+                    print("Failed to send connection-change (connected) update to channel")
             else:
-                await self._send_update(channel, data, "🔴 Printer Disconnected")
+                ok = await self._send_update(channel, data, "🔴 Printer Disconnected")
+                if not ok:
+                    print("Failed to send connection-change (disconnected) update to channel")
             # Update state immediately after connection change
             self.last_connected = connected
             if connected:
@@ -565,9 +593,11 @@ class OctoPrintMonitor(commands.Cog):
             # Send update if state OR progress changed
             if state_changed or progress_changed:
                 print(f"Sending update: state_changed={state_changed}, progress_changed={progress_changed}")
-                await self._send_update(channel, data)
+                ok = await self._send_update(channel, data)
+                if not ok:
+                    print("Failed to send progress/state update to channel")
                 # Update last_sent_progress only when we actually send an update
-                if progress_changed and current_progress is not None:
+                if progress_changed and current_progress is not None and ok:
                     self.last_sent_progress = current_progress
             else:
                 print(f"No update needed: state_changed={state_changed}, progress_changed={progress_changed}")
@@ -721,6 +751,22 @@ class OctoPrintMonitor(commands.Cog):
                     await ctx.send(f"```\n{chunk}\n```")
             except Exception as e:
                 await ctx.send(f"Failed to deliver debug output: {e}")
+
+    @commands.command(name="octo_send_status", help="Admin: force send current status to notify channel (for testing)")
+    async def octo_send_status(self, ctx: commands.Context):
+        if not (ctx.author.id in ESTOP_ALLOWED or getattr(ctx.author, "guild_permissions", None) and ctx.author.guild_permissions.administrator):
+            await ctx.send("You don't have permission to use this command.")
+            return
+        channel = await self._get_notify_channel()
+        if not channel:
+            await ctx.send("Notify channel not configured or accessible. Check console logs for diagnostics.")
+            return
+        data = self._get_status()
+        ok = await self._send_update(channel, data)
+        if ok:
+            await ctx.send(f"Status sent to channel {channel.id}")
+        else:
+            await ctx.send("Failed to send status update to notify channel. Check console logs for diagnostics.")
 
 # ---------------------------
 # Setup
