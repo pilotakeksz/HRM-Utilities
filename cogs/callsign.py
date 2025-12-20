@@ -420,7 +420,10 @@ class CallsignCog(commands.Cog):
                     if ch:
                         lines = [f"{m.mention} -> **{cs}**" for m, cs in updates]
                         try:
-                            sent = await ch.send("Updated callsigns:\n" + "\n".join(lines))
+                            # Send as a silent-style announcement: prepend '@silent' and disable user/role/everyone mentions
+                            content = "@silent\nUpdated callsigns:\n" + "\n".join(lines)
+                            allowed = discord.AllowedMentions(users=False, roles=False, everyone=False)
+                            sent = await ch.send(content, allowed_mentions=allowed)
                             await asyncio.sleep(10)
                             try:
                                 await sent.delete()

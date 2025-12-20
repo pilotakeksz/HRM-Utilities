@@ -34,11 +34,11 @@ class RankInfoSelect(discord.ui.Select):
                 title="__General officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- [GA] - General of the Army\n"
-                    "- [GEN] - General\n"
-                    "- [LTG] - Lieutenant General\n"
-                    "- [MG] - Major General\n"
                     "- [BG] - Brigadier General\n"
+                    "- [MG] - Major General\n"
+                    "- [LTG] - Lieutenant General\n"
+                    "- [GEN] - General\n"
+                    "- [GA] - General of the Army\n"
 
                 )
             ),
@@ -46,9 +46,9 @@ class RankInfoSelect(discord.ui.Select):
                 title="__Senior Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- [COL] - Colonel\n"
-                    "- [LTC] - Lieutenant Colonel\n"
                     "- [MAJ] - Major\n"
+                    "- [LTC] - Lieutenant Colonel\n"
+                    "- [COL] - Colonel\n"
                 )    
 
             ),
@@ -56,9 +56,9 @@ class RankInfoSelect(discord.ui.Select):
                 title="__Junior Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- [CPT] - Captain\n"
-                    "- [1LT] - First Lieutenant\n"
                     "- [2LT] - Second Lieutenant\n"
+                    "- [1LT] - First Lieutenant\n"
+                    "- [CPT] - Captain\n"
                 )    
 
             ),
@@ -66,42 +66,42 @@ class RankInfoSelect(discord.ui.Select):
                 title="__Warrant Officers__ *(Middle Command)*",
                 color=EMBED_COLOR,
                 description=(
-                    "- [CW5] - Chief Warrant Officer 5\n"
-                    "- [CW4] - Chief Warrant Officer 4\n"
-                    "- [CW3] - Chief Warrant Officer 3\n"
-                    "- [CW2] - Chief Warrant Officer 2\n"
                     "- [WO1] - Warrant Officer 1\n"
+                    "- [CW2] - Chief Warrant Officer 2\n"
+                    "- [CW3] - Chief Warrant Officer 3\n"
+                    "- [CW4] - Chief Warrant Officer 4\n"
+                    "- [CW5] - Chief Warrant Officer 5\n"
                 )
             ),
             "low": discord.Embed(
                 title="__Senior Non-commissioned Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- [SMA] - Sergeant Major of the Army\n"
-                    "- [CSM] - Command Sergeant Major\n"
-                    "- [SGM] - Sergeant Major\n"
-                    "- [1SG] - First Sergeant\n"
-                    "- [MSG] - Master Sergeant\n"
                     "- [SFC] - Sergeant First Class\n"
+                    "- [MSG] - Master Sergeant\n"
+                    "- [1SG] - First Sergeant\n"
+                    "- [SGM] - Sergeant Major\n"
+                    "- [CSM] - Command Sergeant Major\n"
+                    "- [SMA] - Sergeant Major of the Army\n"
                 )
             ),
             "intermediate": discord.Embed(
                 title="__Non-commissioned Officers__",
                 color=EMBED_COLOR,
                 description=(
-                    "- [SSG] - Staff Sergeant\n"
-                    "- [SGT] - Sergeant\n"
                     "- [CPL] - Corporal\n"
+                    "- [SGT] - Sergeant\n"
+                    "- [SSG] - Staff Sergeant\n"
                 )
             ),
             "commissioned": discord.Embed(
                 title="__Junior Enlisted Ranks__",
                 color=EMBED_COLOR,
                 description=(
-                    "- [SPC] - Specialist\n"
-                    "- [PFC] - Private First Class\n"
-                    "- [PV2] - Private\n"
                     "- [PVT] - Private\n"
+                    "- [PV2] - Private Second Class\n"
+                    "- [PFC] - Private First Class\n"
+                    "- [SPC] - Specialist\n"
                 )
             ),
         }
@@ -133,7 +133,7 @@ class AboutUs(commands.Cog):
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409314341374656582/ABOUT_US.png?ex=68acedc2&is=68ab9c42&hm=71c262ec46a70395b61bfdf9a44bd51a29058e3399626e021d97a5da4d742721&")
 
         embed2 = discord.Embed(
-            title="<:HRMaboutus:1376647782248742993> About Us",
+            title="<:general:1343223933251358764> About Us",
             description="Welcome to the **Maplecliff National Guard!** Our mission is to ensure security, conduct strategic operations, and provide rapid emergency response, protect Maplecliff's borders, and assist the police force.",
             color=EMBED_COLOR
         )

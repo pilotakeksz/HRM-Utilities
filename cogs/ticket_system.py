@@ -409,18 +409,18 @@ async def ensure_persistent_ticket_embed(bot):
         color=EMBED_COLOUR
     )
     embed2.add_field(
-        name="<:MCNG:1409463907294384169> General Support",
-        value="Not understanding something? Confused? Got a question too specific? No worries, feel free to open a general support ticket!",
+        name="<:MCNG:1409463907294384169> General",
+        value="Private help for questions and inquiries",
         inline=True
     )
     embed2.add_field(
         name="<:HC:1343192841676914712> Management",
-        value="Interested in speaking to a JCO+ about a matter that cannot be handled in a general ticket? Open a management ticket.",
+        value="Speak with JCO+ for management matters.",
         inline=True
     )
     embed2.add_field(
         name="📝 IA",
-        value="Want to appeal a punishment or report a personnel member? Open an IA ticket and our team will review your case promptly.",
+        value="Appeals & reports — we'll review your case.",
         inline=True
     )
     embed2.set_image(url=EMBED2_IMAGE)
@@ -489,7 +489,7 @@ class TicketSystem(commands.Cog):
 
         embed2 = discord.Embed(
             title="📡 MCNG Assistance Hub",
-            description="Welcome to the Maplecliff National Guard Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
+            description="Need help? Open a private ticket for General, Management, or IA (appeals). Click an option below to get started.",
             color=EMBED_COLOUR
         )
         embed2.add_field(
