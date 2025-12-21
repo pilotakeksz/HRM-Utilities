@@ -1089,10 +1089,20 @@ class EmbedBuilder {
                 // Include actions (buttons and select menus) with inlined embed data
                 buttons: embed.actions.filter(action => action.type === 'button').map(button => {
                     if (button.buttonType === 'send_embed') {
+                        // Inline referenced saved embed if present
+                        let target = button.target;
+                        if (target && target.startsWith('send:')) {
+                            const embedKey = target.substring(5);
+                            const referencedEmbed = referencedEmbeds[embedKey];
+                            if (referencedEmbed) {
+                                target = `send_json:${safeBase64Encode(JSON.stringify(referencedEmbed))}`;
+                            }
+                        }
+
                         return {
                             type: 'send_embed',
                             label: button.label,
-                            target: button.target,
+                            target: target,
                             ephemeral: button.ephemeral || false
                         };
                     } else {
@@ -1114,7 +1124,12 @@ class EmbedBuilder {
                             const embedKey = option.value.substring(5); // Remove 'send:' prefix
                             const referencedEmbed = referencedEmbeds[embedKey];
                             if (referencedEmbed) {
-                                resolvedOption.value = `send_json:${btoa(JSON.stringify(referencedEmbed))}`;
+                                try {
+                                    resolvedOption.value = `send_json:${safeBase64Encode(JSON.stringify(referencedEmbed))}`;
+                                } catch (e) {
+                                    console.warn('Failed to encode referenced embed', e);
+                                    resolvedOption.value = option.value;
+                                }
                             }
                         }
                         
@@ -1147,6 +1162,15 @@ class EmbedBuilder {
         return payload;
     }
 
+    // Helper for safe base64 encoding of Unicode
+    function safeBase64Encode(str) {
+        try { return btoa(unescape(encodeURIComponent(str))); } catch (e) { return btoa(str); }
+    }
+
+    function safeBase64Decode(b64) {
+        try { return decodeURIComponent(escape(atob(b64))); } catch (e) { return atob(b64); }
+    }
+
     collectReferencedEmbeds() {
         const referencedEmbeds = {};
         
@@ -1170,6 +1194,23 @@ class EmbedBuilder {
                             }
                         }
                     });
+                }
+
+                // Handle buttons that reference saved embeds (target = send:<key>)
+                if (action.type === 'button') {
+                    const target = action.target;
+                    if (target && target.startsWith('send:')) {
+                        const embedKey = target.substring(5);
+                        const savedData = localStorage.getItem(`embed_${embedKey}`);
+                        if (savedData) {
+                            try {
+                                const parsed = JSON.parse(savedData);
+                                referencedEmbeds[embedKey] = parsed.embed;
+                            } catch (e) {
+                                console.warn(`Failed to parse saved embed ${embedKey}:`, e);
+                            }
+                        }
+                    }
                 }
             });
         });

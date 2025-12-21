@@ -1320,10 +1320,20 @@ class EmbedBuilder {
                     // Include actions (buttons and select menus) with inlined message data
                     buttons: embed.actions.filter(action => action.type === 'button').map(button => {
                         if (button.buttonType === 'send_embed') {
+                            // If the button targets a saved message (send:<key>), inline encoded message data
+                            let target = button.target;
+                            if (target && target.startsWith('send:')) {
+                                const messageKey = target.substring(5);
+                                const referencedMessage = referencedMessages[messageKey];
+                                if (referencedMessage) {
+                                    target = `send_json:${safeBase64Encode(JSON.stringify(referencedMessage))}`;
+                                }
+                            }
+
                             return {
                                 type: 'send_embed',
                                 label: button.label,
-                                target: button.target,
+                                target,
                                 ephemeral: button.ephemeral || false
                             };
                         } else {
@@ -1345,7 +1355,12 @@ class EmbedBuilder {
                                 const messageKey = option.value.substring(5); // Remove 'send:' prefix
                                 const referencedMessage = referencedMessages[messageKey];
                                 if (referencedMessage) {
-                                    resolvedOption.value = `send_json:${btoa(JSON.stringify(referencedMessage))}`;
+                                    try {
+                                        resolvedOption.value = `send_json:${safeBase64Encode(JSON.stringify(referencedMessage))}`;
+                                    } catch (e) {
+                                        console.warn('Failed to encode referenced message', e);
+                                        resolvedOption.value = option.value;
+                                    }
                                 }
                             }
                             
@@ -1387,6 +1402,7 @@ class EmbedBuilder {
         this.messages.forEach(message => {
             message.embeds.forEach(embed => {
                 embed.actions.forEach(action => {
+                    // Handle select options referencing saved messages
                     if (action.type === 'select') {
                         action.options.forEach(option => {
                             if (option.value && option.value.startsWith('send:')) {
@@ -1404,6 +1420,23 @@ class EmbedBuilder {
                                 }
                             }
                         });
+                    }
+
+                    // Handle buttons that reference saved messages (target = send:<key>)
+                    if (action.type === 'button') {
+                        const target = action.target;
+                        if (target && target.startsWith('send:')) {
+                            const messageKey = target.substring(5);
+                            const savedData = localStorage.getItem(`message_${messageKey}`);
+                            if (savedData) {
+                                try {
+                                    const parsed = JSON.parse(savedData);
+                                    referencedMessages[messageKey] = parsed;
+                                } catch (e) {
+                                    console.warn(`Failed to parse saved message ${messageKey}:`, e);
+                                }
+                            }
+                        }
                     }
                 });
             });
@@ -1629,6 +1662,25 @@ class EmbedBuilder {
         
         // Show success message
         alert('Complete JSON exported successfully! This includes all messages, embeds, buttons, select menus, and metadata.');
+    }
+}
+
+// Add helper functions at the top of app.js
+function safeBase64Encode(str) {
+    // Encode Unicode properly for btoa
+    try {
+        return btoa(unescape(encodeURIComponent(str)));
+    } catch (e) {
+        // Fallback to plain btoa (may throw on some inputs)
+        return btoa(str);
+    }
+}
+
+function safeBase64Decode(b64) {
+    try {
+        return decodeURIComponent(escape(atob(b64)));
+    } catch (e) {
+        return atob(b64);
     }
 }
 
