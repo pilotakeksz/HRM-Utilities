@@ -12,6 +12,7 @@ from version_manager import get_version
 import json
 from datetime import datetime, timezone, date
 from typing import Optional
+import re
 
 
 load_dotenv(".env")
@@ -687,17 +688,30 @@ async def tuna_deploy(ctx: commands.Context):
 
 
 @tuna_admin.command(name="reboot")
-async def tuna_reboot(ctx: commands.Context):
-    """Reboot the bot process (tuna admin only)."""
+async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
+    """Reboot the bot process (tuna admin only).
+
+    Usage: `!tuna_admin reboot [--silent|-s|silent|quiet]`
+    """
     if ctx.author.id not in TUNA_ADMIN_IDS:
         await ctx.send("Only configured tuna admins can use this command.")
         return
 
-    # Send an acknowledgement
+    # Parse flags from the message content (accepts --silent, -s, silent, quiet)
     try:
-        await ctx.send("✅ Rebooting bot...")
+        tokens = re.split(r"\s+", ctx.message.content.lower())
     except Exception:
-        pass
+        tokens = ctx.message.content.lower().split()
+
+    silent_flags = {"--silent", "-s", "silent", "quiet", "--quiet"}
+    silent = any(tok in silent_flags for tok in tokens)
+
+    # Send an acknowledgement unless silent was requested
+    if not silent:
+        try:
+            await ctx.send("✅ Rebooting bot...")
+        except Exception:
+            pass
 
     # Give Discord time to accept the response
     await asyncio.sleep(0.5)
