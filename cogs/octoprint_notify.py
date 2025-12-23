@@ -133,184 +133,189 @@ class EStopView(discord.ui.View):
         self.bot = bot
         self.cog = cog
 
-    @discord.ui.button(label="EMERGENCY STOP", style=discord.ButtonStyle.danger, custom_id="estop_btn")
-    async def estop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user_id = interaction.user.id
-        if user_id not in ESTOP_ALLOWED:
-            log_button_click(interaction.user, "EMERGENCY STOP", "Unauthorized attempt", "Denied")
-            await interaction.response.send_message("You are not authorized to request an E-STOP.", ephemeral=True)
-            return
+        # Replace the previous per-button UI with a single select (dropdown) containing all actions
+        # This keeps the UI compact and avoids accidental clicks.
+        options = [
+            discord.SelectOption(label="EMERGENCY STOP", value="estop", description="Request E-STOP (authorized users only)", emoji="⛔"),
+            discord.SelectOption(label="Update Image", value="update_image", description="Fetch latest camera snapshot and update the embed", emoji="🖼️"),
+            discord.SelectOption(label="Send LCD Message", value="lcd_message", description="Send a message to the printer LCD", emoji="💬"),
+            discord.SelectOption(label="Enable Per-Print Camera", value="enable_per_print", description="Enable per-print camera switching for next print (admin)", emoji="✅"),
+            discord.SelectOption(label="Disable Per-Print Camera", value="disable_per_print", description="Disable per-print camera switching (admin)", emoji="⛔"),
+            discord.SelectOption(label="Switch Camera Now", value="switch_camera", description="Toggle primary/secondary camera immediately (admin)", emoji="🔀"),
+        ]
 
-        token = str(random.randint(100000, 999999))
-        self.bot.active_tokens[user_id] = token
+        select = discord.ui.Select(placeholder="Choose action...", min_values=1, max_values=1, options=options)
 
-        log_button_click(interaction.user, "EMERGENCY STOP", "Token generated", "Pending confirmation", f"Token: {token}")
-        
-        await interaction.response.send_message(
-            f"⚠️ Confirmation required: Send the token `{token}` in chat within 60s to execute E-STOP.",
-            ephemeral=True
-        )
+        async def select_callback(interaction: discord.Interaction):
+            # Single entry selected
+            action = select.values[0]
 
-        async def expire_token():
-            await asyncio.sleep(60)
-            self.bot.active_tokens.pop(user_id, None)
-        asyncio.create_task(expire_token())
-
-    @discord.ui.button(label="Update Image", style=discord.ButtonStyle.secondary, custom_id="update_image_btn", row=0)
-    async def update_image_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        log_button_click(interaction.user, "Update Image", "Button clicked")
-        await interaction.response.defer()
-        
-        if not self.cog:
-            log_button_click(interaction.user, "Update Image", "Error", "Cog reference not available")
-            await interaction.followup.send("Error: Cog reference not available.", ephemeral=True)
-            return
-        
-        # Get current status
-        data = self.cog._get_status()
-        connected = data.get("connected", False)
-        
-        if not connected:
-            log_button_click(interaction.user, "Update Image", "Printer offline", "Failed")
-            await interaction.followup.send("Printer is offline. Cannot update image.", ephemeral=True)
-            return
-        
-        # Get snapshot (use active snapshot URL so Switch Camera Now is reflected)
-        snapshot_file = None
-        if self.cog.active_snapshot_url:
-            try:
-                headers = {"X-Api-Key": self.cog.api_key} if self.cog.api_key else {}
-                r = requests.get(self.cog.active_snapshot_url, headers=headers, timeout=3)
-                if r.status_code == 200:
-                    fp = BytesIO(r.content)
-                    fp.seek(0)
-                    snapshot_file = discord.File(fp, filename="snapshot.jpg")
-            except Exception as e:
-                log_button_click(interaction.user, "Update Image", "Snapshot fetch failed", "Error", str(e))
-                await interaction.followup.send(f"Failed to fetch snapshot: {e}", ephemeral=True)
-                return
-        
-        # Update the message
-        try:
-            message = interaction.message
-            embed = message.embeds[0] if message.embeds else None
-            
-            if embed and snapshot_file:
-                embed.set_image(url="attachment://snapshot.jpg")
-                await message.edit(embed=embed, attachments=[snapshot_file], view=self)
-                log_button_click(interaction.user, "Update Image", "Image updated", "Success")
-                await interaction.followup.send("Image updated!", ephemeral=True)
-            elif embed:
-                embed.set_image(url=None)
-                await message.edit(embed=embed, attachments=[], view=self)
-                log_button_click(interaction.user, "Update Image", "Image removed", "Snapshot unavailable")
-                await interaction.followup.send("Image removed (snapshot unavailable).", ephemeral=True)
-            else:
-                log_button_click(interaction.user, "Update Image", "No embed found", "Failed")
-                await interaction.followup.send("No embed found to update.", ephemeral=True)
-        except Exception as e:
-            log_button_click(interaction.user, "Update Image", "Update failed", "Error", str(e))
-            await interaction.followup.send(f"Failed to update message: {e}", ephemeral=True)
-
-    @discord.ui.button(label="Send LCD Message", style=discord.ButtonStyle.primary, custom_id="lcd_message_btn", row=0)
-    async def lcd_message_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        log_button_click(interaction.user, "Send LCD Message", "Button clicked")
-        
-        if not self.cog:
-            log_button_click(interaction.user, "Send LCD Message", "Error", "Cog reference not available")
-            await interaction.response.send_message("Error: Cog reference not available.", ephemeral=True)
-            return
-        
-        # Check cooldown
-        user_id = interaction.user.id
-        if user_id in self.cog.lcd_cooldowns:
-            last_used = self.cog.lcd_cooldowns[user_id]
-            time_since = datetime.utcnow() - last_used
-            cooldown_delta = timedelta(minutes=self.cog.lcd_cooldown_minutes)
-            if time_since < cooldown_delta:
-                remaining = cooldown_delta - time_since
-                total_seconds = int(remaining.total_seconds())
-                minutes = total_seconds // 60
-                seconds = total_seconds % 60
-                if minutes > 0:
-                    time_str = f"{minutes}m {seconds}s" if seconds > 0 else f"{minutes}m"
-                else:
-                    time_str = f"{seconds}s"
-                log_button_click(interaction.user, "Send LCD Message", "Cooldown active", "Denied", f"{time_str} remaining")
+            # EMERGENCY STOP flow
+            if action == "estop":
+                user_id = interaction.user.id
+                if user_id not in ESTOP_ALLOWED:
+                    log_button_click(interaction.user, "EMERGENCY STOP", "Unauthorized attempt", "Denied")
+                    await interaction.response.send_message("You are not authorized to request an E-STOP.", ephemeral=True)
+                    return
+                token = str(random.randint(100000, 999999))
+                self.bot.active_tokens[user_id] = token
+                log_button_click(interaction.user, "EMERGENCY STOP", "Token generated", "Pending confirmation", f"Token: {token}")
                 await interaction.response.send_message(
-                    f"⏰ You can send another message in {time_str}. ({self.cog.lcd_cooldown_minutes}min cooldown per person)",
+                    f"⚠️ Confirmation required: Send the token `{token}` in chat within 60s to execute E-STOP.",
                     ephemeral=True
                 )
+
+                async def expire_token():
+                    await asyncio.sleep(60)
+                    self.bot.active_tokens.pop(user_id, None)
+                asyncio.create_task(expire_token())
                 return
-        
-        # Check if printer is connected
-        data = self.cog._get_status()
-        connected = data.get("connected", False)
-        
-        if not connected:
-            log_button_click(interaction.user, "Send LCD Message", "Printer offline", "Failed")
-            await interaction.response.send_message("Printer is offline. Cannot send message.", ephemeral=True)
-            return
-        
-        # Show modal to get message
-        modal = LCDMessageModal(self.cog)
-        await interaction.response.send_modal(modal)
 
-    @discord.ui.button(label="Enable Per-Print Camera", style=discord.ButtonStyle.success, custom_id="enable_per_print_camera", row=1)
-    async def enable_per_print_camera(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only allow server administrators whose user id starts with '8'
-        user_id = interaction.user.id
-        if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
-            log_button_click(interaction.user, "Enable Per-Print Camera", "Unauthorized", "Denied")
-            await interaction.response.send_message("Only server administrators with a user ID starting with '8' can enable per-print camera switching.", ephemeral=True)
-            return
-        self.cog.camera_allowed_once = True
-        self.cog.camera_mode = "one_print"
-        log_button_click(interaction.user, "Enable Per-Print Camera", "Enabled for next print")
-        await interaction.response.send_message("Per-print camera switching has been enabled for the next print.", ephemeral=True)
-
-    @discord.ui.button(label="Disable Per-Print Camera", style=discord.ButtonStyle.danger, custom_id="disable_per_print_camera", row=1)
-    async def disable_per_print_camera(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user_id = interaction.user.id
-        if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
-            log_button_click(interaction.user, "Disable Per-Print Camera", "Unauthorized", "Denied")
-            await interaction.response.send_message("Only server administrators with a user ID starting with '8' can disable per-print camera switching.", ephemeral=True)
-            return
-        self.cog.camera_allowed_once = False
-        self.cog.camera_for_current_print = False
-        log_button_click(interaction.user, "Disable Per-Print Camera", "Disabled")
-        await interaction.response.send_message("Per-print camera switching has been disabled.", ephemeral=True)
-
-    @discord.ui.button(label="Switch Camera Now", style=discord.ButtonStyle.primary, custom_id="switch_camera_now", row=1)
-    async def switch_camera_now(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user_id = interaction.user.id
-        if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
-            log_button_click(interaction.user, "Switch Camera Now", "Unauthorized", "Denied")
-            await interaction.response.send_message("Only server administrators with a user ID starting with '8' can switch camera.", ephemeral=True)
-            return
-        if not self.cog.secondary_snapshot_url:
-            log_button_click(interaction.user, "Switch Camera Now", "No secondary camera configured", "Failed")
-            await interaction.response.send_message("No secondary camera configured.", ephemeral=True)
-            return
-        # Toggle between primary and secondary
-        try:
-            if self.cog.active_snapshot_url == self.cog.secondary_snapshot_url:
-                self.cog.active_snapshot_url = self.cog.snapshot_url or self.cog.secondary_snapshot_url
-                action = "Switched to primary camera"
-            else:
-                self.cog.active_snapshot_url = self.cog.secondary_snapshot_url
-                action = "Switched to secondary camera"
-            log_button_click(interaction.user, "Switch Camera Now", action, "Success")
-            # Update the status embed (use current status to refresh the embed image immediately)
-            try:
+            # UPDATE IMAGE
+            if action == "update_image":
+                log_button_click(interaction.user, "Update Image", "Select used")
+                await interaction.response.defer()
+                if not self.cog:
+                    log_button_click(interaction.user, "Update Image", "Error", "Cog reference not available")
+                    await interaction.followup.send("Error: Cog reference not available.", ephemeral=True)
+                    return
                 data = self.cog._get_status()
-                await self.cog._send_update(self.bot.get_channel(int(os.getenv("OCTO_NOTIFY_CHANNEL_ID"))), data, update_existing=True)
-            except Exception:
-                pass
-            await interaction.response.send_message(f"{action}.", ephemeral=True)
-        except Exception as e:
-            log_button_click(interaction.user, "Switch Camera Now", "Switch failed", "Error", str(e))
-            await interaction.response.send_message(f"Failed to switch camera: {e}", ephemeral=True)
+                connected = data.get("connected", False)
+                if not connected:
+                    log_button_click(interaction.user, "Update Image", "Printer offline", "Failed")
+                    await interaction.followup.send("Printer is offline. Cannot update image.", ephemeral=True)
+                    return
+                snapshot_file = None
+                if self.cog.active_snapshot_url:
+                    try:
+                        headers = {"X-Api-Key": self.cog.api_key} if self.cog.api_key else {}
+                        r = requests.get(self.cog.active_snapshot_url, headers=headers, timeout=3)
+                        if r.status_code == 200:
+                            fp = BytesIO(r.content)
+                            fp.seek(0)
+                            snapshot_file = discord.File(fp, filename="snapshot.jpg")
+                    except Exception as e:
+                        log_button_click(interaction.user, "Update Image", "Snapshot fetch failed", "Error", str(e))
+                        await interaction.followup.send(f"Failed to fetch snapshot: {e}", ephemeral=True)
+                        return
+                try:
+                    message = interaction.message
+                    embed = message.embeds[0] if message.embeds else None
+                    if embed and snapshot_file:
+                        embed.set_image(url="attachment://snapshot.jpg")
+                        await message.edit(embed=embed, attachments=[snapshot_file], view=self)
+                        log_button_click(interaction.user, "Update Image", "Image updated", "Success")
+                        await interaction.followup.send("Image updated!", ephemeral=True)
+                    elif embed:
+                        embed.set_image(url=None)
+                        await message.edit(embed=embed, attachments=[], view=self)
+                        log_button_click(interaction.user, "Update Image", "Image removed", "Snapshot unavailable")
+                        await interaction.followup.send("Image removed (snapshot unavailable).", ephemeral=True)
+                    else:
+                        log_button_click(interaction.user, "Update Image", "No embed found", "Failed")
+                        await interaction.followup.send("No embed found to update.", ephemeral=True)
+                except Exception as e:
+                    log_button_click(interaction.user, "Update Image", "Update failed", "Error", str(e))
+                    await interaction.followup.send(f"Failed to update message: {e}", ephemeral=True)
+                return
+
+            # SEND LCD MESSAGE
+            if action == "lcd_message":
+                log_button_click(interaction.user, "Send LCD Message", "Select used")
+                if not self.cog:
+                    log_button_click(interaction.user, "Send LCD Message", "Error", "Cog reference not available")
+                    await interaction.response.send_message("Error: Cog reference not available.", ephemeral=True)
+                    return
+                # Check cooldown
+                user_id = interaction.user.id
+                if user_id in self.cog.lcd_cooldowns:
+                    last_used = self.cog.lcd_cooldowns[user_id]
+                    time_since = datetime.utcnow() - last_used
+                    cooldown_delta = timedelta(minutes=self.cog.lcd_cooldown_minutes)
+                    if time_since < cooldown_delta:
+                        remaining = cooldown_delta - time_since
+                        total_seconds = int(remaining.total_seconds())
+                        minutes = total_seconds // 60
+                        seconds = total_seconds % 60
+                        if minutes > 0:
+                            time_str = f"{minutes}m {seconds}s" if seconds > 0 else f"{minutes}m"
+                        else:
+                            time_str = f"{seconds}s"
+                        log_button_click(interaction.user, "Send LCD Message", "Cooldown active", "Denied", f"{time_str} remaining")
+                        await interaction.response.send_message(
+                            f"⏰ You can send another message in {time_str}. ({self.cog.lcd_cooldown_minutes}min cooldown per person)",
+                            ephemeral=True
+                        )
+                        return
+                # Check if printer is connected
+                data = self.cog._get_status()
+                connected = data.get("connected", False)
+                if not connected:
+                    log_button_click(interaction.user, "Send LCD Message", "Printer offline", "Failed")
+                    await interaction.response.send_message("Printer is offline. Cannot send message.", ephemeral=True)
+                    return
+                # Show modal
+                modal = LCDMessageModal(self.cog)
+                await interaction.response.send_modal(modal)
+                return
+
+            # ENABLE / DISABLE PER-PRINT CAMERA
+            if action == "enable_per_print":
+                user_id = interaction.user.id
+                if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
+                    log_button_click(interaction.user, "Enable Per-Print Camera", "Unauthorized", "Denied")
+                    await interaction.response.send_message("Only server administrators with a user ID starting with '8' can enable per-print camera switching.", ephemeral=True)
+                    return
+                self.cog.camera_allowed_once = True
+                self.cog.camera_mode = "one_print"
+                log_button_click(interaction.user, "Enable Per-Print Camera", "Enabled for next print")
+                await interaction.response.send_message("Per-print camera switching has been enabled for the next print.", ephemeral=True)
+                return
+
+            if action == "disable_per_print":
+                user_id = interaction.user.id
+                if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
+                    log_button_click(interaction.user, "Disable Per-Print Camera", "Unauthorized", "Denied")
+                    await interaction.response.send_message("Only server administrators with a user ID starting with '8' can disable per-print camera switching.", ephemeral=True)
+                    return
+                self.cog.camera_allowed_once = False
+                self.cog.camera_for_current_print = False
+                log_button_click(interaction.user, "Disable Per-Print Camera", "Disabled")
+                await interaction.response.send_message("Per-print camera switching has been disabled.", ephemeral=True)
+                return
+
+            # SWITCH CAMERA NOW
+            if action == "switch_camera":
+                user_id = interaction.user.id
+                if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
+                    log_button_click(interaction.user, "Switch Camera Now", "Unauthorized", "Denied")
+                    await interaction.response.send_message("Only server administrators with a user ID starting with '8' can switch camera.", ephemeral=True)
+                    return
+                if not self.cog.secondary_snapshot_url:
+                    log_button_click(interaction.user, "Switch Camera Now", "No secondary camera configured", "Failed")
+                    await interaction.response.send_message("No secondary camera configured.", ephemeral=True)
+                    return
+                try:
+                    if self.cog.active_snapshot_url == self.cog.secondary_snapshot_url:
+                        self.cog.active_snapshot_url = self.cog.snapshot_url or self.cog.secondary_snapshot_url
+                        action_text = "Switched to primary camera"
+                    else:
+                        self.cog.active_snapshot_url = self.cog.secondary_snapshot_url
+                        action_text = "Switched to secondary camera"
+                    log_button_click(interaction.user, "Switch Camera Now", action_text, "Success")
+                    try:
+                        data = self.cog._get_status()
+                        await self.cog._send_update(self.bot.get_channel(int(os.getenv("OCTO_NOTIFY_CHANNEL_ID"))), data, update_existing=True)
+                    except Exception:
+                        pass
+                    await interaction.response.send_message(f"{action_text}.", ephemeral=True)
+                except Exception as e:
+                    log_button_click(interaction.user, "Switch Camera Now", "Switch failed", "Error", str(e))
+                    await interaction.response.send_message(f"Failed to switch camera: {e}", ephemeral=True)
+                return
+
+        select.callback = select_callback
+        self.add_item(select)
 
 # ---------------------------
 # OctoPrint Monitoring Cog
