@@ -730,6 +730,23 @@ class OctoPrintMonitor(commands.Cog):
                 await channel.send(content=mentions_text, embed=embed)
                 await message.reply("E-STOP executed successfully.", delete_after=10)
 
+    @commands.command(name="octo_test_embed")
+    async def octo_test_embed(self, ctx):
+        """Send a test status embed to the current channel."""
+        try:
+            data = self._get_status()
+            sent = await self._send_update(ctx.channel, data)
+            if not sent:
+                await ctx.send("❌ Failed to send status embed. Check bot permissions and channel.")
+            else:
+                # Give a short ephemeral confirmation in channel
+                try:
+                    await ctx.message.add_reaction("✅")
+                except Exception:
+                    pass
+        except Exception as e:
+            await ctx.send(f"❌ Exception while sending test embed: {e}")
+
     @commands.command(name="octo_camera_status")
     async def octo_camera_status(self, ctx):
         """Show camera mode and URLs."""
