@@ -322,97 +322,104 @@ async def on_ready():
     
     # Send version to specified channel
     try:
-        version_channel_id = 1329910508182179900
-        secondary_channel_id = 1329910465333170216
-        # Build embed once
-        embed = discord.Embed(
-            title="Bot Restart",
-            description=f"Bot has restarted with version **{version_string}**",
-            color=discord.Color.green()
-        )
-        embed.add_field(name="Version Number", value=str(version_num), inline=True)
-        if version_info.get("commit_message"):
-            commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
-            embed.add_field(name="Commit Message", value=commit_msg, inline=False)
-        if version_info.get("updated_cogs"):
-            cogs_list = ", ".join(version_info['updated_cogs'])
-            if len(cogs_list) > 100:
-                cogs_list = cogs_list[:100] + "..."
-            embed.add_field(name="Updated Cogs", value=cogs_list, inline=False)
+        # If this process was started from a silent reboot, skip pinging the version channel.
+        silent_reboot = os.getenv("REBOOT_SILENT", "").lower() in ("1", "true", "yes")
+        if silent_reboot:
+            # Unset the flag so subsequent restarts behave normally
+            os.environ.pop("REBOOT_SILENT", None)
+            print("Silent reboot detected; skipping version ping.")
         else:
-            embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
-        embed.set_footer(text="Developed with love by tuna_admin 🐟")
-
-        # Decide where to send: only send to the main version channel if we are actually able to ping the role (rate OK).
-        role_id_to_ping = 1329910398459052176
-        ping_data_path = os.path.join("data", "version_ping.json")
-        os.makedirs("data", exist_ok=True)
-        ping_data = {"last_ping_ts": 0, "daily_count": 0, "day": ""}
-        try:
-            if os.path.exists(ping_data_path):
-                with open(ping_data_path, "r", encoding="utf-8") as f:
-                    ping_data = json.load(f)
-        except Exception as e:
-            print(f"Failed to read ping data file: {e}")
-
-        today_str = date.today().isoformat()
-        if ping_data.get("day") != today_str:
-            ping_data["day"] = today_str
-            ping_data["daily_count"] = 0
-
-        now_ts = int(datetime.now(timezone.utc).timestamp())
-        can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 43200) and (int(ping_data.get("daily_count", 0)) < 5)
-        # If this process should never dev-ping (e.g. the production or alternate bot), avoid pinging the role
-        NO_DEV_PING_BOT_ID = 1403146651543015445
-        is_dev_ping_blocked = (bot.user is not None and getattr(bot.user, "id", None) == NO_DEV_PING_BOT_ID)
-
-        # Fetch channels
-        version_channel = bot.get_channel(version_channel_id)
-        secondary_channel = bot.get_channel(secondary_channel_id)
-
-        if can_ping and version_channel and not is_dev_ping_blocked:
-            # Send to main version channel with role ping and update ping counters
-            try:
-                content = f"<@&{role_id_to_ping}>"
-                allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
-                await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
-                print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
-                ping_data["last_ping_ts"] = now_ts
-                ping_data["daily_count"] = int(ping_data.get("daily_count", 0)) + 1
-                with open(ping_data_path, "w", encoding="utf-8") as f:
-                    json.dump(ping_data, f, indent=2)
-            except Exception as e:
-                print(f"Failed to send pinged version message to {version_channel_id}: {e}")
-                # fallback: send without ping to secondary channel if available
-                if secondary_channel:
-                    try:
-                        await secondary_channel.send(embed=embed)
-                        print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
-                    except Exception as e2:
-                        print(f"Failed to send to secondary channel as fallback: {e2}")
-        else:
-            # Do NOT send to main version channel when we can't ping; send to secondary channel without ping
-            # Special-case: if dev ping is blocked, send to main channel WITHOUT ping instead (if available)
-            if is_dev_ping_blocked and version_channel:
-                try:
-                    await version_channel.send(embed=embed)
-                    print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT dev ping due to bot config")
-                except Exception as e:
-                    print(f"Failed to send version to main channel without ping: {e}")
-            elif secondary_channel:
-                try:
-                    await secondary_channel.send(embed=embed)
-                    print(f"Version {version_string} sent to secondary channel {secondary_channel_id} without ping")
-                except Exception as e:
-                    print(f"Failed to send version to secondary channel {secondary_channel_id}: {e}")
+            version_channel_id = 1329910508182179900
+            secondary_channel_id = 1329910465333170216
+            # Build embed once
+            embed = discord.Embed(
+                title="Bot Restart",
+                description=f"Bot has restarted with version **{version_string}**",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Version Number", value=str(version_num), inline=True)
+            if version_info.get("commit_message"):
+                commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
+                embed.add_field(name="Commit Message", value=commit_msg, inline=False)
+            if version_info.get("updated_cogs"):
+                cogs_list = ", ".join(version_info['updated_cogs'])
+                if len(cogs_list) > 100:
+                    cogs_list = cogs_list[:100] + "..."
+                embed.add_field(name="Updated Cogs", value=cogs_list, inline=False)
             else:
-                # As a last resort, try sending to main version channel without ping
-                if version_channel:
+                embed.add_field(name="Updated Cogs", value="No cogs updated", inline=False)
+            embed.set_footer(text="Developed with love by tuna_admin 🐟")
+
+            # Decide where to send: only send to the main version channel if we are actually able to ping the role (rate OK).
+            role_id_to_ping = 1329910398459052176
+            ping_data_path = os.path.join("data", "version_ping.json")
+            os.makedirs("data", exist_ok=True)
+            ping_data = {"last_ping_ts": 0, "daily_count": 0, "day": ""}
+            try:
+                if os.path.exists(ping_data_path):
+                    with open(ping_data_path, "r", encoding="utf-8") as f:
+                        ping_data = json.load(f)
+            except Exception as e:
+                print(f"Failed to read ping data file: {e}")
+
+            today_str = date.today().isoformat()
+            if ping_data.get("day") != today_str:
+                ping_data["day"] = today_str
+                ping_data["daily_count"] = 0
+
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 43200) and (int(ping_data.get("daily_count", 0)) < 5)
+            # If this process should never dev-ping (e.g. the production or alternate bot), avoid pinging the role
+            NO_DEV_PING_BOT_ID = 1403146651543015445
+            is_dev_ping_blocked = (bot.user is not None and getattr(bot.user, "id", None) == NO_DEV_PING_BOT_ID)
+
+            # Fetch channels
+            version_channel = bot.get_channel(version_channel_id)
+            secondary_channel = bot.get_channel(secondary_channel_id)
+
+            if can_ping and version_channel and not is_dev_ping_blocked:
+                # Send to main version channel with role ping and update ping counters
+                try:
+                    content = f"<@&{role_id_to_ping}>"
+                    allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
+                    await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
+                    print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
+                    ping_data["last_ping_ts"] = now_ts
+                    ping_data["daily_count"] = int(ping_data.get("daily_count", 0)) + 1
+                    with open(ping_data_path, "w", encoding="utf-8") as f:
+                        json.dump(ping_data, f, indent=2)
+                except Exception as e:
+                    print(f"Failed to send pinged version message to {version_channel_id}: {e}")
+                    # fallback: send without ping to secondary channel if available
+                    if secondary_channel:
+                        try:
+                            await secondary_channel.send(embed=embed)
+                            print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
+                        except Exception as e2:
+                            print(f"Failed to send to secondary channel as fallback: {e2}")
+            else:
+                # Do NOT send to main version channel when we can't ping; send to secondary channel without ping
+                # Special-case: if dev ping is blocked, send to main channel WITHOUT ping instead (if available)
+                if is_dev_ping_blocked and version_channel:
                     try:
                         await version_channel.send(embed=embed)
-                        print(f"Version {version_string} sent to version channel {version_channel_id} without ping (secondary missing)")
+                        print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT dev ping due to bot config")
                     except Exception as e:
-                        print(f"Failed to send version to main channel as last resort: {e}")
+                        print(f"Failed to send version to main channel without ping: {e}")
+                elif secondary_channel:
+                    try:
+                        await secondary_channel.send(embed=embed)
+                        print(f"Version {version_string} sent to secondary channel {secondary_channel_id} without ping")
+                    except Exception as e:
+                        print(f"Failed to send version to secondary channel {secondary_channel_id}: {e}")
+                else:
+                    # As a last resort, try sending to main version channel without ping
+                    if version_channel:
+                        try:
+                            await version_channel.send(embed=embed)
+                            print(f"Version {version_string} sent to version channel {version_channel_id} without ping (secondary missing)")
+                        except Exception as e:
+                            print(f"Failed to send version to main channel as last resort: {e}")
     except Exception as e:
         print(f"Failed to send version to channel: {e}")
     
@@ -650,11 +657,25 @@ async def tuna_admin(ctx: commands.Context):
 
 
 @tuna_admin.command(name="deploy")
-async def tuna_deploy(ctx: commands.Context):
-    """Pull latest from git and reload cogs (tuna admin only)."""
+async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
+    """Pull latest from git and reload cogs (tuna admin only).
+
+    Usage: `!tuna_admin deploy [--restart|-r] [--silent|-s]`  (use `--restart` to reboot after deploy)
+    """
     if ctx.author.id not in TUNA_ADMIN_IDS:
         await ctx.send("Only configured tuna admins can use this command.")
         return
+
+    # Parse flags from the message content
+    try:
+        tokens = re.split(r"\s+", ctx.message.content.lower())
+    except Exception:
+        tokens = ctx.message.content.lower().split()
+
+    restart_flags = {"--restart", "--reboot", "-r"}
+    silent_flags = {"--silent", "-s", "silent", "quiet", "--quiet"}
+    do_restart = any(tok in restart_flags for tok in tokens)
+    restart_silent = any(tok in silent_flags for tok in tokens)
 
     status_msg = await ctx.send("🔄 Running deploy (git pull + reload cogs)...")
     repo_path = os.path.dirname(__file__)
@@ -686,6 +707,31 @@ async def tuna_deploy(ctx: commands.Context):
         # fallback to sending a new message
         await ctx.send(f"```\n{msg[:1900]}\n```")
 
+    # If requested, restart the bot after deploy
+    if do_restart:
+        # If restart is requested silently, set the env var so new process won't ping
+        if restart_silent:
+            os.environ["REBOOT_SILENT"] = "1"
+        else:
+            try:
+                await ctx.send("✅ Rebooting bot after deploy...")
+            except Exception:
+                pass
+
+        # Give Discord time to accept the response
+        await asyncio.sleep(0.5)
+
+        try:
+            await bot.close()
+        except Exception as e:
+            print(f"Error while closing bot for restart after deploy: {e}")
+
+        try:
+            print("Re-execing process to reboot bot after deploy.")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            print(f"Failed to execv for restart after deploy: {e}")
+
 
 @tuna_admin.command(name="reboot")
 async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
@@ -715,6 +761,10 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
 
     # Give Discord time to accept the response
     await asyncio.sleep(0.5)
+
+    # If this is a silent reboot, set an env flag so the freshly started process won't ping the version counter
+    if silent:
+        os.environ["REBOOT_SILENT"] = "1"
 
     # Close the bot cleanly and execv to restart the process.
     try:
