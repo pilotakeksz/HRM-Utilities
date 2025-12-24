@@ -262,9 +262,9 @@ class EStopView(discord.ui.View):
             # ENABLE / DISABLE PER-PRINT CAMERA
             if action == "enable_per_print":
                 user_id = interaction.user.id
-                if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("8")):
+                if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("840949634071658507")):
                     log_button_click(interaction.user, "Enable Per-Print Camera", "Unauthorized", "Denied")
-                    await interaction.response.send_message("Only server administrators with a user ID starting with '8' can enable per-print camera switching.", ephemeral=True)
+                    await interaction.response.send_message("Only server administrators with a user ID starting with '840949634071658507' can enable per-print camera switching.", ephemeral=True)
                     return
                 self.cog.camera_allowed_once = True
                 self.cog.camera_mode = "one_print"
@@ -769,6 +769,78 @@ class OctoPrintMonitor(commands.Cog):
             # Fallback to channel send
             channel = ctx.channel
             await channel.send("\n".join(info_lines))
+
+    @commands.command(name="octo_gcode")
+    async def octo_gcode(self, ctx, *, command: str):
+        """Send raw G-code to the printer (owner-only).
+
+        Only the user with ID 840949634071658507 may run this command.
+        """
+        owner_id = 840949634071658507
+        if ctx.author.id != owner_id:
+            await ctx.send("You are not authorized to use this command.", delete_after=10)
+            return
+
+        data = self._get_status()
+        if not data.get("connected", False):
+            log_button_click(ctx.author, "Send GCODE", "Printer offline", "Failed", f"GCODE: {command}")
+            await ctx.send("Printer is offline. Cannot send G-code.", delete_after=10)
+            return
+
+        # Send the G-code and log the result
+        result = self._send_gcode(command)
+        log_button_click(ctx.author, "Send GCODE", "Sent", result, f"GCODE: {command}")
+
+        # Send confirmation (short-lived to avoid clutter)
+        try:
+            await ctx.send(f"✅ G-code sent: `{command}`\nResponse: `{result}`", delete_after=30)
+        except Exception:
+            # Fallback if delete_after not allowed
+            await ctx.send(f"✅ G-code sent: `{command}`\nResponse: `{result}`")
+
+    @commands.command(name="octo_replace_buttons")
+    async def octo_replace_buttons(self, ctx, limit: int = 200):
+        """Find bot-sent embeds that still use Buttons and replace their view with the select-based `EStopView`.
+
+        Scans the current channel's last `limit` messages (default 200) and edits any of the bot's
+        messages that contain button components, replacing the view with `EStopView`.
+        Only the user with ID 840949634071658507 may run this command.
+        """
+        owner_id = 840949634071658507
+        if ctx.author.id != owner_id:
+            await ctx.send("You are not authorized to use this command.", delete_after=10)
+            return
+
+        channel = ctx.channel
+        replaced = 0
+        async for msg in channel.history(limit=limit):
+            # Only consider messages sent by the bot and that contain an embed
+            if msg.author.id != self.bot.user.id or not msg.embeds:
+                continue
+
+            # Detect button components
+            has_button = False
+            try:
+                for row in msg.components:
+                    for child in row.children:
+                        if getattr(child, "type", None) == discord.ComponentType.button:
+                            has_button = True
+                            break
+                    if has_button:
+                        break
+            except Exception:
+                # If components aren't introspectable, skip
+                continue
+
+            if has_button:
+                try:
+                    await msg.edit(embed=msg.embeds[0], view=EStopView(self.bot, cog=self))
+                    replaced += 1
+                except Exception as e:
+                    print(f"Failed to replace buttons on message {msg.id}: {e}")
+
+        log_button_click(ctx.author, "Replace Buttons", "Completed", "Success", f"Replaced {replaced} messages in channel {channel.id}")
+        await ctx.send(f"✅ Replaced {replaced} message(s) with select-based view.", delete_after=15)
 
 # ---------------------------
 # Setup
