@@ -1189,15 +1189,6 @@ class EmbedBuilder {
         document.getElementById('copy-json-modal').classList.add('active');
     }
 
-    // Helper for safe base64 encoding of Unicode
-    function safeBase64Encode(str) {
-        try { return btoa(unescape(encodeURIComponent(str))); } catch (e) { return btoa(str); }
-    }
-
-    function safeBase64Decode(b64) {
-        try { return decodeURIComponent(escape(atob(b64))); } catch (e) { return atob(b64); }
-    }
-
     buildCompletePayload() {
         // Collect all saved messages that are referenced
         const referencedMessages = this.collectReferencedMessages();
@@ -1232,20 +1223,10 @@ class EmbedBuilder {
                     // Include actions (buttons and select menus) with inlined message data
                     buttons: embed.actions.filter(action => action.type === 'button').map(button => {
                         if (button.buttonType === 'send_embed') {
-                            // Inline referenced saved message if present
-                            let target = button.target;
-                            if (target && target.startsWith('send:')) {
-                                const messageKey = target.substring(5);
-                                const referencedMessage = referencedMessages[messageKey];
-                                if (referencedMessage) {
-                                    target = `send_json:${safeBase64Encode(JSON.stringify(referencedMessage))}`;
-                                }
-                            }
-
                             return {
                                 type: 'send_embed',
                                 label: button.label,
-                                target,
+                                target: button.target,
                                 ephemeral: button.ephemeral || false
                             };
                         } else {
@@ -1267,12 +1248,7 @@ class EmbedBuilder {
                                 const messageKey = option.value.substring(5); // Remove 'send:' prefix
                                 const referencedMessage = referencedMessages[messageKey];
                                 if (referencedMessage) {
-                                    try {
-                                        resolvedOption.value = `send_json:${safeBase64Encode(JSON.stringify(referencedMessage))}`;
-                                    } catch (e) {
-                                        console.warn('Failed to encode referenced message', e);
-                                        resolvedOption.value = option.value;
-                                    }
+                                    resolvedOption.value = `send_json:${btoa(JSON.stringify(referencedMessage))}`;
                                 }
                             }
                             
@@ -1314,7 +1290,6 @@ class EmbedBuilder {
         this.messages.forEach(message => {
             message.embeds.forEach(embed => {
                 embed.actions.forEach(action => {
-                    // Handle select options referencing saved messages
                     if (action.type === 'select') {
                         action.options.forEach(option => {
                             if (option.value && option.value.startsWith('send:')) {
@@ -1332,23 +1307,6 @@ class EmbedBuilder {
                                 }
                             }
                         });
-                    }
-
-                    // Handle buttons that reference saved messages (target = send:<key>)
-                    if (action.type === 'button') {
-                        const target = action.target;
-                        if (target && target.startsWith('send:')) {
-                            const messageKey = target.substring(5);
-                            const savedData = localStorage.getItem(`message_${messageKey}`);
-                            if (savedData) {
-                                try {
-                                    const parsed = JSON.parse(savedData);
-                                    referencedMessages[messageKey] = parsed;
-                                } catch (e) {
-                                    console.warn(`Failed to parse saved message ${messageKey}:`, e);
-                                }
-                            }
-                        }
                     }
                 });
             });
