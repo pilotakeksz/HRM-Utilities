@@ -325,8 +325,10 @@ async def on_ready():
         # If this process was started from a silent reboot, skip pinging the version channel.
         silent_reboot = os.getenv("REBOOT_SILENT", "").lower() in ("1", "true", "yes")
         if silent_reboot:
-            # Unset the flag so subsequent restarts behave normally
+            # Unset the flags so subsequent restarts behave normally
             os.environ.pop("REBOOT_SILENT", None)
+            os.environ.pop("REBOOT_INITIATOR_ID", None)
+            os.environ.pop("REBOOT_INITIATOR_NAME", None)
             print("Silent reboot detected; skipping version ping.")
         else:
             version_channel_id = 1329910508182179900
@@ -338,6 +340,11 @@ async def on_ready():
                 color=discord.Color.green()
             )
             embed.add_field(name="Version Number", value=str(version_num), inline=True)
+            # Add who restarted the bot
+            reboot_initiator_id = os.getenv("REBOOT_INITIATOR_ID", "Unknown")
+            reboot_initiator_name = os.getenv("REBOOT_INITIATOR_NAME", "Unknown")
+            if reboot_initiator_id != "Unknown":
+                embed.add_field(name="Restarted By", value=f"{reboot_initiator_name} ({reboot_initiator_id})", inline=True)
             if version_info.get("commit_message"):
                 commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
                 embed.add_field(name="Commit Message", value=commit_msg, inline=False)
@@ -709,14 +716,17 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
 
     # If requested, restart the bot after deploy
     if do_restart:
+        # Store who restarted the bot
+        os.environ["REBOOT_INITIATOR_ID"] = str(ctx.author.id)
+        os.environ["REBOOT_INITIATOR_NAME"] = str(ctx.author)
         # If restart is requested silently, set the env var so new process won't ping
         if restart_silent:
             os.environ["REBOOT_SILENT"] = "1"
-        else:
-            try:
-                await ctx.send("✅ Rebooting bot after deploy...")
-            except Exception:
-                pass
+        # Send acknowledgement (silent still sends, just no ping)
+        try:
+            await ctx.send("✅ Rebooting bot after deploy...")
+        except Exception:
+            pass
 
         # Give Discord time to accept the response
         await asyncio.sleep(0.5)
@@ -752,12 +762,15 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
     silent_flags = {"--silent", "-s", "silent", "quiet", "--quiet"}
     silent = any(tok in silent_flags for tok in tokens)
 
-    # Send an acknowledgement unless silent was requested
-    if not silent:
-        try:
-            await ctx.send("✅ Rebooting bot...")
-        except Exception:
-            pass
+    # Store who restarted the bot
+    os.environ["REBOOT_INITIATOR_ID"] = str(ctx.author.id)
+    os.environ["REBOOT_INITIATOR_NAME"] = str(ctx.author)
+    
+    # Send an acknowledgement (silent flag means no ping, but message still sent)
+    try:
+        await ctx.send("✅ Rebooting bot...")
+    except Exception:
+        pass
 
     # Give Discord time to accept the response
     await asyncio.sleep(0.5)
