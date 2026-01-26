@@ -482,6 +482,60 @@ class TrainingVoteView(discord.ui.View):
                 pass
         await log_action(self.bot, self.author, "session_started", extra=f"yes_count={yes_count} dm_failures={len(dm_failed)} message_id={getattr(self.message,'id',None)}")
 
+    async def _auto_start_session(self):
+        """Automatically start the training session after the 10 minute timer expires if there's at least 1 yes vote."""
+        self.started = True
+        
+        # DM embed text to voters
+        dm_text = (
+            "<:MCNGdot:1433174947899113614> The training server code is **AXEGK**\n\n"
+            "> Once you join the server, please join the sheriff team, and do the following:\n\n"
+            "**<:Mapecliff_dot:1431744757146587339> Make sure you have a gun equipped.**\n"
+            "> `•` [Glock-17 / M4A1 rifle]\n\n"
+            "**<:Mapecliff_dot:1431744757146587339> Use the [Standard Kit] uniform.**\n\n"
+            "**<:Mapecliff_dot:1431744757146587339> And spawn one of the following vehicles:**\n"
+            "> `•` 2015 bullhorn prancer [MCNG Patrol]\n"
+            "> `•` Falcon Interceptor 2019 [MCNG Utility]\n"
+            "> `•` Chevlon Camion PPV 2000 [MCNG Utility]\n"
+        )
+
+        dm_failed = []
+        # DM each YES voter as an embed
+        for uid, v in list(self.votes.items()):
+            if v != "yes":
+                continue
+            try:
+                user = await self.bot.fetch_user(uid)
+                dm = await user.create_dm()
+                embed = discord.Embed(title="Training starting — AXEGK", description=dm_text, color=EMBED_COLOR)
+                embed.set_footer(text=f"Host: {self.author.display_name}")
+                await dm.send(embed=embed)
+                await log_action(self.bot, user, "dm_sent_start_session_auto", extra=f"host={self.author.id} auto_started=true message_id={getattr(self.message,'id',None)}")
+            except Exception as e:
+                dm_failed.append(str(uid))
+                await log_action(self.bot, "system", "dm_failed_start_session_auto", extra=f"user={uid} err={e}")
+
+        # Announce session start, ping host and joining voters
+        votes_mentions = " ".join(f"<@{uid}>" for uid, v in self.votes.items() if v == "yes")
+        host_mention = f"<@{self.author.id}>"
+        announce_embed = discord.Embed(
+            title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training Starting",
+            description="Training session has been automatically started.\n\nSee instructions below and join the server when ready.",
+            color=EMBED_COLOR
+        )
+        announce_embed.add_field(name="Host", value=host_mention, inline=True)
+        announce_embed.add_field(name="Voters (joining)", value=(votes_mentions or "No one"), inline=False)
+        announce_embed.add_field(name="Instructions", value=dm_text, inline=False)
+        announce_embed.set_footer(text=f"Started (Auto) • Host: {self.author.display_name}")
+        announce_channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID) or await self.bot.fetch_channel(ANNOUNCE_CHANNEL_ID)
+        try:
+            await announce_channel.send(content=f"{host_mention} {votes_mentions}", embed=announce_embed)
+            await log_action(self.bot, self.author, "session_started_auto_posted", extra=f"message_in={ANNOUNCE_CHANNEL_ID} host={self.author.id}")
+        except Exception as e:
+            await log_action(self.bot, "system", "session_start_auto_announce_failed", extra=str(e))
+        
+        await log_action(self.bot, self.author, "session_started_auto", extra=f"yes_count={sum(1 for v in self.votes.values() if v == 'yes')} dm_failures={len(dm_failed)} message_id={getattr(self.message,'id',None)}")
+
     async def finalize(self):
         # disable all buttons and edit message
         for child in self.children:
@@ -524,6 +578,11 @@ class TrainingVoteView(discord.ui.View):
                 self.bot._last_training_votes[guild_id] = yes_ids
         except Exception:
             pass
+        
+        # Auto-start training if at least 1 bot vote
+        yes_count = sum(1 for v in self.votes.values() if v == "yes")
+        if yes_count >= 1 and not self.started:
+            await self._auto_start_session()
 
 def load_schedule():
     if os.path.exists(SCHEDULE_FILE):
