@@ -178,19 +178,23 @@ async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User,
     try:
         ch_visual = emb_channel_visual if emb_channel_visual is not None else emb_visual
         ch_emb2 = emb_channel_2 if emb_channel_2 is not None else emb2
-        out_ch = bot.get_channel(RESULT_CHANNEL_ID) or await bot.fetch_channel(RESULT_CHANNEL_ID)
-        if out_ch:
-            # Use the channel-specific embed copies (may have different titles such as Ride-Along result) for the channel post
-            await out_ch.send(content=f"{trainee.mention}", embeds=[ch_visual, ch_emb2])
+        # Ensure embeds are not None before sending
+        if ch_visual is not None and ch_emb2 is not None:
+            out_ch = bot.get_channel(RESULT_CHANNEL_ID) or await bot.fetch_channel(RESULT_CHANNEL_ID)
+            if out_ch:
+                # Use the channel-specific embed copies (may have different titles such as Ride-Along result) for the channel post
+                await out_ch.send(content=f"{trainee.mention}", embeds=[ch_visual, ch_emb2])
     except Exception:
         pass
 
     # DM trainee (both embeds in one message). Use DM-specific embeds if provided; otherwise fallback to preview embeds so the DM matches the preview shown in confirmation.
     try:
-        dm = await trainee.create_dm()
         dm_visual = emb_dm_visual if emb_dm_visual is not None else emb_visual
         dm_emb2 = emb_dm_2 if emb_dm_2 is not None else emb2
-        await dm.send(embeds=[dm_visual, dm_emb2])
+        # Ensure embeds are not None before sending
+        if dm_visual is not None and dm_emb2 is not None:
+            dm = await trainee.create_dm()
+            await dm.send(embeds=[dm_visual, dm_emb2])
     except Exception:
         pass
 
@@ -1510,7 +1514,7 @@ class ConfirmRAResultView(discord.ui.View):
                     channel_emb2.title = "<:MaplecliffNationalGaurd:1409463907294384169> `//` Ride-Along results"
                 except Exception:
                     pass
-            await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "", include_notice=False, emb_visual=self.emb_visual, emb2=self.emb2, emb_channel_visual=channel_visual, emb_channel_2=channel_emb2, emb_dm_visual=channel_visual, emb_dm_2=channel_emb2)
+            await log_training_result(self.bot, self.trainer, self.trainee, self.result, self.cotrainer, self.remarks or "", self.notes or "", include_notice=False, emb_visual=self.emb_visual, emb2=self.emb2, emb_channel_visual=channel_visual, emb_channel_2=channel_emb2, emb_dm_visual=self.emb_visual, emb_dm_2=self.emb2)
             # If pass: remove interim roles and add final roles
             if str(self.result).lower().startswith("pass"):
                 guild = interaction.guild
