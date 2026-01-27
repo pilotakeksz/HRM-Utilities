@@ -2,7 +2,7 @@
 """
 Simple HTTP server to serve images from cogs/images folder
 Run: python image_server.py
-Then replace Discord URLs with: http://192.168.178.133:8889/image_name.ext
+Then replace Discord URLs with: http://localhost:8889/image_name.ext
 """
 
 import os
@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import unquote
+import json
 
 class ImageHandler(SimpleHTTPRequestHandler):
     """Custom handler to serve images from cogs/images"""
@@ -27,6 +28,11 @@ class ImageHandler(SimpleHTTPRequestHandler):
             path = path.split('?')[0]
         
         path = path.lstrip('/')
+        
+        # API endpoint for server info
+        if path == 'api/info':
+            self.serve_api_info()
+            return
         
         # Root path - show directory listing
         if path == '' or path == '/':
@@ -71,19 +77,38 @@ class ImageHandler(SimpleHTTPRequestHandler):
         else:
             self.send_error(404, "Image not found")
     
-    def serve_directory_listing(self):
-        """Serve HTML directory listing with image previews"""
+    def serve_api_info(self):
+        """Serve JSON API with server info and file list"""
         try:
             files = sorted([f for f in self.IMAGES_DIR.iterdir() if f.is_file()])
+            server_ip = get_local_ip()
+            
+            data = {
+                "server_ip": server_ip,
+                "port": 8889,
+                "server_url": f"http://{server_ip}:8889",
+                "images": [
+                    {
+                        "name": f.name,
+                        "size": f.stat().st_size,
+                        "url": f"http://{server_ip}:8889/{f.name}"
+                    }
+                    for f in files
+                ]
+            }
+            
+            response = json.dumps(data)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-Length', len(response.encode()))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(response.encode())
         except Exception as e:
-            self.send_error(500, f"Error reading directory: {e}")
-            return
-        
-        # Get the server's network IP for embedding in URLs
-        local_ip = get_local_ip()
-        server_url = f"http://{local_ip}:8889"
-        
-        # Build HTML
+            self.send_error(500, f"Error: {e}")
+    
+    def serve_directory_listing(self):
+        """Serve HTML directory listing with image previews (loaded dynamically via API)"""
         html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -136,9 +161,11 @@ class ImageHandler(SimpleHTTPRequestHandler):
             text-align: center;
         }
         .stat-number {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: bold;
             color: #667eea;
+            word-break: break-all;
+            line-height: 1.2;
         }
         .stat-label {
             color: #666;
@@ -200,9 +227,13 @@ class ImageHandler(SimpleHTTPRequestHandler):
             color: #667eea;
             margin-bottom: 10px;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: break-all;
+            white-space: normal;
             cursor: pointer;
+            transition: background 0.2s;
+            line-height: 1.4;
+            max-height: 60px;
+            overflow-y: auto;
         }
         .image-url:hover {
             background: #e0e0e0;
@@ -210,6 +241,7 @@ class ImageHandler(SimpleHTTPRequestHandler):
         .image-size {
             font-size: 12px;
             color: #999;
+            margin-bottom: 10px;
         }
         .empty-state {
             text-align: center;
@@ -229,17 +261,25 @@ class ImageHandler(SimpleHTTPRequestHandler):
             border-top: 1px solid #e0e0e0;
         }
         .copy-btn {
-            padding: 5px 10px;
+            padding: 8px 12px;
             background: #667eea;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 11px;
-            margin-top: 8px;
+            font-size: 12px;
+            transition: background 0.2s;
+            font-weight: bold;
         }
         .copy-btn:hover {
             background: #764ba2;
+        }
+        .copy-feedback {
+            display: none;
+            color: #4caf50;
+            font-size: 12px;
+            margin-top: 5px;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -247,71 +287,125 @@ class ImageHandler(SimpleHTTPRequestHandler):
     <div class="container">
         <div class="header">
             <h1>🖼️ Image Server</h1>
-            <p>MCNG Banners</p>
+            <p>HRM Utilities - Local Image Hosting</p>
         </div>
         
         <div class="content">
             <div class="stats">
                 <div class="stat-item">
-                    <div class="stat-number">""" + str(len(files)) + """</div>
+                    <div class="stat-number" id="image-count">0</div>
                     <div class="stat-label">Images Available</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number">""" + format_size(sum(f.stat().st_size for f in files)) + """</div>
+                    <div class="stat-number" id="total-size">0 MB</div>
                     <div class="stat-label">Total Size</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number">""" + server_url + """</div>
+                    <div class="stat-number" id="server-url" style="font-size: 18px;">Loading...</div>
                     <div class="stat-label">Server URL (for embeds)</div>
                 </div>
             </div>
-"""
-        
-        if files:
-            html += '<div class="images-grid">\n'
-            for file in files:
-                size_bytes = file.stat().st_size
-                size_str = format_size(size_bytes)
-                ext = file.suffix.lower()
-                
-                html += f"""            <div class="image-card">
-                <div class="image-preview">
-                    <img src="/{file.name}" alt="{file.name}" onerror="this.style.display='none'">
-                </div>
-                <div class="image-info">
-                    <div class="image-name">{file.name}</div>
-                    <div class="image-url" onclick="copyToClipboard('{server_url}/{file.name}')">
-                        {server_url}/{file.name}
-                    </div>
-                    <div class="image-size">{size_str}</div>
-                    <button class="copy-btn" onclick="copyToClipboard('{server_url}/{file.name}')">Copy URL</button>
-                </div>
-            </div>
-"""
-            html += '        </div>\n'
-        else:
-            html += """        <div class="empty-state">
-                <h2>📭 No Images Found</h2>
-                <p>Add images to: cogs/images/</p>
-            </div>
-"""
-        
-        html += """        </div>
+            
+            <div id="images-container"></div>
+        </div>
         
         <div class="footer">
             <p>✨ Place images in <strong>cogs/images/</strong> folder and refresh this page</p>
-            <p style="margin-top: 10px; font-size: 11px;">💡 Copy URLs above to use in your cog embeds (Discord can access this network IP)</p>
+            <p style="margin-top: 10px;">💡 Click URLs or "Copy URL" button to copy to clipboard</p>
         </div>
     </div>
     
     <script>
-        function copyToClipboard(text) {
+        // Fetch server info and images dynamically
+        async function loadImages() {
+            try {
+                const response = await fetch('/api/info');
+                const data = await response.json();
+                
+                // Update server URL
+                const serverUrl = data.server_url;
+                document.getElementById('server-url').textContent = serverUrl;
+                
+                // Update stats
+                document.getElementById('image-count').textContent = data.images.length;
+                
+                const totalSize = data.images.reduce((sum, img) => sum + img.size, 0);
+                document.getElementById('total-size').textContent = formatSize(totalSize);
+                
+                // Build grid
+                const container = document.getElementById('images-container');
+                
+                if (data.images.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h2>📭 No Images Found</h2>
+                            <p>Add images to: cogs/images/</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = '<div class="images-grid" id="images-grid"></div>';
+                const grid = document.getElementById('images-grid');
+                
+                data.images.forEach(img => {
+                    const card = document.createElement('div');
+                    card.className = 'image-card';
+                    
+                    const feedbackId = 'feedback-' + img.name.replace(/[^a-z0-9]/gi, '_');
+                    
+                    card.innerHTML = `
+                        <div class="image-preview">
+                            <img src="${img.name}" alt="${img.name}" onerror="this.style.display='none'">
+                        </div>
+                        <div class="image-info">
+                            <div class="image-name">${img.name}</div>
+                            <div class="image-url" onclick="copyToClipboard('${img.url}', '${feedbackId}')">
+                                ${img.url}
+                            </div>
+                            <div class="image-size">${formatSize(img.size)}</div>
+                            <button class="copy-btn" onclick="copyToClipboard('${img.url}', '${feedbackId}')">Copy URL</button>
+                            <div class="copy-feedback" id="${feedbackId}">✓ Copied to clipboard!</div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (err) {
+                console.error('Failed to load images:', err);
+                document.getElementById('images-container').innerHTML = `
+                    <div class="empty-state">
+                        <h2>⚠️ Error Loading Images</h2>
+                        <p>Check browser console for details</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        function copyToClipboard(text, feedbackId) {
             navigator.clipboard.writeText(text).then(() => {
-                alert('URL copied to clipboard!');
+                const feedback = document.getElementById(feedbackId);
+                if (feedback) {
+                    feedback.style.display = 'block';
+                    setTimeout(() => {
+                        feedback.style.display = 'none';
+                    }, 2000);
+                }
             }).catch(err => {
                 console.error('Failed to copy:', err);
+                alert('Failed to copy URL to clipboard');
             });
         }
+        
+        // Load images on page load
+        window.addEventListener('load', loadImages);
+        // Refresh every 5 seconds to show new images
+        setInterval(loadImages, 5000);
     </script>
 </body>
 </html>
@@ -386,12 +480,12 @@ def main():
     print("🖼️  IMAGE SERVER STARTED")
     print("=" * 60)
     print(f"✅ Server running at:")
-    print(f"   🖥️  Local:        http://192.168.178.133:{PORT}")
+    print(f"   🖥️  Local:        http://localhost:{PORT}")
     print(f"   🌐 Network:      http://{local_ip}:{PORT}")
     print(f"📁 Serving images from: {images_dir}")
     print()
     print(f"🌐 Open in browser:")
-    print(f"   • http://192.168.178.133:{PORT} (this computer)")
+    print(f"   • http://localhost:{PORT} (this computer)")
     print(f"   • http://{local_ip}:{PORT} (network access)")
     print()
     print("⏹️  Press Ctrl+C to stop the server")
