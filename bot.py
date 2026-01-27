@@ -9,6 +9,7 @@ import base64
 import traceback
 from aiohttp import web
 from version_manager import get_version
+from embed_storage import store_embed, get_embed_json_by_message_id, list_recent_embeds, clear_old_embeds
 import json
 from datetime import datetime, timezone, date
 from typing import Optional
@@ -397,8 +398,22 @@ async def on_ready():
                 try:
                     content = f"<@&{role_id_to_ping}>"
                     allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
-                    await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
+                    msg = await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
                     print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
+                    
+                    # Store embed for persistence across restarts
+                    try:
+                        embed_json = embed.to_dict()
+                        store_embed(
+                            message_id=msg.id,
+                            channel_id=version_channel_id,
+                            embed_data=embed_json,
+                            embed_json=json.dumps(embed_json, indent=2),
+                            description=f"Bot Restart {version_string}"
+                        )
+                    except Exception as e:
+                        print(f"Failed to store embed data: {e}")
+                    
                     ping_data["last_ping_ts"] = now_ts
                     ping_data["daily_count"] = int(ping_data.get("daily_count", 0)) + 1
                     with open(ping_data_path, "w", encoding="utf-8") as f:
@@ -408,23 +423,60 @@ async def on_ready():
                     # fallback: send without ping to secondary channel if available
                     if secondary_channel:
                         try:
-                            await secondary_channel.send(embed=embed)
+                            msg = await secondary_channel.send(embed=embed)
                             print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
+                            # Store this embed too
+                            try:
+                                embed_json = embed.to_dict()
+                                store_embed(
+                                    message_id=msg.id,
+                                    channel_id=secondary_channel_id,
+                                    embed_data=embed_json,
+                                    embed_json=json.dumps(embed_json, indent=2),
+                                    description=f"Bot Restart {version_string} (fallback)"
+                                )
+                            except Exception as e2:
+                                print(f"Failed to store fallback embed data: {e2}")
                         except Exception as e2:
                             print(f"Failed to send to secondary channel as fallback: {e2}")
             else:
                 # Do NOT ping role - send without ping to version channel if available
                 if version_channel:
                     try:
-                        await version_channel.send(embed=embed)
+                        msg = await version_channel.send(embed=embed)
                         print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT role ping")
+                        
+                        # Store embed for persistence across restarts
+                        try:
+                            embed_json = embed.to_dict()
+                            store_embed(
+                                message_id=msg.id,
+                                channel_id=version_channel_id,
+                                embed_data=embed_json,
+                                embed_json=json.dumps(embed_json, indent=2),
+                                description=f"Bot Restart {version_string}"
+                            )
+                        except Exception as e:
+                            print(f"Failed to store embed data: {e}")
                     except Exception as e:
                         print(f"Failed to send version to main channel without ping: {e}")
                         # fallback to secondary channel
                         if secondary_channel:
                             try:
-                                await secondary_channel.send(embed=embed)
+                                msg = await secondary_channel.send(embed=embed)
                                 print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
+                                # Store this embed too
+                                try:
+                                    embed_json = embed.to_dict()
+                                    store_embed(
+                                        message_id=msg.id,
+                                        channel_id=secondary_channel_id,
+                                        embed_data=embed_json,
+                                        embed_json=json.dumps(embed_json, indent=2),
+                                        description=f"Bot Restart {version_string} (fallback)"
+                                    )
+                                except Exception as e2:
+                                    print(f"Failed to store fallback embed data: {e2}")
                             except Exception as e2:
                                 print(f"Failed to send to secondary channel as fallback: {e2}")
                 elif secondary_channel:
@@ -906,6 +958,98 @@ async def tuna_troubleshoot(ctx: commands.Context, role_id: Optional[int] = None
     for i in range(0, len(out), CHUNK):
         chunk = out[i:i+CHUNK]
         await ctx.send(f"```\n{chunk}\n```")
+
+
+@bot.command(name="embed_from_message")
+async def embed_from_message(ctx: commands.Context, message_id: int):
+    """Recover embed JSON from a stored message ID (owner only).
+    
+    Usage: `!embed_from_message <message_id>`
+    """
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.send("Only the bot owner can use this command.")
+        return
+    
+    try:
+        embed_json = get_embed_json_by_message_id(message_id)
+        if not embed_json:
+            await ctx.send(f"No embed found for message ID {message_id}")
+            return
+        
+        # Send as code block
+        if len(embed_json) > 1900:
+            # Split into chunks if too long
+            for i in range(0, len(embed_json), 1900):
+                chunk = embed_json[i:i+1900]
+                await ctx.send(f"```json\n{chunk}\n```")
+        else:
+            await ctx.send(f"```json\n{embed_json}\n```")
+    except Exception as e:
+        await ctx.send(f"Error retrieving embed: {e}")
+
+
+@bot.command(name="list_embeds")
+async def list_embeds(ctx: commands.Context, limit: int = 10):
+    """List recent stored embeds (owner only).
+    
+    Usage: `!list_embeds [limit]`
+    """
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.send("Only the bot owner can use this command.")
+        return
+    
+    if limit > 50:
+        limit = 50
+    if limit < 1:
+        limit = 1
+    
+    try:
+        embeds = list_recent_embeds(limit=limit)
+        if not embeds:
+            await ctx.send("No stored embeds found.")
+            return
+        
+        lines = [f"**Recent Embeds (showing {len(embeds)} of limit {limit})**\n"]
+        for i, entry in enumerate(embeds, 1):
+            msg_id = entry.get("message_id")
+            ch_id = entry.get("channel_id")
+            ts = entry.get("timestamp", "N/A")
+            desc = entry.get("description", "N/A")
+            lines.append(f"{i}. **Message {msg_id}** (Channel {ch_id})\n   {desc}\n   {ts}")
+        
+        out = "\n".join(lines)
+        if len(out) > 1900:
+            # Send in chunks
+            for i in range(0, len(out), 1900):
+                chunk = out[i:i+1900]
+                await ctx.send(chunk)
+        else:
+            await ctx.send(out)
+    except Exception as e:
+        await ctx.send(f"Error listing embeds: {e}")
+
+
+@bot.command(name="clear_old_embeds")
+async def clear_old_embeds_cmd(ctx: commands.Context, days: int = 30):
+    """Clear embeds older than specified days (owner only).
+    
+    Usage: `!clear_old_embeds [days]`
+    Default: 30 days
+    """
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.send("Only the bot owner can use this command.")
+        return
+    
+    if days < 1:
+        await ctx.send("Days must be at least 1.")
+        return
+    
+    try:
+        removed = clear_old_embeds(days=days)
+        await ctx.send(f"✅ Cleared {removed} embeds older than {days} days.")
+    except Exception as e:
+        await ctx.send(f"Error clearing old embeds: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

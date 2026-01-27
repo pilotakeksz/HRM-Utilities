@@ -10,6 +10,15 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands
 
+# Try to import embed storage for persistence
+try:
+    from embed_storage import store_embed
+    EMBED_STORAGE_AVAILABLE = True
+except ImportError:
+    EMBED_STORAGE_AVAILABLE = False
+    def store_embed(*args, **kwargs):
+        pass  # no-op if not available
+
 EMBED_DIR = os.path.join(os.path.dirname(__file__), "data", "embeds")
 os.makedirs(EMBED_DIR, exist_ok=True)
 SEND_MAP_FILE = os.path.join(EMBED_DIR, "send_map.json")
@@ -452,7 +461,21 @@ class PayloadView(ui.View):
                             await interaction.followup.send(embeds=discord_embeds, ephemeral=True)
                         else:
                             if interaction.channel:
-                                await interaction.channel.send(embeds=discord_embeds)
+                                msg = await interaction.channel.send(embeds=discord_embeds)
+                                # Store the embeds for persistence
+                                if EMBED_STORAGE_AVAILABLE and msg:
+                                    try:
+                                        for em in discord_embeds:
+                                            embed_json = em.to_dict()
+                                            store_embed(
+                                                message_id=msg.id,
+                                                channel_id=interaction.channel.id,
+                                                embed_data=embed_json,
+                                                embed_json=json.dumps(embed_json, indent=2),
+                                                description=f"Embed from {interaction.user} via embed-builder"
+                                            )
+                                    except Exception as e:
+                                        print(f"Failed to store embed from embed-builder: {e}")
                             else:
                                 await interaction.followup.send(embeds=discord_embeds, ephemeral=True)
                     else:
