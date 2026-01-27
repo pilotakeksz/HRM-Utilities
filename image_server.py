@@ -2,7 +2,7 @@
 """
 Simple HTTP server to serve images from cogs/images folder
 Run: python image_server.py
-Then replace Discord URLs with: http://localhost:8889/image_name.ext
+Then replace Discord URLs with: http://192.168.178.133:8889/image_name.ext
 """
 
 import os
@@ -257,7 +257,7 @@ class ImageHandler(SimpleHTTPRequestHandler):
                     <div class="stat-label">Total Size</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number">http://localhost:8889</div>
+                    <div class="stat-number">http://192.168.178.133:8889</div>
                     <div class="stat-label">Server URL</div>
                 </div>
             </div>
@@ -276,11 +276,11 @@ class ImageHandler(SimpleHTTPRequestHandler):
                 </div>
                 <div class="image-info">
                     <div class="image-name">{file.name}</div>
-                    <div class="image-url" onclick="copyToClipboard('http://localhost:8889/{file.name}')">
-                        http://localhost:8889/{file.name}
+                    <div class="image-url" onclick="copyToClipboard('http://192.168.178.133:8889/{file.name}')">
+                        http://192.168.178.133:8889/{file.name}
                     </div>
                     <div class="image-size">{size_str}</div>
-                    <button class="copy-btn" onclick="copyToClipboard('http://localhost:8889/{file.name}')">Copy URL</button>
+                    <button class="copy-btn" onclick="copyToClipboard('http://192.168.178.133:8889/{file.name}')">Copy URL</button>
                 </div>
             </div>
 """
@@ -381,12 +381,12 @@ def main():
     print("🖼️  IMAGE SERVER STARTED")
     print("=" * 60)
     print(f"✅ Server running at:")
-    print(f"   🖥️  Local:        http://localhost:{PORT}")
+    print(f"   🖥️  Local:        http://192.168.178.133:{PORT}")
     print(f"   🌐 Network:      http://{local_ip}:{PORT}")
     print(f"📁 Serving images from: {images_dir}")
     print()
     print(f"🌐 Open in browser:")
-    print(f"   • http://localhost:{PORT} (this computer)")
+    print(f"   • http://192.168.178.133:{PORT} (this computer)")
     print(f"   • http://{local_ip}:{PORT} (network access)")
     print()
     print("⏹️  Press Ctrl+C to stop the server")
