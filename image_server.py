@@ -83,6 +83,16 @@ class ImageHandler(SimpleHTTPRequestHandler):
             files = sorted([f for f in self.IMAGES_DIR.iterdir() if f.is_file()])
             server_ip = get_local_ip()
             
+            # Read Discord URLs from file if it exists
+            discord_urls = {}
+            discord_urls_file = self.IMAGES_DIR / "discord_urls.json"
+            if discord_urls_file.exists():
+                try:
+                    with open(discord_urls_file, 'r') as f:
+                        discord_urls = json.load(f)
+                except:
+                    pass
+            
             data = {
                 "server_ip": server_ip,
                 "port": 8889,
@@ -91,7 +101,8 @@ class ImageHandler(SimpleHTTPRequestHandler):
                     {
                         "name": f.name,
                         "size": f.stat().st_size,
-                        "url": f"http://{server_ip}:8889/{f.name}"
+                        "local_url": f"http://{server_ip}:8889/{f.name}",
+                        "discord_url": discord_urls.get(f.name, None)
                     }
                     for f in files
                 ]
@@ -229,14 +240,23 @@ class ImageHandler(SimpleHTTPRequestHandler):
             overflow: hidden;
             word-break: break-all;
             white-space: normal;
-            cursor: pointer;
             transition: background 0.2s;
             line-height: 1.4;
             max-height: 60px;
             overflow-y: auto;
+            cursor: text;
         }
         .image-url:hover {
             background: #e0e0e0;
+        }
+        .url-label {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+        .url-row {
+            margin-bottom: 10px;
         }
         .image-size {
             font-size: 12px;
@@ -352,7 +372,29 @@ class ImageHandler(SimpleHTTPRequestHandler):
                     const card = document.createElement('div');
                     card.className = 'image-card';
                     
-                    const feedbackId = 'feedback-' + img.name.replace(/[^a-z0-9]/gi, '_');
+                    const safeId = img.name.replace(/[^a-z0-9]/gi, '_');
+                    const localFeedbackId = 'local_feedback_' + safeId;
+                    const discordFeedbackId = 'discord_feedback_' + safeId;
+                    
+                    let discordUrlHtml = '';
+                    if (img.discord_url) {
+                        discordUrlHtml = `
+                            <div class="url-row">
+                                <div class="url-label">Discord URL:</div>
+                                <div class="image-url" data-url="${img.discord_url}">
+                                    ${img.discord_url}
+                                </div>
+                                <button class="copy-btn" data-url="${img.discord_url}" data-feedback="${discordFeedbackId}">Copy Discord URL</button>
+                                <div class="copy-feedback" id="${discordFeedbackId}">✓ Copied to clipboard!</div>
+                            </div>
+                        `;
+                    } else {
+                        discordUrlHtml = `
+                            <div class="url-row">
+                                <div class="url-label">Discord URL: <span style="color: #999;">(not yet uploaded)</span></div>
+                            </div>
+                        `;
+                    }
                     
                     card.innerHTML = `
                         <div class="image-preview">
@@ -360,15 +402,40 @@ class ImageHandler(SimpleHTTPRequestHandler):
                         </div>
                         <div class="image-info">
                             <div class="image-name">${img.name}</div>
-                            <div class="image-url" onclick="copyToClipboard('${img.url}', '${feedbackId}')">
-                                ${img.url}
+                            <div class="url-row">
+                                <div class="url-label">Local URL:</div>
+                                <div class="image-url" data-url="${img.local_url}">
+                                    ${img.local_url}
+                                </div>
+                                <button class="copy-btn" data-url="${img.local_url}" data-feedback="${localFeedbackId}">Copy Local URL</button>
+                                <div class="copy-feedback" id="${localFeedbackId}">✓ Copied to clipboard!</div>
                             </div>
+                            ${discordUrlHtml}
                             <div class="image-size">${formatSize(img.size)}</div>
-                            <button class="copy-btn" onclick="copyToClipboard('${img.url}', '${feedbackId}')">Copy URL</button>
-                            <div class="copy-feedback" id="${feedbackId}">✓ Copied to clipboard!</div>
                         </div>
                     `;
+                    
                     grid.appendChild(card);
+                });
+                
+                // Add click handlers to all copy buttons and URLs
+                document.querySelectorAll('.copy-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const url = this.getAttribute('data-url');
+                        const feedbackId = this.getAttribute('data-feedback');
+                        copyToClipboard(url, feedbackId);
+                    });
+                });
+                
+                document.querySelectorAll('.image-url').forEach(url => {
+                    url.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const urlText = this.getAttribute('data-url');
+                        const safeId = this.closest('.image-info').querySelector('.image-name').textContent.replace(/[^a-z0-9]/gi, '_');
+                        const feedbackId = (this.closest('.url-row').querySelector('.url-label').textContent.includes('Discord') ? 'discord_feedback_' : 'local_feedback_') + safeId;
+                        copyToClipboard(urlText, feedbackId);
+                    });
                 });
             } catch (err) {
                 console.error('Failed to load images:', err);
@@ -388,18 +455,39 @@ class ImageHandler(SimpleHTTPRequestHandler):
         }
         
         function copyToClipboard(text, feedbackId) {
-            navigator.clipboard.writeText(text).then(() => {
-                const feedback = document.getElementById(feedbackId);
-                if (feedback) {
-                    feedback.style.display = 'block';
-                    setTimeout(() => {
-                        feedback.style.display = 'none';
-                    }, 2000);
-                }
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-                alert('Failed to copy URL to clipboard');
-            });
+            navigator.clipboard.writeText(text)
+                .then(() => {
+                    const feedback = document.getElementById(feedbackId);
+                    if (feedback) {
+                        feedback.style.display = 'block';
+                        console.log('✓ Copied:', text);
+                        setTimeout(() => {
+                            feedback.style.display = 'none';
+                        }, 2000);
+                    }
+                })
+                .catch(err => {
+                    console.error('❌ Failed to copy:', err);
+                    // Fallback: try selecting text
+                    try {
+                        const textArea = document.createElement('textarea');
+                        textArea.value = text;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        
+                        const feedback = document.getElementById(feedbackId);
+                        if (feedback) {
+                            feedback.style.display = 'block';
+                            setTimeout(() => {
+                                feedback.style.display = 'none';
+                            }, 2000);
+                        }
+                    } catch (e) {
+                        alert('Could not copy URL. Please copy manually: ' + text);
+                    }
+                });
         }
         
         // Load images on page load
