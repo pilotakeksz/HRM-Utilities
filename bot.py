@@ -322,11 +322,18 @@ async def on_ready():
     
     # Send version to specified channel
     try:
-        # If this process was started from a silent reboot, skip pinging the version channel.
+        # Check for silent and force-ping flags
         silent_reboot = os.getenv("REBOOT_SILENT", "").lower() in ("1", "true", "yes")
-        if silent_reboot:
+        force_ping = os.getenv("REBOOT_PING", "").lower() in ("1", "true", "yes")
+        
+        # Get restart initiator info to always include in embed
+        reboot_initiator_id = os.getenv("REBOOT_INITIATOR_ID", "")
+        reboot_initiator_name = os.getenv("REBOOT_INITIATOR_NAME", "")
+        
+        if silent_reboot and not force_ping:
             # Unset the flags so subsequent restarts behave normally
             os.environ.pop("REBOOT_SILENT", None)
+            os.environ.pop("REBOOT_PING", None)
             os.environ.pop("REBOOT_INITIATOR_ID", None)
             os.environ.pop("REBOOT_INITIATOR_NAME", None)
             print("Silent reboot detected; skipping version ping.")
@@ -339,11 +346,9 @@ async def on_ready():
                 description=f"Bot has restarted with version **{version_string}**",
                 color=discord.Color.green()
             )
-            embed.add_field(name="Version Number", value=str(version_num), inline=True)
-            # Add who restarted the bot
-            reboot_initiator_id = os.getenv("REBOOT_INITIATOR_ID", "Unknown")
-            reboot_initiator_name = os.getenv("REBOOT_INITIATOR_NAME", "Unknown")
-            if reboot_initiator_id != "Unknown":
+            embed.add_field(name="Version Numbers", value=str(version_num), inline=True)
+            # Always add who restarted the bot if available
+            if reboot_initiator_id and reboot_initiator_name:
                 embed.add_field(name="Restarted By", value=f"{reboot_initiator_name} ({reboot_initiator_id})", inline=True)
             if version_info.get("commit_message"):
                 commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
@@ -384,7 +389,10 @@ async def on_ready():
             version_channel = bot.get_channel(version_channel_id)
             secondary_channel = bot.get_channel(secondary_channel_id)
 
-            if can_ping and version_channel and not is_dev_ping_blocked:
+            # Determine if we should ping: can_ping OR force_ping, but never if dev_ping_blocked
+            should_ping = (can_ping or force_ping) and not is_dev_ping_blocked
+            
+            if should_ping and version_channel:
                 # Send to main version channel with role ping and update ping counters
                 try:
                     content = f"<@&{role_id_to_ping}>"
@@ -405,28 +413,26 @@ async def on_ready():
                         except Exception as e2:
                             print(f"Failed to send to secondary channel as fallback: {e2}")
             else:
-                # Do NOT send to main version channel when we can't ping; send to secondary channel without ping
-                # Special-case: if dev ping is blocked, send to main channel WITHOUT ping instead (if available)
-                if is_dev_ping_blocked and version_channel:
+                # Do NOT ping role - send without ping to version channel if available
+                if version_channel:
                     try:
                         await version_channel.send(embed=embed)
-                        print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT dev ping due to bot config")
+                        print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT role ping")
                     except Exception as e:
                         print(f"Failed to send version to main channel without ping: {e}")
+                        # fallback to secondary channel
+                        if secondary_channel:
+                            try:
+                                await secondary_channel.send(embed=embed)
+                                print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
+                            except Exception as e2:
+                                print(f"Failed to send to secondary channel as fallback: {e2}")
                 elif secondary_channel:
                     try:
                         await secondary_channel.send(embed=embed)
                         print(f"Version {version_string} sent to secondary channel {secondary_channel_id} without ping")
                     except Exception as e:
                         print(f"Failed to send version to secondary channel {secondary_channel_id}: {e}")
-                else:
-                    # As a last resort, try sending to main version channel without ping
-                    if version_channel:
-                        try:
-                            await version_channel.send(embed=embed)
-                            print(f"Version {version_string} sent to version channel {version_channel_id} without ping (secondary missing)")
-                        except Exception as e:
-                            print(f"Failed to send version to main channel as last resort: {e}")
     except Exception as e:
         print(f"Failed to send version to channel: {e}")
     
@@ -667,7 +673,10 @@ async def tuna_admin(ctx: commands.Context):
 async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
     """Pull latest from git and reload cogs (tuna admin only).
 
-    Usage: `!tuna_admin deploy [--restart|-r] [--silent|-s]`  (use `--restart` to reboot after deploy)
+    Usage: `!tuna_admin deploy [--restart|-r] [--silent|-s] [--ping|-p]`
+    Use `--restart` to reboot after deploy
+    Use `--silent` to skip role pings on restart
+    Use `--ping` to force role ping even with silent flag
     """
     if ctx.author.id not in TUNA_ADMIN_IDS:
         await ctx.send("Only configured tuna admins can use this command.")
@@ -681,8 +690,10 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
 
     restart_flags = {"--restart", "--reboot", "-r"}
     silent_flags = {"--silent", "-s", "silent", "quiet", "--quiet"}
+    ping_flags = {"--ping", "-p", "ping"}
     do_restart = any(tok in restart_flags for tok in tokens)
     restart_silent = any(tok in silent_flags for tok in tokens)
+    restart_ping = any(tok in ping_flags for tok in tokens)
 
     status_msg = await ctx.send("🔄 Running deploy (git pull + reload cogs)...")
     repo_path = os.path.dirname(__file__)
@@ -720,9 +731,12 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
         os.environ["REBOOT_INITIATOR_ID"] = str(ctx.author.id)
         os.environ["REBOOT_INITIATOR_NAME"] = str(ctx.author)
         # If restart is requested silently, set the env var so new process won't ping
-        if restart_silent:
+        if restart_silent and not restart_ping:
             os.environ["REBOOT_SILENT"] = "1"
-        # Send acknowledgement (silent still sends, just no ping)
+        # If ping flag is used, force role ping
+        if restart_ping:
+            os.environ["REBOOT_PING"] = "1"
+        # Send acknowledgement (silent still sends, just no ping unless --ping is used)
         try:
             await ctx.send("✅ Rebooting bot after deploy...")
         except Exception:
@@ -747,7 +761,9 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
 async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
     """Reboot the bot process (tuna admin only).
 
-    Usage: `!tuna_admin reboot [--silent|-s|silent|quiet]`
+    Usage: `!tuna_admin reboot [--silent|-s|silent|quiet] [--ping|-p|ping]`
+    Use `--silent` to skip role pings
+    Use `--ping` to force role ping even with silent flag
     """
     if ctx.author.id not in TUNA_ADMIN_IDS:
         await ctx.send("Only configured tuna admins can use this command.")
@@ -760,7 +776,9 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
         tokens = ctx.message.content.lower().split()
 
     silent_flags = {"--silent", "-s", "silent", "quiet", "--quiet"}
+    ping_flags = {"--ping", "-p", "ping"}
     silent = any(tok in silent_flags for tok in tokens)
+    force_ping = any(tok in ping_flags for tok in tokens)
 
     # Store who restarted the bot
     os.environ["REBOOT_INITIATOR_ID"] = str(ctx.author.id)
@@ -775,9 +793,13 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
     # Give Discord time to accept the response
     await asyncio.sleep(0.5)
 
-    # If this is a silent reboot, set an env flag so the freshly started process won't ping the version counter
-    if silent:
+    # If this is a silent reboot (and not forced to ping), set an env flag so the freshly started process won't ping the version counter
+    if silent and not force_ping:
         os.environ["REBOOT_SILENT"] = "1"
+    
+    # If force_ping flag is used, force role ping
+    if force_ping:
+        os.environ["REBOOT_PING"] = "1"
 
     # Close the bot cleanly and execv to restart the process.
     try:
