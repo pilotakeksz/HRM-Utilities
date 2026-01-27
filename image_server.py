@@ -1,5 +1,282 @@
 #!/usr/bin/env python3
 """
+Simple Image Server with Base64 export and working copy buttons.
+
+Usage:
+  python image_server.py
+
+Features:
+- Serves files from `cogs/images/`.
+- `/` shows a dynamic UI listing images.
+- `/api/images` returns JSON with image metadata and data-URI (base64) for each image.
+- UI buttons: Copy Local URL, Copy Discord URL (if registered), Copy Base64 (data URI).
+- Clipboard actions use `navigator.clipboard.writeText` with a robust fallback modal when needed.
+
+Note: Serving large images as data URIs can be memory-heavy in browsers.
+"""
+
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from urllib.parse import unquote
+import json
+import base64
+import mimetypes
+import sys
+import os
+
+PORT = 8889
+IMAGES_DIR = Path(__file__).parent / "cogs" / "images"
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _set_headers(self, status=200, content_type="text/html; charset=utf-8"):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+    def do_GET(self):
+        path = unquote(self.path.split('?', 1)[0]).lstrip('/')
+
+        if path in ('', '/'):
+            self.serve_index()
+            return
+
+        if path == 'api/images':
+            self.serve_api_images()
+            return
+
+        # Serve static files (images) directly from IMAGES_DIR
+        file_path = IMAGES_DIR / path
+        try:
+            file_path = file_path.resolve()
+            if not str(file_path).startswith(str(IMAGES_DIR.resolve())):
+                self._set_headers(403, 'text/plain')
+                self.wfile.write(b'Access denied')
+                return
+        except Exception:
+            self._set_headers(400, 'text/plain')
+            self.wfile.write(b'Invalid path')
+            return
+
+        if file_path.exists() and file_path.is_file():
+            ctype, _ = mimetypes.guess_type(str(file_path))
+            ctype = ctype or 'application/octet-stream'
+            try:
+                with open(file_path, 'rb') as f:
+                    data = f.read()
+                self._set_headers(200, ctype)
+                self.wfile.write(data)
+            except Exception as e:
+                self._set_headers(500, 'text/plain')
+                self.wfile.write(f'Error reading file: {e}'.encode())
+        else:
+            self._set_headers(404, 'text/plain')
+            self.wfile.write(b'Not found')
+
+    def serve_api_images(self):
+        resp = []
+        if not IMAGES_DIR.exists():
+            IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Load discord_urls.json if present
+        discord_map = {}
+        discord_file = IMAGES_DIR / 'discord_urls.json'
+        if discord_file.exists():
+            try:
+                with open(discord_file, 'r', encoding='utf-8') as f:
+                    discord_map = json.load(f)
+            except Exception:
+                discord_map = {}
+
+        for p in sorted([f for f in IMAGES_DIR.iterdir() if f.is_file()]):
+            try:
+                b = p.read_bytes()
+                mime, _ = mimetypes.guess_type(str(p))
+                mime = mime or 'application/octet-stream'
+                uri = f'data:{mime};base64,' + base64.b64encode(b).decode('ascii')
+                resp.append({
+                    'name': p.name,
+                    'size': p.stat().st_size,
+                    'local_url': f'http://{get_local_ip()}:{PORT}/{p.name}',
+                    'discord_url': discord_map.get(p.name),
+                    'data_uri': uri
+                })
+            except Exception:
+                # skip files that can't be read
+                continue
+
+        body = json.dumps({'images': resp})
+        self._set_headers(200, 'application/json; charset=utf-8')
+        self.wfile.write(body.encode('utf-8'))
+
+    def serve_index(self):
+        html = INDEX_HTML.format(port=PORT)
+        self._set_headers(200, 'text/html; charset=utf-8')
+        self.wfile.write(html.encode('utf-8'))
+
+
+def get_local_ip():
+    # best-effort local IP detection
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
+
+
+INDEX_HTML = '''<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Image Server — Base64 Export</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;margin:0;padding:20px}
+    .container{max-width:1100px;margin:0 auto}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+    .card{background:#fff;border-radius:8px;padding:12px;border:1px solid #e6e9ef}
+    .thumb{height:140px;background:#fafafa;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .thumb img{max-width:100%;max-height:100%}
+    .meta{margin-top:8px;font-size:13px;color:#333}
+    .buttons{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+    button{padding:8px 10px;border-radius:6px;border:0;background:#4b6cff;color:white;cursor:pointer}
+    button.secondary{background:#6c757d}
+    .small{font-size:12px;padding:6px 8px}
+    .notice{color:#666;font-size:13px}
+    /* modal */
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.5)}
+    .modal .box{background:white;padding:16px;border-radius:8px;max-width:90%;max-height:80%;overflow:auto}
+    textarea{width:100%;height:220px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Image Server — Base64 Export</h1>
+      <div class="notice">Server: <span id="server-url">loading...</span></div>
+    </header>
+    <div id="stats" class="notice">Loading images…</div>
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <div id="modal" class="modal"><div class="box"><h3>Copy</h3><p>Use Ctrl/Cmd+C to copy the selected text.</p><textarea id="modal-text"></textarea><p style="text-align:right;margin-top:8px"><button id="modal-close">Close</button></p></div></div>
+
+  <script>
+  async function load(){
+    try{
+      const r = await fetch('/api/images');
+      const data = await r.json();
+      const serverUrl = data.images.length? data.images[0].local_url.split('/').slice(0,3).join('/') : window.location.origin;
+      document.getElementById('server-url').textContent = serverUrl;
+      document.getElementById('stats').textContent = `${data.images.length} images found`;
+
+      const grid = document.getElementById('grid');
+      grid.innerHTML='';
+      data.images.forEach(img=>{
+        const card = document.createElement('div'); card.className='card';
+        const thumb = document.createElement('div'); thumb.className='thumb';
+        const im = document.createElement('img'); im.src = img.local_url; im.alt=img.name;
+        thumb.appendChild(im);
+        card.appendChild(thumb);
+
+        const meta = document.createElement('div'); meta.className='meta';
+        meta.innerHTML = `<strong>${img.name}</strong><br>${(img.size/1024).toFixed(1)} KB`;
+        card.appendChild(meta);
+
+        const buttons = document.createElement('div'); buttons.className='buttons';
+
+        const copyLocal = document.createElement('button'); copyLocal.textContent='Copy Local URL'; copyLocal.className='small';
+        copyLocal.onclick = ()=>copyText(img.local_url);
+        buttons.appendChild(copyLocal);
+
+        if(img.discord_url){
+          const copyDiscord = document.createElement('button'); copyDiscord.textContent='Copy Discord URL'; copyDiscord.className='small secondary';
+          copyDiscord.onclick = ()=>copyText(img.discord_url);
+          buttons.appendChild(copyDiscord);
+        }
+
+        const copyData = document.createElement('button'); copyData.textContent='Copy Base64 (data URI)'; copyData.className='small';
+        copyData.onclick = ()=>copyDataUri(img.data_uri);
+        buttons.appendChild(copyData);
+
+        card.appendChild(buttons);
+        grid.appendChild(card);
+      });
+    }catch(e){
+      document.getElementById('stats').textContent = 'Failed to load images';
+      console.error(e);
+    }
+  }
+
+  async function copyText(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      alert('Copied to clipboard');
+    }catch(e){
+      // fallback modal
+      showModal(text);
+    }
+  }
+
+  async function copyDataUri(dataUri){
+    try{
+      await navigator.clipboard.writeText(dataUri);
+      alert('Base64 data URI copied to clipboard');
+    }catch(e){
+      // fallback: show modal with selected text
+      showModal(dataUri);
+    }
+  }
+
+  function showModal(text){
+    const modal = document.getElementById('modal');
+    const ta = document.getElementById('modal-text');
+    ta.value = text;
+    modal.style.display='flex';
+    ta.select();
+  }
+  document.getElementById('modal-close').onclick = ()=>{ document.getElementById('modal').style.display='none'; };
+
+  window.addEventListener('load', load);
+  </script>
+</body>
+</html>
+'''
+
+
+def main():
+    if not IMAGES_DIR.exists():
+        print(f'Images directory not found at {IMAGES_DIR}. Creating...')
+        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+    httpd = HTTPServer(('0.0.0.0', PORT), Handler)
+    ip = get_local_ip()
+    print('='*60)
+    print('🖼️  IMAGE SERVER (base64-capable)')
+    print('='*60)
+    print(f'Listening on: http://0.0.0.0:{PORT}  (network: http://{ip}:{PORT})')
+    print(f'Serving images from: {IMAGES_DIR}')
+    print('Press Ctrl+C to stop')
+    print('='*60)
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print('\nShutting down...')
+        httpd.server_close()
+
+
+if __name__ == '__main__':
+    main()
+#!/usr/bin/env python3
+"""
 Simple HTTP server to serve images from cogs/images folder
 Run: python image_server.py
 Then replace Discord URLs with: http://localhost:8889/image_name.ext
