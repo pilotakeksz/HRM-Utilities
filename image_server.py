@@ -404,11 +404,20 @@ class ImageHandler(SimpleHTTPRequestHandler):
                             <div class="image-name">${img.name}</div>
                             <div class="url-row">
                                 <div class="url-label">Local URL:</div>
-                                <div class="image-url" data-url="${img.local_url}">
-                                    ${img.local_url}
+                                <div style="display:flex; gap:10px; align-items:center;">
+                                    <div style="flex:1">
+                                        <div class="image-url" data-url="${img.local_url}">
+                                            ${img.local_url}
+                                        </div>
+                                        <div class="image-size">${formatSize(img.size)}</div>
+                                    </div>
+                                    <div style="text-align:center; width:120px;">
+                                        <img class="qr" data-url="${img.local_url}" alt="QR" style="width:90px; height:90px; border-radius:6px; border:1px solid #e0e0e0; background:white; display:block; margin:0 auto 8px;" />
+                                        <a class="open-link" href="${img.local_url}" target="_blank" style="display:inline-block; margin-bottom:6px; color:#667eea; font-size:12px;">Open</a>
+                                        <button class="copy-btn" data-url="${img.local_url}" data-feedback="${localFeedbackId}">Copy</button>
+                                        <div class="copy-feedback" id="${localFeedbackId}">✓ Copied to clipboard!</div>
+                                    </div>
                                 </div>
-                                <button class="copy-btn" data-url="${img.local_url}" data-feedback="${localFeedbackId}">Copy Local URL</button>
-                                <div class="copy-feedback" id="${localFeedbackId}">✓ Copied to clipboard!</div>
                             </div>
                             ${discordUrlHtml}
                             <div class="image-size">${formatSize(img.size)}</div>
@@ -418,6 +427,16 @@ class ImageHandler(SimpleHTTPRequestHandler):
                     grid.appendChild(card);
                 });
                 
+                // Generate QR codes for each qr img using Google Chart API (fallback when clipboard not available on insecure origins)
+                document.querySelectorAll('img.qr').forEach(q => {
+                    try {
+                        const u = encodeURIComponent(q.getAttribute('data-url'));
+                        q.src = `https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=${u}`;
+                    } catch (e) {
+                        // ignore
+                    }
+                });
+
                 // Add click handlers to all copy buttons and URLs
                 document.querySelectorAll('.copy-btn').forEach(btn => {
                     btn.addEventListener('click', function(e) {

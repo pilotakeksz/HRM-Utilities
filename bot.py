@@ -858,6 +858,12 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
         # Give Discord time to accept the response
         await asyncio.sleep(0.5)
 
+        # Ensure image server subprocess is stopped before we close/execv
+        try:
+            stop_image_server()
+        except Exception as e:
+            print(f"Warning: failed to stop image server before restart: {e}")
+
         try:
             await bot.close()
         except Exception as e:
@@ -916,6 +922,12 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
 
     # Close the bot cleanly and execv to restart the process.
     try:
+        # Ensure image server subprocess is stopped before shutdown
+        try:
+            stop_image_server()
+        except Exception as e:
+            print(f"Warning: failed to stop image server before reboot: {e}")
+
         await bot.close()
     except Exception as e:
         print(f"Error while closing bot for reboot: {e}")
