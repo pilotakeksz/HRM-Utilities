@@ -243,7 +243,7 @@ class ImageHandler(SimpleHTTPRequestHandler):
     <div class="container">
         <div class="header">
             <h1>🖼️ Image Server</h1>
-            <p>HRM Utilities - Local Image Hosting</p>
+            <p>MCNG Banners</p>
         </div>
         
         <div class="content">
@@ -336,6 +336,20 @@ class ImageHandler(SimpleHTTPRequestHandler):
         print(f"[IMAGE SERVER] {format % args}")
 
 
+def get_local_ip():
+    """Get the local network IP address"""
+    import socket
+    try:
+        # Connect to a non-routable address to get local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
 def format_size(bytes_size):
     """Format bytes to human readable size"""
     if bytes_size < 1024:
@@ -357,16 +371,23 @@ def main():
         print("Please create the directory and add images to it.")
         sys.exit(1)
     
-    # Create and start server
-    server = HTTPServer(('localhost', PORT), ImageHandler)
+    # Get local network IP
+    local_ip = get_local_ip()
+    
+    # Create and start server - bind to 0.0.0.0 for network access
+    server = HTTPServer(('0.0.0.0', PORT), ImageHandler)
     
     print("=" * 60)
     print("🖼️  IMAGE SERVER STARTED")
     print("=" * 60)
-    print(f"✅ Server running at: http://localhost:{PORT}")
+    print(f"✅ Server running at:")
+    print(f"   🖥️  Local:        http://localhost:{PORT}")
+    print(f"   🌐 Network:      http://{local_ip}:{PORT}")
     print(f"📁 Serving images from: {images_dir}")
     print()
-    print("🌐 Open in browser: http://localhost:8889")
+    print(f"🌐 Open in browser:")
+    print(f"   • http://localhost:{PORT} (this computer)")
+    print(f"   • http://{local_ip}:{PORT} (network access)")
     print()
     print("⏹️  Press Ctrl+C to stop the server")
     print("=" * 60)
