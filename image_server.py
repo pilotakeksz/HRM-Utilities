@@ -42,6 +42,21 @@ class Handler(BaseHTTPRequestHandler):
             self.serve_index()
             return
 
+        # Serve embedded particles.js from embed-builder-web for styling
+        if path == 'particles.js':
+            p = Path(__file__).parent / 'embed-builder-web' / 'particles.js'
+            if p.exists():
+                try:
+                    data = p.read_text(encoding='utf-8')
+                    self._set_headers(200, 'application/javascript; charset=utf-8')
+                    self.wfile.write(data.encode('utf-8'))
+                    return
+                except Exception:
+                    pass
+            self._set_headers(404, 'text/plain')
+            self.wfile.write(b'Not found')
+            return
+
         if path == 'api/images':
             self.serve_api_images()
             return
@@ -205,10 +220,14 @@ body { padding: 1.5rem; }
 
     <div class="container">
         <div id="stats" class="notice">Loading images…</div>
+        <div style="margin-bottom:1rem;display:flex;gap:0.5rem">
+            <input type="text" id="search-input" class="btn-copy" style="background:var(--background-tertiary);color:var(--text-primary);border:1px solid var(--border);flex:1;padding:0.5rem;border-radius:6px" placeholder="🔍 Search images...">
+        </div>
         <div id="grid" class="grid"></div>
     </div>
 
     <div id="toast" class="toast"></div>
+    <div id="particles-js" style="position:fixed;inset:0;z-index:-1"></div>
 
     <script>
     function showToast(msg, isError){
@@ -218,6 +237,26 @@ body { padding: 1.5rem; }
         t.style.display = 'block';
         clearTimeout(window._toastTimer);
         window._toastTimer = setTimeout(()=>{ t.style.display='none' }, 2200);
+    }
+
+    // ExecCommand-only copy helper (no navigator.clipboard)
+    function copyTextExec(text, successMsg){
+        try{
+            const ta = document.createElement('textarea');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            ta.style.top = '0';
+            ta.setAttribute('readonly', '');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) { showToast(successMsg); return true; }
+            showToast('Copy failed', true);
+            return false;
+        }catch(err){ console.error('exec copy failed', err); showToast('Copy failed', true); return false; }
     }
 
     async function load(){
@@ -244,19 +283,20 @@ body { padding: 1.5rem; }
                 const buttons = document.createElement('div'); buttons.className='buttons';
 
                 const copyLocal = document.createElement('button'); copyLocal.textContent='Copy Local URL'; copyLocal.className='btn-copy';
-                copyLocal.onclick = async ()=>{
-                    try{ await navigator.clipboard.writeText(img.local_url); showToast('Local URL copied'); }catch(e){ console.error(e); showToast('Copy failed', true); }
-                };
+                copyLocal.onclick = ()=>{ copyTextExec(img.local_url, 'Local URL copied'); };
                 buttons.appendChild(copyLocal);
 
                 if(img.discord_url){
-                    const copyDiscord = document.createElement('button'); copyDiscord.textContent='Copy Discord URL'; copyDiscord.className='btn-copy secondary';
-                    copyDiscord.onclick = async ()=>{ try{ await navigator.clipboard.writeText(img.discord_url); showToast('Discord URL copied'); }catch(e){ console.error(e); showToast('Copy failed', true); } };
+                                            const copyDiscord = document.createElement('button'); copyDiscord.textContent='Copy Discord URL'; copyDiscord.className='btn-copy secondary';
+                                            copyDiscord.onclick = ()=>{ copyTextExec(img.discord_url, 'Discord URL copied'); };
                     buttons.appendChild(copyDiscord);
                 }
 
-                const copyData = document.createElement('button'); copyData.textContent='Copy Base64 (data URI)'; copyData.className='btn-copy';
-                copyData.onclick = async ()=>{ try{ await navigator.clipboard.writeText(img.data_uri); showToast('Base64 copied'); }catch(e){ console.error(e); showToast('Copy failed', true); } };
+                const copyData = document.createElement('button'); copyData.textContent='Copy Python Line'; copyData.className='btn-copy';
+                copyData.onclick = ()=>{ 
+                    const line = `embed.set_image(url="${img.local_url}")`; 
+                    copyTextExec(line, 'Python line copied'); 
+                };
                 buttons.appendChild(copyData);
 
                 card.appendChild(buttons);
@@ -270,6 +310,40 @@ body { padding: 1.5rem; }
     }
 
     window.addEventListener('load', load);
+
+    // Search/filter functionality
+    document.getElementById('search-input').addEventListener('input', function(e){
+        const query = e.target.value.toLowerCase();
+        const cards = document.querySelectorAll('.card');
+        cards.forEach(card=>{
+            const name = card.querySelector('.meta strong').textContent.toLowerCase();
+            card.style.display = name.includes(query) ? 'block' : 'none';
+        });
+    });
+
+    // Initialize particles background
+    (function(){
+        var s = document.createElement('script');
+        s.src = '/particles.js';
+        s.onload = function(){
+            if (window.particlesJS) {
+                particlesJS('particles-js', {
+                    particles: {
+                        number: { value: 80, density: { enable: true, value_area: 800 } },
+                        color: { value: ["#7289da", "#ffffff", "#99aab5"] },
+                        shape: { type: "circle" },
+                        opacity: { value: 0.5 },
+                        size: { value: 3 },
+                        line_linked: { enable: true, distance: 150, color: "#7289da", opacity: 0.1 },
+                        move: { enable: true, speed: 1, direction: "none", random: false, straight: false, out_mode: "out", bounce: false }
+                    },
+                    interactivity: { detect_on: "canvas", events: { onhover: { enable: true, mode: "repulse" }, onclick: { enable: true, mode: "push" }, resize: true } },
+                    retina_detect: true
+                });
+            }
+        };
+        document.body.appendChild(s);
+    })();
     </script>
 </body>
 </html>
@@ -637,6 +711,8 @@ class ImageHandler(SimpleHTTPRequestHandler):
         </div>
     </div>
     
+        <div id="particles-js" style="position:fixed;inset:0;z-index:-1"></div>
+    
     <script>
         // Fetch server info and images dynamically
         async function loadImages() {
@@ -776,21 +852,10 @@ class ImageHandler(SimpleHTTPRequestHandler):
         }
         
         function copyToClipboard(text, feedbackId) {
-            // Try modern clipboard API first
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(() => {
-                    const feedback = document.getElementById(feedbackId);
-                    if (feedback) {
-                        feedback.style.display = 'block';
-                        setTimeout(() => { feedback.style.display = 'none'; }, 2000);
-                    }
-                }).catch(() => {
-                    // fallback to execCommand approach
-                    _fallbackCopy(text, feedbackId);
-                });
-            } else {
-                _fallbackCopy(text, feedbackId);
-            }
+            try{
+                if (_fallbackCopy(text, feedbackId)) return;
+            }catch(e){ console.error('copy failed', e); }
+            alert('Could not copy automatically. Please copy manually:\n' + text);
         }
 
         function _fallbackCopy(text, feedbackId) {
@@ -823,24 +888,21 @@ class ImageHandler(SimpleHTTPRequestHandler):
                         feedback.style.display = 'block';
                         setTimeout(() => { feedback.style.display = 'none'; }, 2000);
                     }
-                    return;
+                    return true;
                 }
             } catch (err) {
                 console.error('Fallback copy failed:', err);
             }
 
-            // Last resort: show modal with selectable text
-            try {
-                showModal(text);
-            } catch (e) {
-                alert('Could not copy URL. Please copy manually: ' + text);
-            }
+            return false;
         }
         
         // Load images on page load
         window.addEventListener('load', loadImages);
         // Refresh every 5 seconds to show new images
         setInterval(loadImages, 5000);
+
+        // No permission modal: we use execCommand-only copy behavior
     </script>
 </body>
 </html>

@@ -1,12 +1,24 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import socket
 
 EMBED_COLOR = 0xd0b47b
 ABOUT_US_CHANNEL_ID = 1329910454059008101
 OWNER_ID = 840949634071658507
 
-FOOTER_ICON = "http://localhost:8889/footer_icon.webp"
+def get_local_ip():
+    """Get local network IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+FOOTER_ICON = f"http://{get_local_ip()}:8889/footer_icon.webp"
 FOOTER_TEXT = "Maplecliff National Guard"
 
 class RankInfoSelect(discord.ui.Select):
@@ -130,7 +142,7 @@ class AboutUs(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="http://localhost:8889/about_us_banner.png")
+        embed1.set_image(url=f"http://{get_local_ip()}:8889/about_us_banner.png")
 
         embed2 = discord.Embed(
             title="<:general:1343223933251358764> About Us",
@@ -158,7 +170,7 @@ class AboutUs(commands.Cog):
             inline=True
         )
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
-        embed2.set_image(url="http://localhost:8889/bottom_banner.png")
+        embed2.set_image(url=f"http://{get_local_ip()}:8889/bottom_banner.png")
 
         view = RankInfoView()
         await channel.send(embed=embed1)
