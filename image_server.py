@@ -135,120 +135,142 @@ def get_local_ip():
 INDEX_HTML = '''<!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Image Server — Base64 Export</title>
-  <style>
-    body{font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;margin:0;padding:20px}
-    .container{max-width:1100px;margin:0 auto}
-    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
-    h1{font-size:20px;margin:0}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
-    .card{background:#fff;border-radius:8px;padding:12px;border:1px solid #e6e9ef}
-    .thumb{height:140px;background:#fafafa;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .thumb img{max-width:100%;max-height:100%}
-    .meta{margin-top:8px;font-size:13px;color:#333}
-    .buttons{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
-    button{padding:8px 10px;border-radius:6px;border:0;background:#4b6cff;color:white;cursor:pointer}
-    button.secondary{background:#6c757d}
-    .small{font-size:12px;padding:6px 8px}
-    .notice{color:#666;font-size:13px}
-    /* modal */
-    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.5)}
-    .modal .box{background:white;padding:16px;border-radius:8px;max-width:90%;max-height:80%;overflow:auto}
-    textarea{width:100%;height:220px}
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Image Server — Base64 Export</title>
+    <style>
+/* Reset and Base Styles */
+* {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+}
+
+:root {
+        --primary: #7289da;
+        --primary-hover: #677bc4;
+        --secondary: #2c2f33;
+        --secondary-hover: #23272a;
+        --tertiary: #99aab5;
+        --background: #36393f;
+        --background-secondary: #2f3136;
+        --background-tertiary: #202225;
+        --text-primary: #ffffff;
+        --text-secondary: #b9bbbe;
+        --text-muted: #72767d;
+        --border: #40444b;
+        --border-hover: #4f545c;
+        --success: #43b581;
+        --warning: #faa61a;
+        --danger: #f04747;
+        --shadow: rgba(0, 0, 0, 0.2);
+        --shadow-lg: rgba(0, 0, 0, 0.4);
+}
+
+body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--background);
+        color: var(--text-primary);
+        line-height: 1.5;
+        overflow-x: hidden;
+}
+
+/* Page tweaks */
+body { padding: 1.5rem; }
+.container { max-width: 1200px; margin: 0 auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+.card { padding: 1rem; background: var(--background-secondary); border: 1px solid var(--border); border-radius: 10px; }
+.thumb { height: 160px; display:flex;align-items:center;justify-content:center;background:var(--background-tertiary);border-radius:8px;overflow:hidden }
+.thumb img { max-width:100%; max-height:100%; object-fit:contain }
+.meta { margin-top:0.75rem; color:var(--text-secondary); font-size:0.95rem }
+.buttons { margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap }
+.btn-copy { background:var(--primary); color:#fff; border: none; padding:0.5rem 0.75rem; border-radius:6px; cursor:pointer }
+.btn-copy.secondary { background:var(--secondary); color:var(--text-primary) }
+.toast { position: fixed; right: 1rem; bottom: 1rem; background: rgba(0,0,0,0.75); color: #fff; padding: 0.5rem 0.75rem; border-radius:6px; display:none; z-index:9999 }
+
+    /* compact header */
+.header { background: rgba(32,34,37,0.95); backdrop-filter: blur(6px); border-radius:8px; margin-bottom:1rem }
+.header-content { display:flex; align-items:center; justify-content:space-between; padding:0.6rem 1rem }
+.logo-text { font-weight:700 }
+
+    </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>Image Server — Base64 Export</h1>
-      <div class="notice">Server: <span id="server-url">loading...</span></div>
-    </header>
-    <div id="stats" class="notice">Loading images…</div>
-    <div id="grid" class="grid"></div>
-  </div>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo"><div class="logo-text">Image Server</div></div>
+            <div class="header-actions"><div class="notice">Server: <span id="server-url">loading...</span></div></div>
+        </div>
+    </div>
 
-  <div id="modal" class="modal"><div class="box"><h3>Copy</h3><p>Use Ctrl/Cmd+C to copy the selected text.</p><textarea id="modal-text"></textarea><p style="text-align:right;margin-top:8px"><button id="modal-close">Close</button></p></div></div>
+    <div class="container">
+        <div id="stats" class="notice">Loading images…</div>
+        <div id="grid" class="grid"></div>
+    </div>
 
-  <script>
-  async function load(){
-    try{
-      const r = await fetch('/api/images');
-      const data = await r.json();
-      const serverUrl = data.images.length? data.images[0].local_url.split('/').slice(0,3).join('/') : window.location.origin;
-      document.getElementById('server-url').textContent = serverUrl;
-      document.getElementById('stats').textContent = `${data.images.length} images found`;
+    <div id="toast" class="toast"></div>
 
-      const grid = document.getElementById('grid');
-      grid.innerHTML='';
-      data.images.forEach(img=>{
-        const card = document.createElement('div'); card.className='card';
-        const thumb = document.createElement('div'); thumb.className='thumb';
-        const im = document.createElement('img'); im.src = img.local_url; im.alt=img.name;
-        thumb.appendChild(im);
-        card.appendChild(thumb);
+    <script>
+    function showToast(msg, isError){
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.background = isError ? 'rgba(240,72,71,0.9)' : 'rgba(0,0,0,0.75)';
+        t.style.display = 'block';
+        clearTimeout(window._toastTimer);
+        window._toastTimer = setTimeout(()=>{ t.style.display='none' }, 2200);
+    }
 
-        const meta = document.createElement('div'); meta.className='meta';
-        meta.innerHTML = `<strong>${img.name}</strong><br>${(img.size/1024).toFixed(1)} KB`;
-        card.appendChild(meta);
+    async function load(){
+        try{
+            const r = await fetch('/api/images');
+            const data = await r.json();
+            const serverUrl = data.images.length? data.images[0].local_url.split('/').slice(0,3).join('/') : window.location.origin;
+            document.getElementById('server-url').textContent = serverUrl;
+            document.getElementById('stats').textContent = `${data.images.length} images found`;
 
-        const buttons = document.createElement('div'); buttons.className='buttons';
+            const grid = document.getElementById('grid');
+            grid.innerHTML='';
+            data.images.forEach(img=>{
+                const card = document.createElement('div'); card.className='card';
+                const thumb = document.createElement('div'); thumb.className='thumb';
+                const im = document.createElement('img'); im.src = img.local_url; im.alt=img.name;
+                thumb.appendChild(im);
+                card.appendChild(thumb);
 
-        const copyLocal = document.createElement('button'); copyLocal.textContent='Copy Local URL'; copyLocal.className='small';
-        copyLocal.onclick = ()=>copyText(img.local_url);
-        buttons.appendChild(copyLocal);
+                const meta = document.createElement('div'); meta.className='meta';
+                meta.innerHTML = `<strong class="embed-title">${img.name}</strong><div style="margin-top:4px">${(img.size/1024).toFixed(1)} KB</div>`;
+                card.appendChild(meta);
 
-        if(img.discord_url){
-          const copyDiscord = document.createElement('button'); copyDiscord.textContent='Copy Discord URL'; copyDiscord.className='small secondary';
-          copyDiscord.onclick = ()=>copyText(img.discord_url);
-          buttons.appendChild(copyDiscord);
+                const buttons = document.createElement('div'); buttons.className='buttons';
+
+                const copyLocal = document.createElement('button'); copyLocal.textContent='Copy Local URL'; copyLocal.className='btn-copy';
+                copyLocal.onclick = async ()=>{
+                    try{ await navigator.clipboard.writeText(img.local_url); showToast('Local URL copied'); }catch(e){ console.error(e); showToast('Copy failed', true); }
+                };
+                buttons.appendChild(copyLocal);
+
+                if(img.discord_url){
+                    const copyDiscord = document.createElement('button'); copyDiscord.textContent='Copy Discord URL'; copyDiscord.className='btn-copy secondary';
+                    copyDiscord.onclick = async ()=>{ try{ await navigator.clipboard.writeText(img.discord_url); showToast('Discord URL copied'); }catch(e){ console.error(e); showToast('Copy failed', true); } };
+                    buttons.appendChild(copyDiscord);
+                }
+
+                const copyData = document.createElement('button'); copyData.textContent='Copy Base64 (data URI)'; copyData.className='btn-copy';
+                copyData.onclick = async ()=>{ try{ await navigator.clipboard.writeText(img.data_uri); showToast('Base64 copied'); }catch(e){ console.error(e); showToast('Copy failed', true); } };
+                buttons.appendChild(copyData);
+
+                card.appendChild(buttons);
+                grid.appendChild(card);
+            });
+        }catch(e){
+            document.getElementById('stats').textContent = 'Failed to load images';
+            console.error(e);
+            showToast('Failed to load images', true);
         }
-
-        const copyData = document.createElement('button'); copyData.textContent='Copy Base64 (data URI)'; copyData.className='small';
-        copyData.onclick = ()=>copyDataUri(img.data_uri);
-        buttons.appendChild(copyData);
-
-        card.appendChild(buttons);
-        grid.appendChild(card);
-      });
-    }catch(e){
-      document.getElementById('stats').textContent = 'Failed to load images';
-      console.error(e);
     }
-  }
 
-  async function copyText(text){
-    try{
-      await navigator.clipboard.writeText(text);
-      alert('Copied to clipboard');
-    }catch(e){
-      // fallback modal
-      showModal(text);
-    }
-  }
-
-  async function copyDataUri(dataUri){
-    try{
-      await navigator.clipboard.writeText(dataUri);
-      alert('Base64 data URI copied to clipboard');
-    }catch(e){
-      // fallback: show modal with selected text
-      showModal(dataUri);
-    }
-  }
-
-  function showModal(text){
-    const modal = document.getElementById('modal');
-    const ta = document.getElementById('modal-text');
-    ta.value = text;
-    modal.style.display='flex';
-    ta.select();
-  }
-  document.getElementById('modal-close').onclick = ()=>{ document.getElementById('modal').style.display='none'; };
-
-  window.addEventListener('load', load);
-  </script>
+    window.addEventListener('load', load);
+    </script>
 </body>
 </html>
 '''
