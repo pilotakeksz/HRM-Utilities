@@ -14,6 +14,9 @@ import json
 from datetime import datetime, timezone, date
 from typing import Optional
 import re
+import subprocess
+import atexit
+import signal
 
 
 load_dotenv(".env")
@@ -54,6 +57,60 @@ bot = commands.Bot(
     intents=intents,
     application_id=APPLICATION_ID
 )
+
+# --- Image Server Process Management ---
+image_server_process = None
+
+def start_image_server():
+    """Start the image_server.py process"""
+    global image_server_process
+    try:
+        image_server_path = os.path.join(os.path.dirname(__file__), "image_server.py")
+        if not os.path.exists(image_server_path):
+            print(f"⚠️  Warning: image_server.py not found at {image_server_path}")
+            return
+        
+        print("🖼️  Starting image server...")
+        image_server_process = subprocess.Popen(
+            [sys.executable, image_server_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        print("✅ Image server started")
+    except Exception as e:
+        print(f"❌ Failed to start image server: {e}")
+
+def stop_image_server():
+    """Stop the image_server.py process gracefully"""
+    global image_server_process
+    if image_server_process:
+        try:
+            print("🛑 Stopping image server...")
+            image_server_process.terminate()
+            try:
+                image_server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("⚠️  Image server didn't stop gracefully, forcing...")
+                image_server_process.kill()
+            print("✅ Image server stopped")
+        except Exception as e:
+            print(f"❌ Error stopping image server: {e}")
+        finally:
+            image_server_process = None
+
+# Register cleanup on exit
+atexit.register(stop_image_server)
+
+# Handle Ctrl+C and termination signals
+def signal_handler(sig, frame):
+    print("\n🛑 Received shutdown signal, cleaning up...")
+    stop_image_server()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # --- Capture stdout/stderr ---
 startup_output = io.StringIO()
@@ -297,6 +354,10 @@ async def on_ready():
     
     output = startup_output.getvalue()
     print(output)
+    
+    # Start image server on first ready event
+    if not image_server_process:
+        start_image_server()
     
     # Get and increment version
     version_num, version_string, version_info = get_version()

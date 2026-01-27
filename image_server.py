@@ -79,6 +79,10 @@ class ImageHandler(SimpleHTTPRequestHandler):
             self.send_error(500, f"Error reading directory: {e}")
             return
         
+        # Get the server's network IP for embedding in URLs
+        local_ip = get_local_ip()
+        server_url = f"http://{local_ip}:8889"
+        
         # Build HTML
         html = """<!DOCTYPE html>
 <html lang="en">
@@ -257,8 +261,8 @@ class ImageHandler(SimpleHTTPRequestHandler):
                     <div class="stat-label">Total Size</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-number">http://192.168.178.133:8889</div>
-                    <div class="stat-label">Server URL</div>
+                    <div class="stat-number">""" + server_url + """</div>
+                    <div class="stat-label">Server URL (for embeds)</div>
                 </div>
             </div>
 """
@@ -276,11 +280,11 @@ class ImageHandler(SimpleHTTPRequestHandler):
                 </div>
                 <div class="image-info">
                     <div class="image-name">{file.name}</div>
-                    <div class="image-url" onclick="copyToClipboard('http://192.168.178.133:8889/{file.name}')">
-                        http://192.168.178.133:8889/{file.name}
+                    <div class="image-url" onclick="copyToClipboard('{server_url}/{file.name}')">
+                        {server_url}/{file.name}
                     </div>
                     <div class="image-size">{size_str}</div>
-                    <button class="copy-btn" onclick="copyToClipboard('http://192.168.178.133:8889/{file.name}')">Copy URL</button>
+                    <button class="copy-btn" onclick="copyToClipboard('{server_url}/{file.name}')">Copy URL</button>
                 </div>
             </div>
 """
@@ -296,6 +300,7 @@ class ImageHandler(SimpleHTTPRequestHandler):
         
         <div class="footer">
             <p>✨ Place images in <strong>cogs/images/</strong> folder and refresh this page</p>
+            <p style="margin-top: 10px; font-size: 11px;">💡 Copy URLs above to use in your cog embeds (Discord can access this network IP)</p>
         </div>
     </div>
     
