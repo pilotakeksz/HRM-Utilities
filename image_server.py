@@ -754,39 +754,65 @@ class ImageHandler(SimpleHTTPRequestHandler):
         }
         
         function copyToClipboard(text, feedbackId) {
-            navigator.clipboard.writeText(text)
-                .then(() => {
+            // Try modern clipboard API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
                     const feedback = document.getElementById(feedbackId);
                     if (feedback) {
                         feedback.style.display = 'block';
-                        console.log('✓ Copied:', text);
-                        setTimeout(() => {
-                            feedback.style.display = 'none';
-                        }, 2000);
+                        setTimeout(() => { feedback.style.display = 'none'; }, 2000);
                     }
-                })
-                .catch(err => {
-                    console.error('❌ Failed to copy:', err);
-                    // Fallback: try selecting text
-                    try {
-                        const textArea = document.createElement('textarea');
-                        textArea.value = text;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(textArea);
-                        
-                        const feedback = document.getElementById(feedbackId);
-                        if (feedback) {
-                            feedback.style.display = 'block';
-                            setTimeout(() => {
-                                feedback.style.display = 'none';
-                            }, 2000);
-                        }
-                    } catch (e) {
-                        alert('Could not copy URL. Please copy manually: ' + text);
-                    }
+                }).catch(() => {
+                    // fallback to execCommand approach
+                    _fallbackCopy(text, feedbackId);
                 });
+            } else {
+                _fallbackCopy(text, feedbackId);
+            }
+        }
+
+        function _fallbackCopy(text, feedbackId) {
+            try {
+                const textArea = document.createElement('textarea');
+                // Prevent scrolling to bottom
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '0';
+                textArea.setAttribute('readonly', '');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+
+                // iOS selection
+                const range = document.createRange();
+                range.selectNodeContents(textArea);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+
+                textArea.select();
+                textArea.setSelectionRange(0, text.length);
+
+                const ok = document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                if (ok) {
+                    const feedback = document.getElementById(feedbackId);
+                    if (feedback) {
+                        feedback.style.display = 'block';
+                        setTimeout(() => { feedback.style.display = 'none'; }, 2000);
+                    }
+                    return;
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+            }
+
+            // Last resort: show modal with selectable text
+            try {
+                showModal(text);
+            } catch (e) {
+                alert('Could not copy URL. Please copy manually: ' + text);
+            }
         }
         
         // Load images on page load
