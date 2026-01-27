@@ -111,7 +111,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body.encode('utf-8'))
 
     def serve_index(self):
-        html = INDEX_HTML.format(port=PORT)
+        # Avoid using str.format on the HTML template because CSS/JS contain
+        # curly braces which conflict with format placeholders. Use simple
+        # replacement for the {port} token instead.
+        html = INDEX_HTML.replace('{port}', str(PORT))
         self._set_headers(200, 'text/html; charset=utf-8')
         self.wfile.write(html.encode('utf-8'))
 
