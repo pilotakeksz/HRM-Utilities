@@ -21,8 +21,8 @@ CHANNEL_ASSISTANCE = int(os.getenv("CHANNEL_ASSISTANCE"))
 EMBED_COLOUR = int(os.getenv("EMBED_COLOUR"), 16)
 EMBED_FOOTER = "Maplecliff National Guard"
 EMBED_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
-EMBED1_IMAGE = os.getenv("EMBED1_IMAGE")
-EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
+EMBED1_IMAGE = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854148867260570/ASSISTANCE.png?ex=697a9e8f&is=69794d0f&hm=b67e51f9fa435af33dfcdf3b53d87170e151888ee86e7db611d3b2343b943437&"
+EMBED2_IMAGE = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&"
 MIA_REDIRECT = os.getenv("MIA_REDIRECT")
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "../transcripts")
