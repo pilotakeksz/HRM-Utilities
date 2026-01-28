@@ -5,8 +5,9 @@ from discord import app_commands
 EMBED_COLOR = 0xd0b47b
 ABOUT_US_CHANNEL_ID = 1329910454059008101
 OWNER_ID = 840949634071658507
-FOOTER_TEXT = "HRM Utilities"
-FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png?ex=697a9e9a&is=69794d1a&hm=9e44326e792f3092e3647f1cfce191c4b1d3264aa8eae50cd5c443bcb5b09ee1&"  # ← PASTE LOGO IMAGE URL HERE
+
+FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png?ex=697a9e9a&is=69794d1a&hm=9e44326e792f3092e3647f1cfce191c4b1d3264aa8eae50cd5c443bcb5b09ee1&s"
+FOOTER_TEXT = "Maplecliff National Guard"
 
 class RankInfoSelect(discord.ui.Select):
     def __init__(self):
@@ -129,9 +130,8 @@ class AboutUs(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        # Set image by copying the line from image server
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854134149316885/ABOUT_US.png?ex=697a9e8b&is=69794d0b&hm=86b6810bd98a4846f8a54ca80b80fcd2b9812719aaa621a2bd3d40f552323a4f&")
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
+
         embed2 = discord.Embed(
             title="<:general:1343223933251358764> About Us",
             description="Welcome to the **Maplecliff National Guard!** Our mission is to ensure security, conduct strategic operations, and provide rapid emergency response, protect Maplecliff's borders, and assist the police force.",
@@ -157,8 +157,8 @@ class AboutUs(commands.Cog):
             ),
             inline=True
         )
-        embed2.set_footer(text=FOOTER_TEXT)
-        # Set image by copying the line from image server
+        embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
+        embed2.set_image(url="http://localhost:8889/bottom_banner.png")
 
         view = RankInfoView()
         await channel.send(embed=embed1)
