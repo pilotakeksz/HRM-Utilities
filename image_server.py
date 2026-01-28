@@ -11,6 +11,7 @@ Features:
 - `/api/images` returns JSON with image metadata and data-URI (base64) for each image.
 - UI buttons: Copy Local URL, Copy Discord URL (if registered), Copy Base64 (data URI).
 - Select menu for choosing embed method (image, thumbnail, footer icon, author icon).
+- Auto-catalog images to Discord when uploaded.
 
 Note: Serving large images as data URIs can be memory-heavy in browsers.
 """
@@ -23,9 +24,109 @@ import base64
 import mimetypes
 import sys
 import os
+import shutil
+import asyncio
+import threading
+
+# Discord imports (optional - for auto-catalog)
+try:
+    import discord
+    DISCORD_AVAILABLE = True
+except ImportError:
+    DISCORD_AVAILABLE = False
+    print("⚠️  discord.py not installed. Auto-catalog feature disabled.")
 
 PORT = 8889
 IMAGES_DIR = Path(__file__).parent / "cogs" / "images"
+DISCORD_URLS_FILE = IMAGES_DIR / "discord_urls.json"
+
+# Discord bot configuration (read from environment or file)
+DISCORD_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
+CATALOG_SERVER_ID = int(os.environ.get('CATALOG_SERVER_ID', '1124324366495260753'))
+CATALOG_CHANNEL_ID = int(os.environ.get('CATALOG_CHANNEL_ID', '1465844086480310342'))
+
+# Global Discord client for auto-catalog
+discord_client = None
+catalog_lock = threading.Lock()
+
+
+def auto_catalog_image(filename: str, file_path: Path) -> str:
+    """
+    Auto-catalog a single image to Discord
+    Returns: Discord URL if successful, None if failed
+    """
+    if not DISCORD_AVAILABLE or not DISCORD_TOKEN:
+        return None
+    
+    try:
+        with catalog_lock:
+            # Run async code in a thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(_async_catalog_image(filename, file_path))
+            loop.close()
+            return result
+    except Exception as e:
+        print(f'⚠️  Auto-catalog failed for {filename}: {e}')
+        return None
+
+
+async def _async_catalog_image(filename: str, file_path: Path) -> str:
+    """Async function to upload image to Discord and store URL"""
+    try:
+        intents = discord.Intents.default()
+        client = discord.Client(intents=intents)
+        
+        @client.event
+        async def on_ready():
+            pass
+        
+        await client.login(DISCORD_TOKEN)
+        
+        # Get catalog server and channel
+        guild = client.get_guild(CATALOG_SERVER_ID)
+        if not guild:
+            guild = await client.fetch_guild(CATALOG_SERVER_ID)
+        
+        channel = guild.get_channel(CATALOG_CHANNEL_ID)
+        if not channel:
+            channel = await guild.fetch_channel(CATALOG_CHANNEL_ID)
+        
+        # Upload image
+        with open(file_path, 'rb') as f:
+            msg = await channel.send(file=discord.File(f, filename))
+        
+        # Extract URL
+        if msg.attachments:
+            discord_url = msg.attachments[0].url
+            
+            # Update discord_urls.json
+            IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+            discord_map = {}
+            if DISCORD_URLS_FILE.exists():
+                try:
+                    with open(DISCORD_URLS_FILE, 'r') as f:
+                        discord_map = json.load(f)
+                except:
+                    pass
+            
+            discord_map[filename] = discord_url
+            with open(DISCORD_URLS_FILE, 'w') as f:
+                json.dump(discord_map, f, indent=2)
+            
+            print(f'✅ Auto-cataloged {filename} to Discord')
+            return discord_url
+        
+        await client.close()
+        return None
+        
+    except Exception as e:
+        print(f'❌ Error auto-cataloging {filename}: {e}')
+        try:
+            await client.close()
+        except:
+            pass
+        return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -89,22 +190,138 @@ class Handler(BaseHTTPRequestHandler):
             self._set_headers(404, 'text/plain')
             self.wfile.write(b'Not found')
 
+    def do_POST(self):
+        """Handle file uploads"""
+        path = unquote(self.path.split('?', 1)[0]).lstrip('/')
+        
+        if path == 'api/upload':
+            self.handle_upload()
+            return
+        
+        self._set_headers(404, 'application/json')
+        self.wfile.write(json.dumps({'error': 'Not found'}).encode())
+
+    def handle_upload(self):
+        """Handle image file upload"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            content_type = self.headers.get('Content-Type', '')
+            
+            if content_length > 50 * 1024 * 1024:  # 50MB limit
+                self._set_headers(413, 'application/json')
+                self.wfile.write(json.dumps({'error': 'File too large'}).encode())
+                return
+            
+            # Parse multipart form data manually
+            boundary = None
+            if 'boundary=' in content_type:
+                boundary = content_type.split('boundary=')[1].split(';')[0].strip()
+            
+            if not boundary:
+                self._set_headers(400, 'application/json')
+                self.wfile.write(json.dumps({'error': 'Invalid multipart form'}).encode())
+                return
+            
+            body = self.rfile.read(content_length)
+            parts = body.split(f'--{boundary}'.encode())
+            
+            filename = None
+            file_data = None
+            
+            for part in parts:
+                if b'Content-Disposition' in part:
+                    # Extract filename from Content-Disposition header
+                    if b'filename=' in part:
+                        start = part.find(b'filename="') + 10
+                        end = part.find(b'"', start)
+                        filename = part[start:end].decode('utf-8')
+                        
+                        # Extract file data (after headers)
+                        header_end = part.find(b'\r\n\r\n')
+                        if header_end != -1:
+                            file_data = part[header_end + 4:-2]  # -2 for trailing CRLF
+                            break
+            
+            if not filename or not file_data:
+                self._set_headers(400, 'application/json')
+                self.wfile.write(json.dumps({'error': 'No file provided'}).encode())
+                return
+            
+            # Validate file extension
+            filename = Path(filename).name
+            allowed_ext = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+            if Path(filename).suffix.lower() not in allowed_ext:
+                self._set_headers(400, 'application/json')
+                self.wfile.write(json.dumps({'error': f'Unsupported file type. Allowed: {allowed_ext}'}).encode())
+                return
+            
+            # Save file
+            IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+            file_path = IMAGES_DIR / filename
+            
+            with open(file_path, 'wb') as f:
+                f.write(file_data)
+            
+            print(f'✅ Uploaded: {filename}')
+            
+            # Auto-catalog to Discord if available
+            auto_catalog_result = None
+            if DISCORD_AVAILABLE and DISCORD_TOKEN:
+                auto_catalog_result = auto_catalog_image(filename, file_path)
+            
+            # Return success with file info
+            self._set_headers(200, 'application/json')
+            response = {
+                'success': True,
+                'filename': filename,
+                'path': str(file_path),
+                'auto_cataloged': auto_catalog_result is not None
+            }
+            
+            if auto_catalog_result:
+                response['discord_url'] = auto_catalog_result
+                response['message'] = f'File {filename} uploaded and automatically cataloged to Discord!'
+            else:
+                response['message'] = f'File {filename} uploaded successfully. Run !catalogimages to add to Discord catalog.'
+            
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            print(f'❌ Upload error: {e}')
+            self._set_headers(500, 'application/json')
+            self.wfile.write(json.dumps({'error': str(e)}).encode())
+
     def serve_api_images(self):
         resp = []
         if not IMAGES_DIR.exists():
             IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Load discord_urls.json if present
+        # Load discord_urls.json if present - check multiple locations
         discord_map = {}
         discord_file = IMAGES_DIR / 'discord_urls.json'
+        
+        # Check cogs/images first
         if discord_file.exists():
             try:
                 with open(discord_file, 'r', encoding='utf-8') as f:
                     discord_map = json.load(f)
-            except Exception:
+                print(f"📦 Loaded discord_urls.json from {discord_file}")
+            except Exception as e:
+                print(f"⚠️  Error loading discord_urls.json: {e}")
                 discord_map = {}
+        else:
+            # Check beta_cogs/images as fallback
+            beta_discord_file = Path(__file__).parent / 'beta_cogs' / 'images' / 'discord_urls.json'
+            if beta_discord_file.exists():
+                try:
+                    with open(beta_discord_file, 'r', encoding='utf-8') as f:
+                        discord_map = json.load(f)
+                    print(f"📦 Loaded discord_urls.json from {beta_discord_file}")
+                except Exception as e:
+                    print(f"⚠️  Error loading from beta_cogs: {e}")
+                    discord_map = {}
 
-        for p in sorted([f for f in IMAGES_DIR.iterdir() if f.is_file()]):
+        for p in sorted([f for f in IMAGES_DIR.iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif', '.webp'}]):
             try:
                 b = p.read_bytes()
                 mime, _ = mimetypes.guess_type(str(p))
@@ -220,6 +437,16 @@ body { padding: 1.5rem; }
 
     <div class="container">
         <div id="stats" class="notice">Loading images…</div>
+        
+        <!-- Upload Section -->
+        <div style="background: var(--background-secondary); border: 2px dashed var(--border); border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; text-align: center; cursor: pointer;" id="upload-zone">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📤</div>
+            <div style="font-weight: 600; margin-bottom: 0.25rem;">Upload Images</div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">Drag & drop or click to select images</div>
+            <input type="file" id="file-input" multiple accept=".png,.jpg,.jpeg,.gif,.webp" style="display: none;">
+            <div id="upload-status" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem;"></div>
+        </div>
+        
         <div style="margin-bottom:1rem;display:flex;gap:0.5rem">
             <input type="text" id="search-input" class="btn-copy" style="background:var(--background-tertiary);color:var(--text-primary);border:1px solid var(--border);flex:1;padding:0.5rem;border-radius:6px" placeholder="🔍 Search images...">
             <select id="embed-method" class="btn-copy" style="background:var(--background-tertiary);color:var(--text-primary);border:1px solid var(--border);padding:0.5rem;border-radius:6px">
@@ -265,6 +492,104 @@ body { padding: 1.5rem; }
         }catch(err){ console.error('exec copy failed', err); showToast('Copy failed', true); return false; }
     }
 
+    // Handle file uploads
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadStatus = document.getElementById('upload-status');
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.style.background = 'var(--background-tertiary)';
+        uploadZone.style.borderColor = 'var(--primary)';
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.style.background = 'var(--background-secondary)';
+        uploadZone.style.borderColor = 'var(--border)';
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.style.background = 'var(--background-secondary)';
+        uploadZone.style.borderColor = 'var(--border)';
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFiles(files);
+        }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFiles(e.target.files);
+        }
+    });
+
+    async function handleFiles(files) {
+        const validExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+        const filesToUpload = [];
+
+        for (let file of files) {
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            if (validExtensions.has(ext)) {
+                filesToUpload.push(file);
+            } else {
+                showToast(`Skipped: ${file.name} (unsupported format)`, true);
+            }
+        }
+
+        if (filesToUpload.length === 0) return;
+
+        uploadStatus.textContent = `Uploading ${filesToUpload.length} file(s)...`;
+        let successCount = 0;
+        let autoCatalogCount = 0;
+
+        for (let file of filesToUpload) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    successCount++;
+                    if (result.auto_cataloged) {
+                        autoCatalogCount++;
+                        showToast(`✅ ${file.name} auto-cataloged to Discord!`);
+                    } else {
+                        showToast(`✅ ${file.name} uploaded`);
+                    }
+                    console.log(`✅ Uploaded: ${file.name}`, result);
+                } else {
+                    console.error(`❌ Upload failed for ${file.name}:`, result.error);
+                    showToast(`Failed: ${file.name}`, true);
+                }
+            } catch (error) {
+                console.error(`❌ Upload error for ${file.name}:`, error);
+                showToast(`Error uploading ${file.name}`, true);
+            }
+        }
+
+        if (successCount > 0) {
+            if (autoCatalogCount > 0) {
+                uploadStatus.textContent = `✅ ${successCount}/${filesToUpload.length} uploaded, ${autoCatalogCount} auto-cataloged to Discord!`;
+            } else {
+                uploadStatus.textContent = `✅ Successfully uploaded ${successCount}/${filesToUpload.length} file(s). Run !catalogimages on Discord to add to catalog.`;
+            }
+            showToast(`✅ ${successCount} image(s) processed!`);
+            // Reload images after successful upload
+            setTimeout(load, 500);
+        }
+
+        fileInput.value = '';
+    }
+
     async function load(){
         try{
             const r = await fetch('/api/images');
@@ -283,22 +608,42 @@ body { padding: 1.5rem; }
                 card.appendChild(thumb);
 
                 const meta = document.createElement('div'); meta.className='meta';
-                meta.innerHTML = `<strong class="embed-title">${img.name}</strong><div style="margin-top:4px">${(img.size/1024).toFixed(1)} KB</div>`;
+                const discordBadge = img.discord_url ? ' <span style="color: var(--success);">✓ Catalogued</span>' : ' <span style="color: var(--text-muted);">✗ Not in Discord</span>';
+                meta.innerHTML = `<strong class="embed-title">${img.name}</strong><div style="margin-top:4px">${(img.size/1024).toFixed(1)} KB${discordBadge}</div>`;
                 card.appendChild(meta);
 
                 const buttons = document.createElement('div'); buttons.className='buttons';
 
-                const copyLocal = document.createElement('button'); copyLocal.textContent='Copy Local URL'; copyLocal.className='btn-copy';
+                // Discord URL button - ALWAYS show, but styled differently if no URL
+                const copyDiscord = document.createElement('button'); 
+                copyDiscord.textContent='📋 Copy Discord URL'; 
+                copyDiscord.className='btn-copy';
+                
+                if(img.discord_url) {
+                    // Has URL - make it prominent
+                    copyDiscord.style.background = 'var(--primary)';
+                    copyDiscord.style.fontWeight = '600';
+                    copyDiscord.style.order = '-1';
+                    copyDiscord.onclick = ()=>{ copyTextExec(img.discord_url, 'Discord URL copied'); };
+                } else {
+                    // No URL yet - muted style with info
+                    copyDiscord.style.background = 'var(--text-muted)';
+                    copyDiscord.style.opacity = '0.6';
+                    copyDiscord.style.cursor = 'not-allowed';
+                    copyDiscord.title = 'Run !catalogimages to catalog this image';
+                    copyDiscord.onclick = ()=>{ showToast('Image not yet catalogued. Run !catalogimages', true); };
+                }
+                buttons.appendChild(copyDiscord);
+
+                const copyLocal = document.createElement('button'); 
+                copyLocal.textContent='Copy Local URL'; 
+                copyLocal.className='btn-copy secondary';
                 copyLocal.onclick = ()=>{ copyTextExec(img.local_url, 'Local URL copied'); };
                 buttons.appendChild(copyLocal);
 
-                if(img.discord_url){
-                    const copyDiscord = document.createElement('button'); copyDiscord.textContent='Copy Discord URL'; copyDiscord.className='btn-copy secondary';
-                    copyDiscord.onclick = ()=>{ copyTextExec(img.discord_url, 'Discord URL copied'); };
-                    buttons.appendChild(copyDiscord);
-                }
-
-                const copyData = document.createElement('button'); copyData.textContent='Copy Python Line'; copyData.className='btn-copy';
+                const copyData = document.createElement('button'); 
+                copyData.textContent='Copy Python Line'; 
+                copyData.className='btn-copy secondary';
                 copyData.onclick = ()=>{ 
                     const method = document.getElementById('embed-method').value;
                     let line;
