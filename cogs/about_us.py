@@ -6,7 +6,7 @@ EMBED_COLOR = 0xd0b47b
 ABOUT_US_CHANNEL_ID = 1329910454059008101
 OWNER_ID = 840949634071658507
 
-FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png?ex=697a9e9a&is=69794d1a&hm=9e44326e792f3092e3647f1cfce191c4b1d3264aa8eae50cd5c443bcb5b09ee1&s"
+FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png"
 FOOTER_TEXT = "Maplecliff National Guard"
 
 class RankInfoSelect(discord.ui.Select):
@@ -129,8 +129,8 @@ class AboutUs(commands.Cog):
             await ctx.send("About Us channel not found.")
             return
 
-        embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854134149316885/ABOUT_US.png?ex=697a9e8b&is=69794d0b&hm=86b6810bd98a4846f8a54ca80b80fcd2b9812719aaa621a2bd3d40f552323a4f&")
+        embed1 = discord.Embed(color=EMBED_COLOR, description="\u200b")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854134149316885/ABOUT_US.png")
 
         embed2 = discord.Embed(
             title="<:general:1343223933251358764> About Us",
@@ -158,7 +158,7 @@ class AboutUs(commands.Cog):
             inline=True
         )
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
-        embed2.set_image(url="http://localhost:8889/bottom_banner.png")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png")
 
         view = RankInfoView()
         await channel.send(embed=embed1)
