@@ -1,12 +1,13 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import os
 
 EMBED_COLOR = 0xd0b47b
 ABOUT_US_CHANNEL_ID = 1329910454059008101
 OWNER_ID = 840949634071658507
 
-FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465852877229522971/logo.png?ex=697a9d60&is=69794be0&hm=d1b5619d43397d9dbbe6d5bacdf5f83c8b1a8c4b2b59e8f1f4ce991c0d4c1a54&"
+IMAGES_DIR = os.path.join(os.path.dirname(__file__), "images")
 FOOTER_TEXT = "Maplecliff National Guard"
 
 class RankInfoSelect(discord.ui.Select):
@@ -38,8 +39,7 @@ class RankInfoSelect(discord.ui.Select):
                     "- [MG] - Major General\n"
                     "- [LTG] - Lieutenant General\n"
                     "- [GEN] - General\n"
-                    "- [GA] - General of the Army\n"
-
+                    "- [GOTN] - General of the National G\n"
                 )
             ),
             "high": discord.Embed(
@@ -49,8 +49,7 @@ class RankInfoSelect(discord.ui.Select):
                     "- [MAJ] - Major\n"
                     "- [LTC] - Lieutenant Colonel\n"
                     "- [COL] - Colonel\n"
-                )    
-
+                )
             ),
             "junior": discord.Embed(
                 title="__Junior Officers__",
@@ -59,8 +58,7 @@ class RankInfoSelect(discord.ui.Select):
                     "- [2LT] - Second Lieutenant\n"
                     "- [1LT] - First Lieutenant\n"
                     "- [CPT] - Captain\n"
-                )    
-
+                )
             ),
             "warrant": discord.Embed(
                 title="__Warrant Officers__ *(Middle Command)*",
@@ -106,8 +104,11 @@ class RankInfoSelect(discord.ui.Select):
             ),
         }
         embed = embeds[self.values[0]]
-        embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # Attach logo for footer
+        logo_path = os.path.join(IMAGES_DIR, "logo.png")
+        file = discord.File(logo_path, filename="logo.png")
+        embed.set_footer(text=FOOTER_TEXT, icon_url="attachment://logo.png")
+        await interaction.response.send_message(embed=embed, file=file, ephemeral=True)
 
 class RankInfoView(discord.ui.View):
     def __init__(self):
@@ -129,9 +130,17 @@ class AboutUs(commands.Cog):
             await ctx.send("About Us channel not found.")
             return
 
-        embed1 = discord.Embed(color=EMBED_COLOR, description="\u200b")
-        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854138096288001/about_us_banner.png?ex=697a9e8c&is=69794d0c&hm=a3cdd1ec8595ce0b72d90449b346ebc5c3099c5361df48efcf261f380ea2d306&")
+        # Load images from local files
+        banner_path = os.path.join(IMAGES_DIR, "about_us_banner.png")
+        bottom_path = os.path.join(IMAGES_DIR, "bottom.png")
+        logo_path = os.path.join(IMAGES_DIR, "logo.png")
 
+        # First embed with banner image
+        embed1 = discord.Embed(color=EMBED_COLOR, description="\u200b")
+        embed1.set_image(url="attachment://about_us_banner.png")
+        file1 = discord.File(banner_path, filename="about_us_banner.png")
+
+        # Second embed with content
         embed2 = discord.Embed(
             title="<:general:1343223933251358764> About Us",
             description="Welcome to the **Maplecliff National Guard!** Our mission is to ensure security, conduct strategic operations, and provide rapid emergency response, protect Maplecliff's borders, and assist the police force.",
@@ -157,11 +166,16 @@ class AboutUs(commands.Cog):
             ),
             inline=True
         )
-        embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465852837408936046/bottom.png?ex=697a9d56&is=69794bd6&hm=d135df998bf00660d48df53874de924f5a7c7eb3aa96622950925021589f29e0&")
+        embed2.set_footer(text=FOOTER_TEXT, icon_url="attachment://logo.png")
+        embed2.set_image(url="attachment://bottom.png")
+        
+        # Send with files attached
+        file2_bottom = discord.File(bottom_path, filename="bottom.png")
+        file2_logo = discord.File(logo_path, filename="logo.png")
+        
         view = RankInfoView()
-        await channel.send(embed=embed1)
-        await channel.send(embed=embed2, view=view)
+        await channel.send(embed=embed1, file=file1)
+        await channel.send(embed=embed2, files=[file2_bottom, file2_logo], view=view)
         await ctx.send("About Us sent.", delete_after=10)
 
 async def setup(bot: commands.Bot):
