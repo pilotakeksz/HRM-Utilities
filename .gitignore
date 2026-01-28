@@ -7,3 +7,6 @@ suggestion_message_map.pkl
 suggestion_votes.pkl
 backups/
 beta_cogs/
+__pycache__/
+*.pyc
+*.pyo
