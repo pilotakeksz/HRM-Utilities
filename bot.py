@@ -369,7 +369,7 @@ async def on_ready():
             embed.set_footer(text="Developed with love by tuna_admin 🐟")
 
             # Decide where to send: only send to the main version channel if we are actually able to ping the role (rate OK).
-            role_id_to_ping = 1329910398459052176
+            role_id_to_ping = 1371198979945271316
             ping_data_path = os.path.join("data", "version_ping.json")
             os.makedirs("data", exist_ok=True)
             ping_data = {"last_ping_ts": 0, "daily_count": 0, "day": ""}
