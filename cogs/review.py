@@ -17,7 +17,7 @@ ADMIN_ROLE_ID = 1355842403134603275      # Role required to delete reviews
 
 REVIEW_LOG_CHANNEL_ID = 1343686645815181382  # Action logs channel
 
-EMBED_IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=6901f15c&is=69009fdc&hm=34855a3ab691ecebbbe6b39dfd9c08b0c7c0453085a36d0d97a921c768e4394f&"
+EMBED_IMAGE_URL = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&"
 
 STAR_EMOJIS = {
     1: "⭐☆☆☆☆",

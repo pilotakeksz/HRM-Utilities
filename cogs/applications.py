@@ -10,8 +10,8 @@ EMBED_COLOUR = int(os.getenv("EMBED_COLOUR", "0xd0b47b"), 16)
 TRAINER_PING_ROLE_ID = 1329910397544960164
 
 FOOTER_TEXT = "Maplecliff National Guard"
-FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
-BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&"
+FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png?ex=697a9e9a&is=69794d1a&hm=9e44326e792f3092e3647f1cfce191c4b1d3264aa8eae50cd5c443bcb5b09ee1&"
+BOTTOM_IMAGE = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&"
 
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -82,8 +82,7 @@ class Applications(commands.Cog):
 
         # Embed 1 (image)
         embed1 = discord.Embed(color=EMBED_COLOUR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314341764861993/APPLICATIONS.png?ex=68acedc2&is=68ab9c42&hm=526afa60758bbd9e8ea32521386df0c0ce0d20f10ce50a78a223dc6aa07f95be&=&format=webp&quality=lossless&width=2576&height=862")
-
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854144677023927/APPLICATIONS.png?ex=697a9e8e&is=69794d0e&hm=59dfed676a3ffe4fc07a4f03d5e2a35c2c1f049e358ee8ae08748e38543470de&")
         # Embed 2 (main info)
         embed2 = discord.Embed(
             description=(

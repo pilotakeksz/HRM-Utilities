@@ -4,7 +4,7 @@ import os
 
 EMBED_COLOR = 0xd0b47b
 FOOTER_TEXT = "Maplecliff National Guard"
-FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
+FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png?ex=697a9e9a&is=69794d1a&hm=9e44326e792f3092e3647f1cfce191c4b1d3264aa8eae50cd5c443bcb5b09ee1&"
 
 VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 
@@ -25,7 +25,7 @@ class Verification(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314377718435921/VERIFICATION.png?ex=68acedcb&is=68ab9c4b&hm=012cadf60e26d32d668f8ea57909c1e69171bc86f3965a5013ec083aec580dad&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1466110718037459277/VERIFICATION.png?ex=697b8d82&is=697a3c02&hm=e8e19c7190822af7cdc39a74a80904f975f38fd0c13c26a35eeb8042a4342556&")
 
         embed2 = discord.Embed(
             title="<:HRMaboutus:1376647782248742993> MCNG Verification",
@@ -36,7 +36,7 @@ class Verification(commands.Cog):
             ),
             color=EMBED_COLOR
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1466110649137627452/bottom.png?ex=697b8d71&is=697a3bf1&hm=72e7b90e8ac56d236c78f02471543e80cb2f9273d670b90f7b4f6b12c0138187&")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         await channel.send(embeds=[embed1, embed2])

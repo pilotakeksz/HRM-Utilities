@@ -7,7 +7,7 @@ EMBED_COLOR = 0xd0b37b
 REGS_CHANNEL_ID = 1364242592887209984
 OWNER_ID = 840949634071658507
 
-FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
+FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854196673679545/logo.png?ex=697a9e9a&is=69794d1a&hm=9e44326e792f3092e3647f1cfce191c4b1d3264aa8eae50cd5c443bcb5b09ee1&"
 FOOTER_TEXT = "Maplecliff National Guard"
 
 class RegulationsSelect(Select):
@@ -96,7 +96,7 @@ class Rules(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314376019738664/REGULATIONS.png?ex=68acedcb&is=68ab9c4b&hm=9c0653b7ca7421ec9ff37a6c3f37a86784a44b20e2a6a417d7b5d07772b69272&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854213111414825/REGULATIONS.png?ex=697a9e9e&is=69794d1e&hm=a75a3dcc1f1a8539d018d603aa8abf2b6629540335bc905b930b9a087bcbd43f&")
 
         embed2 = discord.Embed(
             title="<:HRMaboutus:1376647782248742993> MCNG Regulations",
@@ -113,7 +113,7 @@ class Rules(commands.Cog):
             value="<:HRMdot:1376648507859144765> Discord Regulations\n<:HRMdot:1376648507859144765> In-game Regulations",
             inline=True
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         view = RegulationsView()
@@ -140,7 +140,7 @@ class Rules(commands.Cog):
             return
 
         embed1 = discord.Embed(color=EMBED_COLOR)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314376019738664/REGULATIONS.png?ex=68acedcb&is=68ab9c4b&hm=9c0653b7ca7421ec9ff37a6c3f37a86784a44b20e2a6a417d7b5d07772b69272&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854213111414825/REGULATIONS.png?ex=697a9e9e&is=69794d1e&hm=a75a3dcc1f1a8539d018d603aa8abf2b6629540335bc905b930b9a087bcbd43f&")
 
         embed2 = discord.Embed(
             title="<:HRMaboutus:1376647782248742993> MCNG Regulations",
@@ -157,7 +157,7 @@ class Rules(commands.Cog):
             value="<:HRMdot:1376648507859144765> Discord Regulations\n<:HRMdot:1376648507859144765> In-game Regulations",
             inline=True
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&s")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         view = RegulationsView()

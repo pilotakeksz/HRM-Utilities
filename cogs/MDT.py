@@ -166,7 +166,7 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
             )
         )
         embed.set_thumbnail(url=avatar_url)
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         embed.set_footer(text=f"ID: {arrest_id}")
 
         # Log to file
@@ -217,13 +217,13 @@ class MDTView(ui.View):
         can_end = state["active"]
         # Build deployment management embed
         embed1 = discord.Embed(color=TAN)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854201539203267/MDT.png?ex=697a9e9b&is=69794d1b&hm=3f8647178b6e530cddc6aa79172292ca2cca19a457afce9b39f41cb390b99d27&")
         embed2 = discord.Embed(
             title="<:MCNG:1409463907294384169> // Deployment Management",
             description="Manage deployments below.",
             color=TAN
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         view = DeploymentView(self.bot, can_start, can_move, can_end)
         await interaction.response.edit_message(embeds=[embed1, embed2], view=view)
         log_action(interaction.user, "Deployment Management", "Opened deployment management")
@@ -281,13 +281,13 @@ class DeploymentView(ui.View):
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
         ping = "<@&1329910276912447608>"
         embed1 = discord.Embed(color=RED)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854163861897300/DEPLOYMENT.png?ex=697a9e92&is=69794d12&hm=af6c948a5c1934665ec3bae9ddf272b12437ea76553a19b8f04164cfb599b718&")
         embed2 = discord.Embed(
             title="<:MCNG:1409463907294384169> // Deployment Ended",
             description="**The most recent deployment has ended.**",
             color=RED
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         embed2.set_footer(text=f"Ended by {interaction.user}")
         await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment ended.", ephemeral=True)
@@ -321,7 +321,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
         ping = "<@&1329910394831114281>"
         embed1 = discord.Embed(color=TAN)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854163861897300/DEPLOYMENT.png?ex=697a9e92&is=69794d12&hm=af6c948a5c1934665ec3bae9ddf272b12437ea76553a19b8f04164cfb599b718&")
         embed2 = discord.Embed(
             title="<:MCNG:1409463907294384169> // Deployment",
             description=f"{interaction.user.mention} has **started a deployment.**\n\n"
@@ -331,7 +331,7 @@ class StartDeploymentModal(ui.Modal, title="Start Deployment"):
                         f"> - Notes: **{self.notes.value or 'None'}**",
             color=TAN
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         await channel.send(content=ping, embeds=[embed1, embed2], view=DeploymentJoinView())
         await interaction.response.send_message("Deployment started.", ephemeral=True)
         log_action(interaction.user, "Deployment Started", f"Type: {self.deployment_type.value} | Location: {self.location.value} | Entry: {self.entry_code.value} | Notes: {self.notes.value}")
@@ -356,13 +356,13 @@ class MoveDeploymentModal(ui.Modal, title="Move Deployment Location"):
         channel = interaction.client.get_channel(DEPLOY_ANNOUNCE_CHANNEL_ID)
         ping = "<@&1329910276912447608>"
         embed1 = discord.Embed(color=YELLOW)
-        embed1.set_image(url="https://media.discordapp.net/attachments/1409252771978280973/1409314343748898988/DEPLOYMENT.png?ex=68acedc3&is=68ab9c43&hm=0f4fadd73244618fd0072320859b41b50afd2d5596625b2f2834a58524f31593&=&format=webp&quality=lossless&width=2576&height=862")
+        embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854163861897300/DEPLOYMENT.png?ex=697a9e92&is=69794d12&hm=af6c948a5c1934665ec3bae9ddf272b12437ea76553a19b8f04164cfb599b718&")
         embed2 = discord.Embed(
             title="<:MCNG:1409463907294384169> // Deployment Location Change",
             description=f"> - Location: **{self.location.value}**\n> - Notes: **{self.notes.value or 'None'}**",
             color=YELLOW
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         await channel.send(content=ping, embeds=[embed1, embed2])
         await interaction.response.send_message("Deployment location updated.", ephemeral=True)
         log_action(interaction.user, "Deployment Location Change", f"Location: {self.location.value} | Notes: {self.notes.value}")
@@ -409,7 +409,7 @@ class MDT(commands.Cog):
             title="<:MCNG:1409463907294384169> // Mobile Data Terminal",
             color=TAN
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         embed2.add_field(name="Log arrest", value="Log an arrest in the system.", inline=True)
         embed2.add_field(name="Deployment Management", value="Manage deployments and locations.", inline=True)
         await interaction.response.send_message(embeds=[embed1, embed2], view=MDTView(self.bot), ephemeral=True)

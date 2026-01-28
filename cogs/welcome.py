@@ -5,7 +5,7 @@ import datetime
 import json
 
 FOOTER_TEXT = "Maplecliff National Guard"  
-FOOTER_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
+FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1466110675532386325/logo.png?ex=697b8d78&is=697a3bf8&hm=835eff190c00a39aa1056170b8bb48dec1efa6c53401d66ebcd4e6cc7454c718&"
 EMBED_COLOR = 0xd0b47b
 MILESTONE_ROLE_ID = 1331667130000605278
 MILESTONE_MEMBER_COUNT = 500
@@ -126,7 +126,7 @@ class Welcome(commands.Cog):
             value="- [Apply here](https://discord.com/channels/1329908357812981882/1329910467698622494)",
             inline=True
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68ace89c&is=68ab971c&hm=c73c5e2a743578a77cbe94f2c9aefa25b27ca7165b182bdc6659af5d72d07274&")
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1466110649137627452/bottom.png?ex=697b8d71&is=697a3bf1&hm=72e7b90e8ac56d236c78f02471543e80cb2f9273d670b90f7b4f6b12c0138187&")
         embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         await ctx.send(content=welcome_text, embed=embed, view=WelcomeView(member_count))

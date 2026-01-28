@@ -40,7 +40,7 @@ NO_EMOJI = discord.PartialEmoji(name="no", id=1358812780890947625)
 MEMBER_EMOJI = discord.PartialEmoji(name="Member", id=1343945679390904330)
 
 EMBED_COLOR = 0xd0b47b
-IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68e8e4dc&is=68e7935c&hm=87d1062f2383b32fc32cdc397b1021296f29aa8caf549b38d3b7137ea8281262&"
+IMAGE_URL = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&"
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../logs/trainings.txt")
 SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "training_schedule.json")
@@ -55,10 +55,10 @@ def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: 
     """
     # choose color and image based on pass/fail
     if result.lower().startswith("pass"):
-        image_url = "https://cdn.discordapp.com/attachments/1409252771978280973/1439393464394580008/Template.png"
+        image_url = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854204768948469/PASS.png?ex=697a9e9c&is=69794d1c&hm=b79ecdb1b808c3fee803a514bd309254642a5e006959f8792688e90e7fc91491&"
         color = discord.Colour.green()
     else:
-        image_url = "https://media.discordapp.net/attachments/1409252771978280973/1439393779722485942/Template.png"
+        image_url = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854169750700093/FAIL.png?ex=697a9e94&is=69794d14&hm=78abbbd758d5033a80d44ec290f3a81d7f64848c3bad5fb1ebb3c6725c1f4c9b&"
         color = discord.Colour.red()
 
     # big visual embed
@@ -77,7 +77,7 @@ def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: 
         emb2.add_field(name="📝 Remarks", value=f"> {remarks}", inline=False)
     if notes:
         emb2.add_field(name="📌 Notes", value=f"> {notes}", inline=False)
-    emb2.set_image(url="https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=691a551c&is=6919039c&hm=e3875f03b5f806cd119131d923c940d68345f15296d23fd9e3a1ef3ed633bcc8&")
+    emb2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
     if include_notice:
         emb2.add_field(name="<:redflag:1343320162820165805> Notice", value=f"> Passing your training does **not** mean you are automatically personnel. You will have to pass an R/A. You may request one in <#1381232468430159993>.", inline=False)
     return emb_visual, emb2
