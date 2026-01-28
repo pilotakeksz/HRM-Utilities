@@ -21,8 +21,7 @@ CHANNEL_ASSISTANCE = int(os.getenv("CHANNEL_ASSISTANCE"))
 EMBED_COLOUR = int(os.getenv("EMBED_COLOUR"), 16)
 EMBED_FOOTER = "Maplecliff National Guard"
 EMBED_ICON = "https://cdn.discordapp.com/emojis/1409463907294384169.webp?size=240"
-EMBED1_IMAGE = os.getenv("EMBED1_IMAGE")
-EMBED2_IMAGE = os.getenv("EMBED2_IMAGE")
+IMAGES_DIR = os.path.join(os.path.dirname(__file__), "images")
 MIA_REDIRECT = os.getenv("MIA_REDIRECT")
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "../transcripts")
@@ -181,19 +180,23 @@ async def create_ticket(interaction, ticket_type, request_content):
         topic=f"Ticket opener: {user.id}"
     )
 
-    # Embed 1 (image)
-    embed1 = discord.Embed(color=EMBED_COLOUR)
-    embed1.set_image(url=EMBED1_IMAGE)
+    # Embed 1 (image) - use local file
+    embed1 = discord.Embed(color=EMBED_COLOUR, description="\u200b")
+    embed1.set_image(url="attachment://ASSISTANCE.png")
 
     # Embed 2 (info)
     embed2 = discord.Embed(
         description="Our personnel will be with you shortly. Please do not ping them unnecessarily.\n\nIn the mean time, please add details your initial inquiry.\n\n**Request / Inquiry:**\n" + request_content,
         color=EMBED_COLOUR
     )
-    embed2.set_image(url=EMBED2_IMAGE)
+    embed2.set_image(url="attachment://bottom.png")
     embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-    await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], view=TicketActionView())
+    # Attach local image files
+    file1 = discord.File(os.path.join(IMAGES_DIR, "ASSISTANCE.png"), filename="ASSISTANCE.png")
+    file2 = discord.File(os.path.join(IMAGES_DIR, "bottom.png"), filename="bottom.png")
+
+    await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], files=[file1, file2], view=TicketActionView())
 
     # Return the channel so the modal can redirect the user
     return channel
@@ -401,8 +404,8 @@ async def ensure_persistent_ticket_embed(bot):
         except Exception:
             message = None
     # If message doesn't exist, send it and store the ID
-    embed1 = discord.Embed(color=EMBED_COLOUR)
-    embed1.set_image(url=EMBED1_IMAGE)
+    embed1 = discord.Embed(color=EMBED_COLOUR, description="\u200b")
+    embed1.set_image(url="attachment://ASSISTANCE.png")
     embed2 = discord.Embed(
         title="📡 MCNG Assistance Hub",
         description="Welcome to the Maplecliff National Guard Assistance Hub. We're here to help you with all inquiries too specific to ask in public channels. Should you be in need of help, open a ticket any time.",
@@ -423,9 +426,12 @@ async def ensure_persistent_ticket_embed(bot):
         value="Appeals & reports — we'll review your case.",
         inline=True
     )
-    embed2.set_image(url=EMBED2_IMAGE)
+    embed2.set_image(url="attachment://bottom.png")
     embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
-    sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
+    
+    file1 = discord.File(os.path.join(IMAGES_DIR, "ASSISTANCE.png"), filename="ASSISTANCE.png")
+    file2 = discord.File(os.path.join(IMAGES_DIR, "bottom.png"), filename="bottom.png")
+    sent = await channel.send(embeds=[embed1, embed2], files=[file1, file2], view=TicketTypeView())
     with open(PERSIST_FILE, "w") as f:
         f.write(str(sent.id))
 
@@ -484,8 +490,8 @@ class TicketSystem(commands.Cog):
             await ctx.send("Assistance channel not found.", delete_after=10)
             return
 
-        embed1 = discord.Embed(color=EMBED_COLOUR)
-        embed1.set_image(url=EMBED1_IMAGE)
+        embed1 = discord.Embed(color=EMBED_COLOUR, description="\u200b")
+        embed1.set_image(url="attachment://ASSISTANCE.png")
 
         embed2 = discord.Embed(
             title="📡 MCNG Assistance Hub",
@@ -507,10 +513,12 @@ class TicketSystem(commands.Cog):
             value="Want to appeal a punishment or report a personnel member? Open an IA ticket and our team will review your case promptly.",
             inline=True
         )
-        embed2.set_image(url=EMBED2_IMAGE)
+        embed2.set_image(url="attachment://bottom.png")
         embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-        sent = await channel.send(embeds=[embed1, embed2], view=TicketTypeView())
+        file1 = discord.File(os.path.join(IMAGES_DIR, "ASSISTANCE.png"), filename="ASSISTANCE.png")
+        file2 = discord.File(os.path.join(IMAGES_DIR, "bottom.png"), filename="bottom.png")
+        sent = await channel.send(embeds=[embed1, embed2], files=[file1, file2], view=TicketTypeView())
         with open(PERSIST_FILE, "w") as f:
             f.write(str(sent.id))
         await ctx.send("Assistance embed sent.", delete_after=10)
