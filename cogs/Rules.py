@@ -143,7 +143,7 @@ class Rules(commands.Cog):
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854213111414825/REGULATIONS.png?ex=697a9e9e&is=69794d1e&hm=a75a3dcc1f1a8539d018d603aa8abf2b6629540335bc905b930b9a087bcbd43f&")
 
         embed2 = discord.Embed(
-            title="<:HRMaboutus:1376647782248742993> MCNG Regulations",
+            title="<:textfile4128:1397348478325227621> MCNG Ruless",
             description="<:HRMdot:1376648507859144765>Here at *Maplecliff National Guard,* we __ensure the safety of our community members__ by enforcing strict discord regulations to keep members safe from harmful users. Not adhering to the rules posted can result in a warning, kick, or ban based on the rule violated.",
             color=EMBED_COLOR
         )
