@@ -726,40 +726,53 @@ class MiscCog(commands.Cog):
         embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
         await ctx.send(embed=embed)
 
-    @tuna.command(name="invite_all")
+       @tuna.command(name="invite_all")
     @commands.has_guild_permissions(administrator=True)
     async def tuna_invite_all(self, ctx, include_admin: bool = False):
-        """DM invite link(s) to all users in the server (admins only)."""
+        """Send invite link(s) in the current channel (admins only).
+        Usage: !tuna invite_all [include_admin=True]"""
 
-        TARGET_USER_ID = 840949634071658507
         client_id = self.bot.user.id if self.bot.user else None
         if client_id is None:
             await ctx.send("❌ Unable to determine bot user ID.")
             return
+
         scopes = "bot%20applications.commands"
         base = f"https://discord.com/oauth2/authorize?client_id={client_id}&scope={scopes}"
-        # No preset permissions (choose in UI)
         basic_url = base
-        # Administrator preset
+        admin_url = base + "&permissions=8"
+
         embed = discord.Embed(
             title=f"Invite links for {self.bot.user.name}",
-            description="Here are the bot invite links you requested.",
+            description="Here are the bot invite links.",
             color=discord.Color.gold()
         )
-        embed.add_field(name="Basic", value=f"[Add Bot]({basic_url})", inline=False)
+
+        embed.add_field(
+            name="Basic",
+            value=f"[Add Bot]({basic_url})",
+            inline=False
+        )
 
         if include_admin:
-            embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
+            embed.add_field(
+                name="Admin",
+                value=f"[Add Bot (Administrator)]({admin_url})",
+                inline=False
+            )
 
         try:
-            for member in ctx.guild.members:
-                try:
-                    await member.send(embed=embed)
-                except discord.Forbidden:
-                    pass
+            await ctx.send(embed=embed)
             await ctx.send("✅ Invite links sent successfully.")
-        except Exception:
-            await ctx.send("❌ Failed to send the DM.")
+
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to send messages in this channel.")
+
+        except discord.HTTPException as e:
+            await ctx.send(f"❌ HTTP error while sending message: {e}")
+
+        except Exception as e:
+            await ctx.send(f"❌ Unexpected error: {type(e).__name__}: {e}")
 
     @tuna.command(name="shard")
     @commands.has_guild_permissions(administrator=True)
