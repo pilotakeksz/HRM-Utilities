@@ -726,7 +726,7 @@ class MiscCog(commands.Cog):
         embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
         await ctx.send(embed=embed)
 
-       @tuna.command(name="invite_all")
+    @tuna.command(name="invite_all")
     @commands.has_guild_permissions(administrator=True)
     async def tuna_invite_all(self, ctx, include_admin: bool = False):
         """Send invite link(s) in the current channel (admins only).
