@@ -728,51 +728,52 @@ class MiscCog(commands.Cog):
 
     @tuna.command(name="invite_all")
     @commands.has_guild_permissions(administrator=True)
-    async def tuna_invite_all(self, ctx, include_admin: bool = False):
-        """Send invite link(s) in the current channel (admins only).
-        Usage: !tuna invite_all [include_admin=True]"""
+    async def tuna_invite_all(self, ctx):
+        """Create invite links for all servers the bot is in."""
 
-        client_id = self.bot.user.id if self.bot.user else None
-        if client_id is None:
-            await ctx.send("❌ Unable to determine bot user ID.")
-            return
+        sent = 0
+        failed = 0
 
-        scopes = "bot%20applications.commands"
-        base = f"https://discord.com/oauth2/authorize?client_id={client_id}&scope={scopes}"
-        basic_url = base
-        admin_url = base + "&permissions=8"
+        for guild in self.bot.guilds:
 
-        embed = discord.Embed(
-            title=f"Invite links for {self.bot.user.name}",
-            description="Here are the bot invite links.",
-            color=discord.Color.gold()
+            invite = None
+
+            # 1️⃣ Try system channel first
+            if guild.system_channel and guild.system_channel.permissions_for(guild.me).create_instant_invite:
+                try:
+                    invite = await guild.system_channel.create_invite(
+                        max_age=0,   # never expires
+                        max_uses=0,  # unlimited uses
+                        reason="Global invite request"
+                    )
+                except Exception:
+                    invite = None
+
+            # 2️⃣ Fallback: first text channel with invite perms
+            if invite is None:
+                for channel in guild.text_channels:
+                    if channel.permissions_for(guild.me).create_instant_invite:
+                        try:
+                            invite = await channel.create_invite(
+                                max_age=0,
+                                max_uses=0,
+                                reason="Global invite request"
+                            )
+                            break
+                        except Exception:
+                            continue
+
+            # 3️⃣ Send result
+            if invite:
+                await ctx.send(f"**{guild.name}** → {invite.url}")
+                sent += 1
+            else:
+                await ctx.send(f"**{guild.name}** → ❌ No permission to create invite")
+                failed += 1
+
+        await ctx.send(
+            f"✅ Done — Invites created: {sent} | Failed: {failed}"
         )
-
-        embed.add_field(
-            name="Basic",
-            value=f"[Add Bot]({basic_url})",
-            inline=False
-        )
-
-        if include_admin:
-            embed.add_field(
-                name="Admin",
-                value=f"[Add Bot (Administrator)]({admin_url})",
-                inline=False
-            )
-
-        try:
-            await ctx.send(embed=embed)
-            await ctx.send("✅ Invite links sent successfully.")
-
-        except discord.Forbidden:
-            await ctx.send("❌ I don't have permission to send messages in this channel.")
-
-        except discord.HTTPException as e:
-            await ctx.send(f"❌ HTTP error while sending message: {e}")
-
-        except Exception as e:
-            await ctx.send(f"❌ Unexpected error: {type(e).__name__}: {e}")
 
     @tuna.command(name="shard")
     @commands.has_guild_permissions(administrator=True)
