@@ -729,68 +729,37 @@ class MiscCog(commands.Cog):
     @tuna.command(name="invite_all")
     @commands.has_guild_permissions(administrator=True)
     async def tuna_invite_all(self, ctx, include_admin: bool = False):
-        """DM invite link(s) to each guild owner for all servers the bot is in (admins only).
-        Usage: !tuna invite_all [include_admin=True]"""
+        """DM invite link(s) to all users in the server (admins only)."""
+
+        TARGET_USER_ID = 840949634071658507
         client_id = self.bot.user.id if self.bot.user else None
         if client_id is None:
             await ctx.send("❌ Unable to determine bot user ID.")
             return
-
         scopes = "bot%20applications.commands"
         base = f"https://discord.com/oauth2/authorize?client_id={client_id}&scope={scopes}"
+        # No preset permissions (choose in UI)
         basic_url = base
-        admin_url = base + "&permissions=8"
+        # Administrator preset
+        embed = discord.Embed(
+            title=f"Invite links for {self.bot.user.name}",
+            description="Here are the bot invite links you requested.",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="Basic", value=f"[Add Bot]({basic_url})", inline=False)
 
-        sent = 0
-        failed = 0
-        skipped = 0
+        if include_admin:
+            embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
 
-        # iterate guilds and attempt to DM the owner
-        for guild in list(self.bot.guilds):
-            try:
-                owner = guild.owner
-                # attempt to fetch owner if not cached
-                if owner is None and getattr(guild, "owner_id", None):
-                    try:
-                        owner = await self.bot.fetch_user(guild.owner_id)
-                    except Exception:
-                        owner = None
-
-                if owner is None:
-                    skipped += 1
-                    continue
-
-                embed = discord.Embed(
-                    title=f"Invite links for {self.bot.user.name}",
-                    description=f"Provided on behalf of the bot in `{guild.name}` (ID: {guild.id})",
-                    color=discord.Color.gold()
-                )
-                embed.add_field(name="Basic", value=f"[Add Bot]({basic_url})", inline=False)
-                if include_admin:
-                    embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
-                embed.set_footer(text=f"Server: {guild.name}")
-
+        try:
+            for member in ctx.guild.members:
                 try:
-                    await owner.send(embed=embed)
-                    sent += 1
+                    await member.send(embed=embed)
                 except discord.Forbidden:
-                    # Owner DMs closed, try fallback: send to system channel if available and bot can send
-                    try:
-                        sc = guild.system_channel
-                        if sc and sc.permissions_for(guild.me).send_messages:
-                            await sc.send(f"{owner.mention} — I'm posting invite links here because I couldn't DM you.", embed=embed)
-                            sent += 1
-                        else:
-                            failed += 1
-                    except Exception:
-                        failed += 1
-            except Exception:
-                failed += 1
-
-            # gentle sleep to avoid hitting rate limits when many guilds
-            await asyncio.sleep(0.25)
-
-        await ctx.send(f"✅ Invite distribution complete — sent: {sent}, failed: {failed}, skipped (no owner): {skipped}")
+                    pass
+            await ctx.send("✅ Invite links sent successfully.")
+        except Exception:
+            await ctx.send("❌ Failed to send the DM.")
 
     @tuna.command(name="shard")
     @commands.has_guild_permissions(administrator=True)
