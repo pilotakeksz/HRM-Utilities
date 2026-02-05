@@ -726,8 +726,7 @@ class MiscCog(commands.Cog):
         embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
         await ctx.send(embed=embed)
 
-    await ctx.send(f"✅ Invite distribution complete — sent: {sent}, failed: {failed}, skipped (no owner): {skipped}")
-
+ 
     @tuna.command(name="shard")
     @commands.has_guild_permissions(administrator=True)
     async def tuna_shard(self, ctx):
