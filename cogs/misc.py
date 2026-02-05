@@ -726,54 +726,7 @@ class MiscCog(commands.Cog):
         embed.add_field(name="Admin", value=f"[Add Bot (Administrator)]({admin_url})", inline=False)
         await ctx.send(embed=embed)
 
-    @tuna.command(name="invite_all")
-    @commands.has_guild_permissions(administrator=True)
-    async def tuna_invite_all(self, ctx):
-        """Create invite links for all servers the bot is in."""
-
-        sent = 0
-        failed = 0
-
-        for guild in self.bot.guilds:
-
-            invite = None
-
-            # 1️⃣ Try system channel first
-            if guild.system_channel and guild.system_channel.permissions_for(guild.me).create_instant_invite:
-                try:
-                    invite = await guild.system_channel.create_invite(
-                        max_age=0,   # never expires
-                        max_uses=0,  # unlimited uses
-                        reason="Global invite request"
-                    )
-                except Exception:
-                    invite = None
-
-            # 2️⃣ Fallback: first text channel with invite perms
-            if invite is None:
-                for channel in guild.text_channels:
-                    if channel.permissions_for(guild.me).create_instant_invite:
-                        try:
-                            invite = await channel.create_invite(
-                                max_age=0,
-                                max_uses=0,
-                                reason="Global invite request"
-                            )
-                            break
-                        except Exception:
-                            continue
-
-            # 3️⃣ Send result
-            if invite:
-                await ctx.send(f"**{guild.name}** → {invite.url}")
-                sent += 1
-            else:
-                await ctx.send(f"**{guild.name}** → ❌ No permission to create invite")
-                failed += 1
-
-        await ctx.send(
-            f"✅ Done — Invites created: {sent} | Failed: {failed}"
-        )
+    await ctx.send(f"✅ Invite distribution complete — sent: {sent}, failed: {failed}, skipped (no owner): {skipped}")
 
     @tuna.command(name="shard")
     @commands.has_guild_permissions(administrator=True)
