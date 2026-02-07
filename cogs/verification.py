@@ -36,7 +36,7 @@ class Verification(commands.Cog):
             ),
             color=EMBED_COLOR
         )
-        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1466110649137627452/bottom.png?ex=697b8d71&is=697a3bf1&hm=72e7b90e8ac56d236c78f02471543e80cb2f9273d670b90f7b4f6b12c0138187&")
+        embed2.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1466110649137627452/bottom.png?ex=697b8d71&is=697a3bf1&hm=72e7b90e8ac56d236c78f02471543e80cb2f9273d670b90f7b4f6b12c0138187&s")
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
 
         await channel.send(embeds=[embed1, embed2])

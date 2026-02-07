@@ -35,6 +35,24 @@ def log_button_click(user: discord.User, button_name: str, action: str, result: 
 # Authorized E-STOP users
 # ---------------------------
 ESTOP_ALLOWED = {840949634071658507, 735167992966676530}
+# ---------------------------
+# Authorized BEEP users
+# ---------------------------
+BEEP_ALLOWED = {
+    735167992966676530,
+1370958508241064059,
+840949634071658507,
+1070368928871760074,
+1185282242205978657,
+1214281111513858060
+
+}
+
+# Cooldown tracking: user_id -> datetime
+BEEP_COOLDOWNS = {}
+
+# Cooldown duration (3 hours)
+BEEP_COOLDOWN_HOURS = 3
 
 # ---------------------------
 # LCD Message Modal
@@ -142,6 +160,8 @@ class EStopView(discord.ui.View):
             discord.SelectOption(label="Enable Per-Print Camera", value="enable_per_print", description="Enable per-print camera switching for next print (admin)", emoji="✅"),
             discord.SelectOption(label="Disable Per-Print Camera", value="disable_per_print", description="Disable per-print camera switching (admin)", emoji="⛔"),
             discord.SelectOption(label="Switch Camera Now", value="switch_camera", description="Toggle primary/secondary camera immediately (admin)", emoji="🔀"),
+            discord.SelectOption(label="Beep Printer",value="beep_printer",description="Make the printer beep (allowlisted users)",emoji="🔔"),
+
         ]
 
         select = discord.ui.Select(placeholder="Choose action...", min_values=1, max_values=1, options=options)
@@ -170,7 +190,94 @@ class EStopView(discord.ui.View):
                     self.bot.active_tokens.pop(user_id, None)
                 asyncio.create_task(expire_token())
                 return
+            # ---------------------------
+            # BEEP PRINTER
+            # ---------------------------
+            if action == "beep_printer":
+                user_id = interaction.user.id
 
+                # Authorization check
+                if user_id not in BEEP_ALLOWED:
+                    log_button_click(interaction.user, "Beep Printer", "Unauthorized attempt", "Denied")
+                    await interaction.response.send_message(
+                        "You are not authorized to use the beep function.",
+                        ephemeral=True
+                    )
+                    return
+
+                # Cooldown check
+                now = datetime.utcnow()
+                if user_id in BEEP_COOLDOWNS:
+                    last_used = BEEP_COOLDOWNS[user_id]
+                    cooldown_delta = timedelta(hours=BEEP_COOLDOWN_HOURS)
+
+                    if now - last_used < cooldown_delta:
+                        remaining = cooldown_delta - (now - last_used)
+                        hours = remaining.seconds // 3600
+                        minutes = (remaining.seconds % 3600) // 60
+
+                        time_str = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+                        log_button_click(
+                            interaction.user,
+                            "Beep Printer",
+                            "Cooldown active",
+                            "Denied",
+                            f"{time_str} remaining"
+                        )
+
+                        await interaction.response.send_message(
+                            f"🔔 You can beep again in {time_str}. "
+                            f"({BEEP_COOLDOWN_HOURS}h cooldown)",
+                            ephemeral=True
+                        )
+                        return
+
+                # Check printer connection
+                data = self.cog._get_status()
+                if not data.get("connected", False):
+                    log_button_click(interaction.user, "Beep Printer", "Printer offline", "Failed")
+                    await interaction.response.send_message(
+                        "Printer is offline. Cannot beep.",
+                        ephemeral=True
+                    )
+                    return
+
+                # Send beep command
+                gcode_command = "M300 S1000 P500"
+                result = self.cog._send_gcode(gcode_command)
+
+                if result == "OK":
+                    BEEP_COOLDOWNS[user_id] = now
+
+                    log_button_click(
+                        interaction.user,
+                        "Beep Printer",
+                        "Beep executed",
+                        "Success"
+                    )
+
+                    await interaction.response.send_message(
+                        "🔔 Printer beeped successfully.\n"
+                        f"Cooldown: {BEEP_COOLDOWN_HOURS} hours.",
+                        ephemeral=True
+                    )
+                else:
+                    log_button_click(
+                        interaction.user,
+                        "Beep Printer",
+                        "Beep failed",
+                        "Error",
+                        result
+                    )
+
+                    await interaction.response.send_message(
+                        f"❌ Failed to beep printer: {result}",
+                        ephemeral=True
+                    )
+
+                return
+                
             # UPDATE IMAGE
             if action == "update_image":
                 log_button_click(interaction.user, "Update Image", "Select used")
