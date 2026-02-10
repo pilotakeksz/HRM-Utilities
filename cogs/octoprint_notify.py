@@ -394,7 +394,9 @@ class EStopView(discord.ui.View):
             # SWITCH CAMERA NOW
             if action == "switch_camera":
                 user_id = interaction.user.id
-                if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("735167992966676530","840949634071658507")):
+                if not (getattr(interaction.user, "guild_permissions", None) 
+                    and interaction.user.guild_permissions.administrator 
+                    and str(user_id).startswith(("8", "7"))):
                     log_button_click(interaction.user, "Switch Camera Now", "Unauthorized", "Denied")
                     await interaction.response.send_message("Only server administrators with a user ID starting with '8' can switch camera.", ephemeral=True)
                     return
