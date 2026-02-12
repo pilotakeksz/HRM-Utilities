@@ -14,6 +14,7 @@ import inspect
 
 # Constants
 IMMUNE_USER_ID = 840949634071658507
+BOT = 1387175664649506847
 IMMUNE_ROLE_ID = 1329910230066401361
 QUARANTINE_ROLE_ID = 1432834406791254058
 ADMIN_ROLE_ID = 1355842403134603275
@@ -1692,6 +1693,8 @@ class RaidProtection(commands.Cog):
             # Check if user ID matches protected user
             user_id = getattr(user, 'id', None)
             if user_id == IMMUNE_USER_ID:
+                return True
+            if user_id == BOT:
                 return True
             
             # Check if user has protected role (only if we can access roles)
