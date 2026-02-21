@@ -70,4 +70,8 @@ class Automod(commands.Cog):
             )
 
             if log_channel:
+
                 await log_channel.send(embed=embed)
+
+async def setup(bot):
+    await bot.add_cog(Automod(bot))
