@@ -11,6 +11,7 @@ TIMEOUT_MINUTES = 10
 phrases = ["Fuck","Asshat","Asshole","bitch","addhat","kys","cunt","belkend","bellen","bellend","nigger","nigga","wanker","goon","Dickhead","Gooner","hoe","dick","Twat","Mother fucker","shit head","Piss","Twit","Prat","Knob","Tosset","Butthead","Prick","Arse","Bastard","Tosser","Bullshit","Pussy","Dipshit","Fag","Whore","Bollocks","Bonehead","Bimbo","Airhead","Knobhead","faggot","Cumdumpster","Tit","Tits","Shitpouch","Pish","Juzzstain","Nonce","Cumwipe","Fanny","Zizzstain","Pisswizard","Duckweasle","DickWeasel","BAWBAG","Fuckwit","Fucka","Fuck00","Fuck22","Fuckq","Fucku","Cockwomble","Fucki","Cocka","Dicka"]
 
 automodbypass = [911072161349918720, 840949634071658507, 735167992966676530]
+bypassrole = 1329910230066401361
 
 class Automod(commands.Cog):
     def __init__(self, bot):
@@ -22,6 +23,9 @@ class Automod(commands.Cog):
             return
         
         if message.author.id in automodbypass:
+            return
+
+        if (message.author.id in automodbypass or any(role.id == bypassrole for role in message.author.roles)):
             return
 
         content = message.content.lower()
