@@ -2,6 +2,7 @@ import discord
 import os
 from datetime import datetime, timedelta
 from discord.ext import commands
+import re
 
 AUTOMOD_LOG_FILE = os.path.join("logs", "automod_protection.log")
 
@@ -21,16 +22,16 @@ class Automod(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
-        
-        if message.author.id in automodbypass:
-            return
 
         if (message.author.id in automodbypass or any(role.id == bypassrole for role in message.author.roles)):
             return
 
         content = message.content.lower()
         
-        if any(p in content for p in phrases):
+        pattern = "(" + "|".join(map(re.escape, phrases)) + ")"
+        x = re.findall(pattern, content, re.IGNORECASE)
+        
+        if x:
             await message.delete()
 
             timeout_until = discord.utils.utcnow() + timedelta(minutes=TIMEOUT_MINUTES)
