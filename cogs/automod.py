@@ -18,7 +18,7 @@ TIMEOUT_MINUTES = 10
 
 
 PHRASES_B64 = (
-    ""
+    "")
 
 # Decode at runtime into the `phrases` list (JSON array stored in the blob)
 _PHRASE_LIST = json.loads(base64.b64decode(PHRASES_B64).decode())
