@@ -21,9 +21,6 @@ class Automod(commands.Cog):
         if message.author.bot:
             return
         
-        if not message.guild:
-            return  # ignore DMs
-        
         if message.author.id in automodbypass:
             return
 
@@ -75,3 +72,4 @@ class Automod(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Automod(bot))
+
