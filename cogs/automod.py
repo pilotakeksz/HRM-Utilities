@@ -1,9 +1,10 @@
 import discord
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from discord.ext import commands
 
 AUTOMOD_LOG_FILE = os.path.join("logs", "automod_protection.log")
+
 LOG_CHANNEL_ID = 1329910577375482068
 TIMEOUT_MINUTES = 10
 
@@ -14,42 +15,59 @@ automodbypass = [911072161349918720, 840949634071658507, 735167992966676530]
 class Automod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    def contains_banned(self, message_content: str) -> bool:
-        content = "".join(c.lower() for c in message_content if c.isalpha())
-        for phrase in phrases:
-            phrase_clean = "".join(c.lower() for c in phrase if c.isalpha())
-            idx = 0
-            for char in content:
-                if char == phrase_clean[idx]:
-                    idx += 1
-                    if idx == len(phrase_clean):
-                        return True
-        return False
-
+    
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
+        
         if message.author.id in automodbypass:
             return
-        if self.contains_banned(message.content):
+
+        content = message.content.lower()
+        
+        if any(p in content for p in phrases):
             await message.delete()
+
             timeout_until = discord.utils.utcnow() + timedelta(minutes=TIMEOUT_MINUTES)
-            await message.author.timeout(timeout_until, reason="MCNG utils automoderation")
+
+            await message.author.timeout(
+                timeout_until,
+                reason="MCNG utils automoderation"
+            )
+
             log_channel = message.guild.get_channel(LOG_CHANNEL_ID)
+
             embed = discord.Embed(
                 title="Automod Triggered",
                 description="User has been automatically muted.",
                 color=discord.Color.red(),
                 timestamp=discord.utils.utcnow()
             )
-            embed.add_field(name="User", value=f"{message.author} ({message.author.id})", inline=False)
-            embed.add_field(name="Channel", value=message.channel.mention, inline=False)
-            embed.add_field(name="Timeout", value=f"{TIMEOUT_MINUTES} minutes", inline=False)
-            embed.add_field(name="Message Content", value=message.content[:1000], inline=False)
+            
+            embed.add_field(
+                name="User",
+                value=f"{message.author} ({message.author.id})",
+                inline=False
+            )
+            embed.add_field(
+                name="Channel",
+                value=message.channel.mention,
+                inline=False
+            )
+            embed.add_field(
+                name="Timeout",
+                value=f"{TIMEOUT_MINUTES} minutes",
+                inline=False
+            )
+            embed.add_field(
+                name="Message Content",
+                value=message.content[:1000],
+                inline=False
+            )
+
             if log_channel:
                 await log_channel.send(embed=embed)
-
+                
 async def setup(bot):
     await bot.add_cog(Automod(bot))
