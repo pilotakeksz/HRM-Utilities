@@ -338,7 +338,7 @@ HRM-Utilities/
 
 ## 📄 License
 
-This project is developed for the High Rock Military Corps Discord server.
+This project is developed for the Maplecliff National Guard Discord server.
 
 ## 👥 Credits
 
@@ -353,6 +353,6 @@ This project is developed for the High Rock Military Corps Discord server.
 
 ---
 
-**Version:** 2.0.0  
-**Last Updated:** January 2024  
-**Discord Server:** High Rock Military Corps
+**Version:** v853
+**Last Updated:** feb 2026 
+**Discord Server:** Maplecliff National Guard
