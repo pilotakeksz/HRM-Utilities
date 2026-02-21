@@ -8,7 +8,7 @@ FOOTER_TEXT = "Maplecliff National Guard"
 FOOTER_ICON = "https://cdn.discordapp.com/attachments/1465844086480310342/1466110675532386325/logo.png?ex=697b8d78&is=697a3bf8&hm=835eff190c00a39aa1056170b8bb48dec1efa6c53401d66ebcd4e6cc7454c718&"
 EMBED_COLOR = 0xd0b47b
 MILESTONE_ROLE_ID = 1331667130000605278
-MILESTONE_MEMBER_COUNT = 500
+MILESTONE_MEMBER_COUNT = 600
 MILESTONE_COOLDOWN_HOURS = 48
 MILESTONE_DATA_FILE = os.path.join("data", "milestone_data.json")
 
@@ -196,7 +196,7 @@ class Welcome(commands.Cog):
         else:
             print("Welcome channel not found.")
 
-        # Check for 500 member milestone (only if 48 hours have passed since last milestone)
+        # Check for 600 member milestone (only if 48 hours have passed since last milestone)
         if member_count == MILESTONE_MEMBER_COUNT and self.can_send_milestone(member.guild.id):
             await self.send_milestone_message(member.guild, member_count, is_test=False)
             # Update the timestamp for this guild
@@ -204,7 +204,7 @@ class Welcome(commands.Cog):
             self.save_milestone_data()
 
     async def send_milestone_message(self, guild: discord.Guild, member_count: int, is_test: bool = False):
-        """Send a special message when the server hits exactly 500 members.
+        """Send a special message when the server hits exactly 600 members.
         
         Args:
             guild: The Discord guild
@@ -247,10 +247,10 @@ class Welcome(commands.Cog):
         except Exception as e:
             print(f"Failed to send milestone message: {e}")
 
-    @commands.command(name="test500")
+    @commands.command(name="test600")
     @commands.has_guild_permissions(administrator=True)
     async def test_milestone(self, ctx):
-        """Test command to send the 500 member milestone message (admin only).
+        """Test command to send the 600 member milestone message (admin only).
         Test runs do not count towards the 48-hour cooldown."""
         await self.send_milestone_message(ctx.guild, MILESTONE_MEMBER_COUNT, is_test=True)
         await ctx.send("✅ Milestone test message sent! (This does not affect the 48-hour cooldown)", delete_after=5)
