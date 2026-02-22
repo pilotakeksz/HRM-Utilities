@@ -77,16 +77,23 @@ async def collect_context_proof(message: discord.Message, limit: int = 3) -> tup
     """Collect context messages and return (markdown, base64)."""
     ctx_msgs = []
     try:
-        async for m in message.channel.history(limit=limit, before=message, oldest_first=True):
-            ctx_msgs.append({
+        # Collect the most recent `limit` messages that occurred BEFORE the offending message.
+        # `history(limit=..., before=message)` returns newest->oldest by default, so gather
+        # them then reverse to get chronological order (oldest -> newest), then append culprit.
+        recent = []
+        async for m in message.channel.history(limit=limit, before=message):
+            recent.append({
                 "author": str(m.author),
                 "author_id": m.author.id,
                 "content": m.content,
                 "created_at": m.created_at.isoformat()
             })
+        recent.reverse()
+        ctx_msgs = recent
     except Exception:
         ctx_msgs = []
-    
+
+    # Append the offending message itself as the last entry
     ctx_msgs.append({
         "author": str(message.author),
         "author_id": message.author.id,
