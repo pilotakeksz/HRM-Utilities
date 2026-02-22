@@ -468,6 +468,7 @@ class RaidProtection(commands.Cog):
     @tasks.loop(minutes=5)
     async def check_quarantines(self):
         try:
+            self.load_quarantine_data()
             now = datetime.now(timezone.utc).timestamp()
             for user_id, data in list(self.quarantined_users.items()):
                 if now - data["timestamp"] >= data["duration"]:
@@ -1531,6 +1532,8 @@ class RaidProtection(commands.Cog):
             await interaction.response.send_message("You need the admin role to use this command.", ephemeral=True)
             return
 
+        # Reload from file so users added by automod (reply+mute/quarantine) are visible
+        self.load_quarantine_data()
         entry = self.quarantined_users.get(str(user.id))
         if not entry:
             await interaction.response.send_message("That user is not in the quarantine list.", ephemeral=True)
