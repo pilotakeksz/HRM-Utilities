@@ -353,6 +353,6 @@ This project is developed for the Maplecliff National Guard Discord server.
 
 ---
 
-**Version:** v853
+**Version:** v872
 **Last Updated:** feb 2026 
 **Discord Server:** Maplecliff National Guard
