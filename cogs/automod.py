@@ -34,7 +34,6 @@ MUTE_PATTERNS = [    r"\b[s$5z]+[\W_]*[h#]+[\W_]*[i1!|l]+[\W_]*[t7+]+[a-z0-9$#@!
     r"\b(f+|ph)([a*u*y*i]*)(c+|k+|q+|z+|w+|\*+)([u*c*k*q*z*w]*)(k+|c+|\*)(e+r+|i+n+g+|e+d+)?\b",
     r"\b[s$5z]+[\W_]*[h#]+[\W_]*[i1!|l]+[\W_]*[t7+]+s*\b",]
 QUARANTINE_PATTERNS = [
-
 ]
 BAN_PATTERNS = [
 
@@ -45,7 +44,7 @@ COMPILED_MUTE = [re.compile(p, re.IGNORECASE) for p in MUTE_PATTERNS]
 COMPILED_QUARANTINE = [re.compile(p, re.IGNORECASE) for p in QUARANTINE_PATTERNS]
 COMPILED_BAN = [re.compile(p, re.IGNORECASE) for p in BAN_PATTERNS]
 
-MUTE_DURATION_MINUTES = 30
+MUTE_DURATION_MINUTES = 60
 QUARANTINE_DURATION_SECONDS = 172800
 INFRACT_THRESHOLD = MUTE_THRESHOLD = QUARANTINE_THRESHOLD = BAN_THRESHOLD = 1
 MODERATION_TRACKING_FILE = os.path.join("data", "moderation_tracking.json")
@@ -582,10 +581,7 @@ class Automod(commands.Cog):
         # =====================================================================
         # AUTOMATIC KEYWORD-BASED MODERATION
         # =====================================================================
-        # Only applies to personnel
         if not isinstance(message.author, discord.Member):
-            return
-        if not any(role.id == PERSONNEL_ROLE_ID for role in message.author.roles):
             return
 
         # Check for matches
@@ -614,53 +610,61 @@ class Automod(commands.Cog):
         context_md, context_b64 = await collect_context_proof(message)
 
         if ban_matches:
-            ban_id = str(uuid.uuid4())
-            await send_infraction_notification(self.bot, message.author, self.bot.user, "Termination", f"Automod detected: {', '.join(ban_matches)}", ban_id, context_md)
-            await message.guild.ban(message.author, reason=f"Automod: {ban_matches}")
-            event = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "action": "ban",
-                "target_id": message.author.id,
-                "target": str(message.author),
-                "reason": f"Automod ban: {ban_matches}",
-                "matched_words": ban_matches,
-                "context_b64": context_b64
-            }
-            await update_tracking(message.author.id, event)
-            await send_action_log(self.bot, message.author.id, "ban", f"Automod: {', '.join(ban_matches)}", ban_id)
-            logger.info(f"Banned {message.author} for: {ban_matches}")
-            return
+            # Ban only applies to personnel
+            if not any(role.id == PERSONNEL_ROLE_ID for role in message.author.roles):
+                logger.info(f"Ban match for non-personnel {message.author}, skipping")
+            else:
+                ban_id = str(uuid.uuid4())
+                await send_infraction_notification(self.bot, message.author, self.bot.user, "Termination", f"Automod detected: {', '.join(ban_matches)}", ban_id, context_md)
+                await message.guild.ban(message.author, reason=f"Automod: {ban_matches}")
+                event = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "action": "ban",
+                    "target_id": message.author.id,
+                    "target": str(message.author),
+                    "reason": f"Automod ban: {ban_matches}",
+                    "matched_words": ban_matches,
+                    "context_b64": context_b64
+                }
+                await update_tracking(message.author.id, event)
+                await send_action_log(self.bot, message.author.id, "ban", f"Automod: {', '.join(ban_matches)}", ban_id)
+                logger.info(f"Banned {message.author} for: {ban_matches}")
+                return
 
         if quarantine_matches:
-            raid_cog = self.bot.get_cog("RaidProtection")
-            if raid_cog:
-                try:
-                    await raid_cog.quarantine_user(message.author, f"Automod: {quarantine_matches}")
-                    # Manually apply quarantine role if not already present
+            # Quarantine only applies to personnel
+            if not any(role.id == PERSONNEL_ROLE_ID for role in message.author.roles):
+                logger.info(f"Quarantine match for non-personnel {message.author}, skipping")
+            else:
+                raid_cog = self.bot.get_cog("RaidProtection")
+                if raid_cog:
                     try:
-                        quar_role = message.guild.get_role(QUARANTINE_ROLE_ID)
-                        if quar_role and quar_role not in message.author.roles:
-                            await message.author.add_roles(quar_role, reason=f"Quarantine: {quarantine_matches}")
-                            logger.info(f"Applied quarantine role to {message.author}")
+                        await raid_cog.quarantine_user(message.author, f"Automod: {quarantine_matches}")
+                        # Manually apply quarantine role if not already present
+                        try:
+                            quar_role = message.guild.get_role(QUARANTINE_ROLE_ID)
+                            if quar_role and quar_role not in message.author.roles:
+                                await message.author.add_roles(quar_role, reason=f"Quarantine: {quarantine_matches}")
+                                logger.info(f"Applied quarantine role to {message.author}")
+                        except Exception as e:
+                            logger.error(f"Could not apply quarantine role: {e}")
+                        
+                        event = {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "action": "quarantine",
+                            "target_id": message.author.id,
+                            "target": str(message.author),
+                            "reason": f"Automod quarantine: {quarantine_matches}",
+                            "matched_words": quarantine_matches,
+                            "context_b64": context_b64
+                        }
+                        await update_tracking(message.author.id, event)
+                        quar_id = str(uuid.uuid4())
+                        await send_action_log(self.bot, message.author.id, "quarantine", f"Automod: {', '.join(quarantine_matches)}", quar_id)
+                        logger.info(f"Quarantined {message.author} for: {quarantine_matches}")
+                        return
                     except Exception as e:
-                        logger.error(f"Could not apply quarantine role: {e}")
-                    
-                    event = {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "action": "quarantine",
-                        "target_id": message.author.id,
-                        "target": str(message.author),
-                        "reason": f"Automod quarantine: {quarantine_matches}",
-                        "matched_words": quarantine_matches,
-                        "context_b64": context_b64
-                    }
-                    await update_tracking(message.author.id, event)
-                    quar_id = str(uuid.uuid4())
-                    await send_action_log(self.bot, message.author.id, "quarantine", f"Automod: {', '.join(quarantine_matches)}", quar_id)
-                    logger.info(f"Quarantined {message.author} for: {quarantine_matches}")
-                    return
-                except Exception as e:
-                    logger.error(f"Quarantine error: {e}")
+                        logger.error(f"Quarantine error: {e}")
 
         if mute_matches:
             try:
@@ -684,26 +688,30 @@ class Automod(commands.Cog):
                 logger.error(f"Mute error: {e}")
 
         if infraction_matches:
-            inf_cog = self.bot.get_cog("Infraction")
-            if inf_cog:
-                try:
-                    inf_id = str(uuid.uuid4())
-                    await inf_cog.add_infraction(inf_id, message.author, self.bot.user, "Warning", f"Automod: {infraction_matches}", context_b64, None)
-                    await self.update_roles(message.author, "Warning", message.guild)
-                    await send_infraction_notification(self.bot, message.author, self.bot.user, "Warning", f"Automod detected: {', '.join(infraction_matches)}", inf_id, context_md)
-                    event = {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "action": "infraction",
-                        "target_id": message.author.id,
-                        "target": str(message.author),
-                        "reason": f"Automod infraction: {infraction_matches}",
-                        "matched_words": infraction_matches,
-                        "context_b64": context_b64
-                    }
-                    await update_tracking(message.author.id, event)
-                    logger.info(f"Warned {message.author} for: {infraction_matches}")
-                except Exception as e:
-                    logger.error(f"Infraction error: {e}")
+            # Infraction only applies to personnel
+            if not any(role.id == PERSONNEL_ROLE_ID for role in message.author.roles):
+                logger.info(f"Infraction match for non-personnel {message.author}, skipping")
+            else:
+                inf_cog = self.bot.get_cog("Infraction")
+                if inf_cog:
+                    try:
+                        inf_id = str(uuid.uuid4())
+                        await inf_cog.add_infraction(inf_id, message.author, self.bot.user, "Warning", f"Automod: {infraction_matches}", context_b64, None)
+                        await self.update_roles(message.author, "Warning", message.guild)
+                        await send_infraction_notification(self.bot, message.author, self.bot.user, "Warning", f"Automod detected: {', '.join(infraction_matches)}", inf_id, context_md)
+                        event = {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "action": "infraction",
+                            "target_id": message.author.id,
+                            "target": str(message.author),
+                            "reason": f"Automod infraction: {infraction_matches}",
+                            "matched_words": infraction_matches,
+                            "context_b64": context_b64
+                        }
+                        await update_tracking(message.author.id, event)
+                        logger.info(f"Warned {message.author} for: {infraction_matches}")
+                    except Exception as e:
+                        logger.error(f"Infraction error: {e}")
 
 
 async def setup(bot):
