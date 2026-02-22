@@ -236,7 +236,7 @@ async def send_infraction_notification(bot: commands.Bot, target: discord.Member
             color=color,
             timestamp=discord.utils.utcnow()
         )
-        embed.add_field(name="User", value=f"{target} ({target.id})", inline=True)
+        embed.add_field(name="User", value=f"{target.mention} ({target} | {target.id})", inline=True)
         embed.add_field(name="Issued by", value=f"{moderator} ({moderator.id})", inline=True)
         embed.add_field(name="Reason", value=reason, inline=False)
         if context:
