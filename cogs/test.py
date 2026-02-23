@@ -7,7 +7,7 @@ class JoinVC(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
+    @commands.command(name="join")
     async def join(self, ctx, *, channel: discord.VoiceChannel):
         """Joins a voice channel DOES NOTHING OTHER THAN JOIN THE VC."""
 
@@ -15,6 +15,7 @@ class JoinVC(commands.Cog):
             return await ctx.voice_client.move_to(channel)
 
         await channel.connect()
+        await ctx.send(content="Joined voice channel.")
 
 async def setup(bot):
     await bot.add_cog(JoinVC(bot))
