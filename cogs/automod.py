@@ -13,36 +13,13 @@ AUTOMOD_LOG_FILE = os.path.join("logs", "automod_protection.log")
 LOG_CHANNEL_ID = 1329910577375482068
 BOT_IDS = [1403146651543015445, 1387175664649506847]
 
-INFRACTION_PATTERNS = [    r"\b[s$5z]+[\W_]*[h#]+[\W_]*[i1!|l]+[\W_]*[t7+]+[a-z0-9$#@!*+_-]*\b",
-    r"\b[n]+[\W_]*[i1!l|]+[\W_]*[gq9]+[\W_]*[gq9]+[\W_]*[ea4r3]*[a-z0-9]*\b",
-    r"\b[n][i|1|!][g|9]{2,}[e|3]r\b",
-    r"\b[n][!|1][g|9]{2,}[a|@]\b",
-    r"\b[fph@][\W_]*[u*o0v]+[\W_]*[c(kq)(ck)*x]+[\W_]*[kq]+(ing|er|ed|s|in'?|a)?\b",
-    r"\b[fF]+[uU*0]+[cC*k]+[kK]+(ing|er|ed|s)?\b",
-    r"\b[fFph@]+[\W_]*[uU*0]+[\W_]*[cCckkqx]+[\W_]*[kKqx]+(ing|er|ed|s)?\b",
-    r"\b(f+|ph)(y|i|u)?(c+|k+|q+)(y|k|n)?\b",
-    r"\b(f+|ph)([a*u*y*i]*)(c+|k+|q+|z+|w+|\*+)([u*c*k*q*z*w]*)(k+|c+|\*)(e+r+|i+n+g+|e+d+)?\b",
-    r"\b[s$5z]+[\W_]*[h#]+[\W_]*[i1!|l]+[\W_]*[t7+]+s*\b",]
-MUTE_PATTERNS = [    r"\b[s$5z]+[\W_]*[h#]+[\W_]*[i1!|l]+[\W_]*[t7+]+[a-z0-9$#@!*+_-]*\b",
-    r"\b[n]+[\W_]*[i1!l|]+[\W_]*[gq9]+[\W_]*[gq9]+[\W_]*[ea4r3]*[a-z0-9]*\b",
-    r"\b[n][i|1|!][g|9]{2,}[e|3]r\b",
-    r"\b[n][!|1][g|9]{2,}[a|@]\b",
-    r"\b[fph@][\W_]*[u*o0v]+[\W_]*[c(kq)(ck)*x]+[\W_]*[kq]+(ing|er|ed|s|in'?|a)?\b",
-    r"\b[fF]+[uU*0]+[cC*k]+[kK]+(ing|er|ed|s)?\b",
-    r"\b[fFph@]+[\W_]*[uU*0]+[\W_]*[cCckkqx]+[\W_]*[kKqx]+(ing|er|ed|s)?\b",
-    r"\b(f+|ph)(y|i|u)?(c+|k+|q+)(y|k|n)?\b",
-    r"\b(f+|ph)([a*u*y*i]*)(c+|k+|q+|z+|w+|\*+)([u*c*k*q*z*w]*)(k+|c+|\*)(e+r+|i+n+g+|e+d+)?\b",
-    r"\b[s$5z]+[\W_]*[h#]+[\W_]*[i1!|l]+[\W_]*[t7+]+s*\b",]
-QUARANTINE_PATTERNS = [
-]
-BAN_PATTERNS = [
+# Exact word lists (loaded from data file)
+INFRACTION_WORDS = []
+MUTE_WORDS = []
+QUARANTINE_WORDS = []
+BAN_WORDS = []
 
-]
-
-COMPILED_INFRACTION = [re.compile(p, re.IGNORECASE) for p in INFRACTION_PATTERNS]
-COMPILED_MUTE = [re.compile(p, re.IGNORECASE) for p in MUTE_PATTERNS]
-COMPILED_QUARANTINE = [re.compile(p, re.IGNORECASE) for p in QUARANTINE_PATTERNS]
-COMPILED_BAN = [re.compile(p, re.IGNORECASE) for p in BAN_PATTERNS]
+EXACT_WORDS_FILE = os.path.join("data", "exact_words.json")
 
 MUTE_DURATION_MINUTES = 60
 QUARANTINE_DURATION_SECONDS = 172800
@@ -71,6 +48,26 @@ logger = logging.getLogger('Automod')
 logger.info("=" * 80)
 logger.info("AUTOMOD COG LOADED - System ready")
 logger.info("=" * 80)
+
+
+def load_exact_words():
+    """Load exact words from data file."""
+    global INFRACTION_WORDS, MUTE_WORDS, QUARANTINE_WORDS, BAN_WORDS
+    try:
+        if os.path.exists(EXACT_WORDS_FILE):
+            with open(EXACT_WORDS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                INFRACTION_WORDS = data.get("infraction_words", [])
+                MUTE_WORDS = data.get("mute_words", [])
+                QUARANTINE_WORDS = data.get("quarantine_words", [])
+                BAN_WORDS = data.get("ban_words", [])
+                logger.info(f"Loaded exact words: {len(INFRACTION_WORDS)} infraction, {len(MUTE_WORDS)} mute, {len(QUARANTINE_WORDS)} quarantine, {len(BAN_WORDS)} ban")
+    except Exception as e:
+        logger.error(f"Failed to load exact words: {e}")
+
+
+# Load words on startup
+load_exact_words()
 
 
 async def collect_context_proof(message: discord.Message, limit: int = 3) -> tuple[str, str]:
@@ -377,218 +374,213 @@ class Automod(commands.Cog):
                 logger.error(f"Could not fetch replied message: {e}")
                 return
 
-            # Check if bot was mentioned (including bot itself)
-            mentioned_ids = [m.id for m in message.mentions]
-            bot_mentioned = any(m_id in BOT_IDS for m_id in mentioned_ids) or self.bot.user.id in mentioned_ids
-            
-            logger.info(f"Reply detected - Mentioned IDs: {mentioned_ids}, Bot mentioned: {bot_mentioned}, Content: {message.content}")
-            
-            if not bot_mentioned:
-                logger.info(f"Reply without bot mention, skipping to automod")
+            # Skip admin commands if replying to a bot
+            if target_msg.author.bot or target_msg.author.id in BOT_IDS or target_msg.author.id == self.bot.user.id:
+                logger.info(f"Reply to bot detected, skipping admin commands")
                 pass  # Skip to automod
             else:
-                # Bot was mentioned in a reply
-                logger.info(f"Bot mentioned in reply by {message.author}")
+                # Check if bot was mentioned (including bot itself)
+                mentioned_ids = [m.id for m in message.mentions]
+                bot_mentioned = any(m_id in BOT_IDS for m_id in mentioned_ids) or self.bot.user.id in mentioned_ids
+                
+                logger.info(f"Reply detected - Mentioned IDs: {mentioned_ids}, Bot mentioned: {bot_mentioned}, Content: {message.content}")
+                
+                if not bot_mentioned:
+                    logger.info(f"Reply without bot mention, skipping to automod")
+                    pass  # Skip to automod
+                else:
+                    # Bot was mentioned in a reply
+                    logger.info(f"Bot mentioned in reply by {message.author}")
 
-                # Check if replier is admin
-                is_replier_admin = any(role.id == ADMIN_ROLE_ID for role in message.author.roles)
-                if not is_replier_admin:
-                    logger.info(f"{message.author} tried to use admin reply but is not admin")
-                    await message.reply("❌ You need ADMIN role to use this", mention_author=False)
-                    return
-
-                # Get target member
-                target_member = target_msg.author
-                if not isinstance(target_member, discord.Member):
-                    try:
-                        target_member = await message.guild.fetch_member(target_member.id)
-                    except Exception as e:
-                        logger.error(f"Could not fetch target member: {e}")
-                        await message.reply("❌ Could not get target member", mention_author=False)
+                    # Check if replier is admin
+                    is_replier_admin = any(role.id == ADMIN_ROLE_ID for role in message.author.roles)
+                    if not is_replier_admin:
+                        logger.info(f"{message.author} tried to use admin reply but is not admin")
+                        await message.reply("❌ You need ADMIN role to use this", mention_author=False)
                         return
 
-                # Check if target is personnel
-                is_target_personnel = any(role.id == PERSONNEL_ROLE_ID for role in target_member.roles)
-                if not is_target_personnel:
-                    logger.info(f"Target {target_member} is not personnel")
-                    await message.reply("❌ Target is not personnel", mention_author=False)
-                    return
-
-                # Target is valid, extract action and reason
-                content_lower = message.content.lower()
-                reason_text = message.content
-                
-                # Extract action and optional reason
-                action_type = None
-                infraction_type = None
-                
-                # Map action keywords to infraction types and extract reason
-                action_map = {
-                    "warn": "Warning",
-                    "warning": "Warning",
-                    "infraction": "Warning",
-                    "strike": "Strike",
-                    "demotion": "Demotion",
-                    "termination": "Termination",
-                    "suspension": "Suspension",
-                    "activity": "Activity Notice",
-                    "activity notice": "Activity Notice",
-                }
-                
-                for keyword, inf_type in action_map.items():
-                    if keyword in content_lower:
-                        action_type = keyword
-                        infraction_type = inf_type
-                        # Extract reason after the keyword
-                        idx = content_lower.find(keyword)
-                        reason_part = message.content[idx + len(keyword):].strip()
-                        # Remove bot mention if present
-                        reason_part = reason_part.replace(f"<@{self.bot.user.id}>", "").strip()
-                        reason_text = reason_part if reason_part else f"Admin issued {inf_type}"
-                        break
-                
-                logger.info(f"Admin reply to {target_member}: action={infraction_type}, reason={reason_text}")
-
-                # BAN (highest priority)
-                if "ban" in content_lower:
-                    try:
-                        context_md, context_b64 = await collect_context_proof(target_msg)
-                        ban_id = str(uuid.uuid4())
-                        await send_infraction_notification(self.bot, target_member, message.author, "Termination", f"Admin: {message.content}", ban_id, context_md)
-                        await message.guild.ban(target_member, reason=f"Admin: {message.content}")
-                        event = {
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "action": "ban",
-                            "target_id": target_member.id,
-                            "target": str(target_member),
-                            "moderator_id": message.author.id,
-                            "moderator": str(message.author),
-                            "reason": f"Admin: {message.content}"
-                        }
-                        await update_tracking(target_member.id, event)
-                        await send_action_log(self.bot, target_member.id, "ban", f"Admin: {message.content}", ban_id)
-                        logger.info(f"✅ Banned {target_member}")
-                        await message.reply(f"✅ Banned {target_member}", mention_author=False)
-                        return
-                    except Exception as e:
-                        logger.error(f"Ban error: {e}")
-                        await message.reply(f"❌ Ban failed: {str(e)}", mention_author=False)
-                        return
-
-                # QUARANTINE
-                if "quarantine" in content_lower:
-                    raid_cog = self.bot.get_cog("RaidProtection")
-                    if not raid_cog:
-                        logger.error("RaidProtection cog not loaded")
-                        await message.reply("❌ RaidProtection cog not loaded", mention_author=False)
-                        return
-                    try:
-                        await raid_cog.quarantine_user(target_member, f"Admin: {message.content}")
-                        # Manually apply quarantine role if not already present
+                    # Get target member
+                    target_member = target_msg.author
+                    if not isinstance(target_member, discord.Member):
                         try:
-                            quar_role = message.guild.get_role(QUARANTINE_ROLE_ID)
-                            if quar_role and quar_role not in target_member.roles:
-                                await target_member.add_roles(quar_role, reason=f"Quarantine: {message.content}")
-                                logger.info(f"Applied quarantine role to {target_member}")
+                            target_member = await message.guild.fetch_member(target_member.id)
                         except Exception as e:
-                            logger.error(f"Could not apply quarantine role: {e}")
-                        
-                        event = {
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "action": "quarantine",
-                            "target_id": target_member.id,
-                            "target": str(target_member),
-                            "moderator_id": message.author.id,
-                            "moderator": str(message.author),
-                            "reason": f"Admin: {message.content}"
-                        }
-                        await update_tracking(target_member.id, event)
-                        quar_id = str(uuid.uuid4())
-                        await send_action_log(self.bot, target_member.id, "quarantine", f"Admin: {message.content}", quar_id)
-                        logger.info(f"✅ Quarantined {target_member}")
-                        await message.reply(f"✅ Quarantined {target_member}", mention_author=False)
-                        return
-                    except Exception as e:
-                        logger.error(f"Quarantine error: {e}")
-                        await message.reply(f"❌ Quarantine failed: {str(e)}", mention_author=False)
+                            logger.error(f"Could not fetch target member: {e}")
+                            await message.reply("❌ Could not get target member", mention_author=False)
+                            return
+
+                    # Check if target is personnel
+                    is_target_personnel = any(role.id == PERSONNEL_ROLE_ID for role in target_member.roles)
+                    if not is_target_personnel:
+                        logger.info(f"Target {target_member} is not personnel")
+                        await message.reply("❌ Target is not personnel", mention_author=False)
                         return
 
-                # MUTE
-                if "mute" in content_lower:
-                    try:
-                        timeout_until = discord.utils.utcnow() + timedelta(minutes=MUTE_DURATION_MINUTES)
-                        await target_member.timeout(timeout_until, reason=f"Admin: {message.content}")
-                        event = {
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "action": "mute",
-                            "target_id": target_member.id,
-                            "target": str(target_member),
-                            "moderator_id": message.author.id,
-                            "moderator": str(message.author),
-                            "reason": f"Admin: {message.content}",
-                            "duration_minutes": MUTE_DURATION_MINUTES
-                        }
-                        await update_tracking(target_member.id, event)
-                        mute_id = str(uuid.uuid4())
-                        await send_action_log(self.bot, target_member.id, "mute", f"Admin: {message.content} ({MUTE_DURATION_MINUTES} min)", mute_id)
-                        logger.info(f"✅ Muted {target_member}")
-                        await message.reply(f"✅ Muted {target_member} for {MUTE_DURATION_MINUTES} min", mention_author=False)
-                        return
-                    except Exception as e:
-                        logger.error(f"Mute error: {e}")
-                        await message.reply(f"❌ Mute failed: {str(e)}", mention_author=False)
-                        return
-                # INFRACTION (all types: Warning, Strike, Demotion, Termination, Suspension, Activity Notice)
-                if infraction_type:
-                    inf_cog = self.bot.get_cog("Infraction")
-                    if not inf_cog:
-                        logger.error("Infraction cog not loaded")
-                        await message.reply("❌ Infraction cog not loaded", mention_author=False)
-                        return
-                    try:
-                        context_md, context_b64 = await collect_context_proof(target_msg)
-                        inf_id = str(uuid.uuid4())
-                        await inf_cog.add_infraction(inf_id, target_member, message.author, infraction_type, reason_text, context_b64, None)
-                        await self.update_roles(target_member, infraction_type, message.guild)
-                        await send_infraction_notification(self.bot, target_member, message.author, infraction_type, reason_text, inf_id, context_md)
-                        event = {
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "action": "infraction",
-                            "infraction_type": infraction_type,
-                            "infraction_id": inf_id,
-                            "target_id": target_member.id,
-                            "target": str(target_member),
-                            "moderator_id": message.author.id,
-                            "moderator": str(message.author),
-                            "reason": reason_text,
-                            "context_b64": context_b64
-                        }
-                        await update_tracking(target_member.id, event)
-                        logger.info(f"✅ {infraction_type} issued for {target_member}")
-                        await message.reply(f"✅ {infraction_type} issued for {target_member}", mention_author=False)
-                        return
-                    except Exception as e:
-                        logger.error(f"Infraction error: {e}")
-                        await message.reply(f"❌ Infraction failed: {str(e)}", mention_author=False)
-                        return
+                    # Target is valid, extract action and reason
+                    content_lower = message.content.lower()
+                    reason_text = message.content
+                    
+                    # Extract action and optional reason
+                    action_type = None
+                    infraction_type = None
+                    
+                    # Map action keywords to infraction types and extract reason
+                    action_map = {
+                        "warn": "Warning",
+                        "warning": "Warning",
+                        "infraction": "Warning",
+                        "strike": "Strike",
+                        "demotion": "Demotion",
+                        "termination": "Termination",
+                        "suspension": "Suspension",
+                        "activity": "Activity Notice",
+                        "activity notice": "Activity Notice",
+                    }
+                    
+                    for keyword, inf_type in action_map.items():
+                        if keyword in content_lower:
+                            action_type = keyword
+                            infraction_type = inf_type
+                            # Extract reason after the keyword
+                            idx = content_lower.find(keyword)
+                            reason_part = message.content[idx + len(keyword):].strip()
+                            # Remove bot mention if present
+                            reason_part = reason_part.replace(f"<@{self.bot.user.id}>", "").strip()
+                            reason_text = reason_part if reason_part else f"Admin issued {inf_type}"
+                            break
+                    
+                    logger.info(f"Admin reply to {target_member}: action={infraction_type}, reason={reason_text}")
 
-                # No action keyword found
-                logger.info(f"No action keyword in admin reply: {content_lower}")
-                await message.reply("❌ No action found. Use: ban, warn, strike, demotion, termination, suspension, activity notice", mention_author=False)
-                return
+                    # BAN (highest priority)
+                    if "ban" in content_lower:
+                        try:
+                            context_md, context_b64 = await collect_context_proof(target_msg)
+                            ban_id = str(uuid.uuid4())
+                            await send_infraction_notification(self.bot, target_member, message.author, "Termination", f"Admin: {message.content}", ban_id, context_md)
+                            await message.guild.ban(target_member, reason=f"Admin: {message.content}")
+                            event = {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "action": "ban",
+                                "target_id": target_member.id,
+                                "target": str(target_member),
+                                "moderator_id": message.author.id,
+                                "moderator": str(message.author),
+                                "reason": f"Admin: {message.content}"
+                            }
+                            await update_tracking(target_member.id, event)
+                            await send_action_log(self.bot, target_member.id, "ban", f"Admin: {message.content}", ban_id)
+                            logger.info(f"✅ Banned {target_member}")
+                            await message.reply(f"✅ Banned {target_member}", mention_author=False)
+                            return
+                        except Exception as e:
+                            logger.error(f"Ban error: {e}")
+                            await message.reply(f"❌ Ban failed: {str(e)}", mention_author=False)
+                            return
 
+                    # QUARANTINE
+                    if "quarantine" in content_lower:
+                        raid_cog = self.bot.get_cog("RaidProtection")
+                        if not raid_cog:
+                            logger.error("RaidProtection cog not loaded")
+                            await message.reply("❌ RaidProtection cog not loaded", mention_author=False)
+                            return
+                        try:
+                            await raid_cog.quarantine_user(target_member, f"Admin: {message.content}")
+                            # Manually apply quarantine role if not already present
+                            try:
+                                quar_role = message.guild.get_role(QUARANTINE_ROLE_ID)
+                                if quar_role and quar_role not in target_member.roles:
+                                    await target_member.add_roles(quar_role, reason=f"Quarantine: {message.content}")
+                                    logger.info(f"Applied quarantine role to {target_member}")
+                            except Exception as e:
+                                logger.error(f"Could not apply quarantine role: {e}")
+                            
+                            event = {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "action": "quarantine",
+                                "target_id": target_member.id,
+                                "target": str(target_member),
+                                "moderator_id": message.author.id,
+                                "moderator": str(message.author),
+                                "reason": f"Admin: {message.content}"
+                            }
+                            await update_tracking(target_member.id, event)
+                            quar_id = str(uuid.uuid4())
+                            await send_action_log(self.bot, target_member.id, "quarantine", f"Admin: {message.content}", quar_id)
+                            logger.info(f"✅ Quarantined {target_member}")
+                            await message.reply(f"✅ Quarantined {target_member}", mention_author=False)
+                            return
+                        except Exception as e:
+                            logger.error(f"Quarantine error: {e}")
+                            await message.reply(f"❌ Quarantine failed: {str(e)}", mention_author=False)
+                            return
 
-        # =====================================================================
-        # SKIP AUTOMOD IF REPLYING TO BOT
-        # =====================================================================
-        if message.reference:
-            try:
-                target_msg = await message.channel.fetch_message(message.reference.message_id)
-                if target_msg.author.id in BOT_IDS or target_msg.author.id == self.bot.user.id:
-                    logger.info(f"Skipped: reply to bot, no automod")
+                    # MUTE
+                    if "mute" in content_lower:
+                        try:
+                            timeout_until = discord.utils.utcnow() + timedelta(minutes=MUTE_DURATION_MINUTES)
+                            await target_member.timeout(timeout_until, reason=f"Admin: {message.content}")
+                            event = {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "action": "mute",
+                                "target_id": target_member.id,
+                                "target": str(target_member),
+                                "moderator_id": message.author.id,
+                                "moderator": str(message.author),
+                                "reason": f"Admin: {message.content}",
+                                "duration_minutes": MUTE_DURATION_MINUTES
+                            }
+                            await update_tracking(target_member.id, event)
+                            mute_id = str(uuid.uuid4())
+                            await send_action_log(self.bot, target_member.id, "mute", f"Admin: {message.content} ({MUTE_DURATION_MINUTES} min)", mute_id)
+                            logger.info(f"✅ Muted {target_member}")
+                            await message.reply(f"✅ Muted {target_member} for {MUTE_DURATION_MINUTES} min", mention_author=False)
+                            return
+                        except Exception as e:
+                            logger.error(f"Mute error: {e}")
+                            await message.reply(f"❌ Mute failed: {str(e)}", mention_author=False)
+                            return
+                    # INFRACTION (all types: Warning, Strike, Demotion, Termination, Suspension, Activity Notice)
+                    if infraction_type:
+                        inf_cog = self.bot.get_cog("Infraction")
+                        if not inf_cog:
+                            logger.error("Infraction cog not loaded")
+                            await message.reply("❌ Infraction cog not loaded", mention_author=False)
+                            return
+                        try:
+                            context_md, context_b64 = await collect_context_proof(target_msg)
+                            inf_id = str(uuid.uuid4())
+                            await inf_cog.add_infraction(inf_id, target_member, message.author, infraction_type, reason_text, context_b64, None)
+                            await self.update_roles(target_member, infraction_type, message.guild)
+                            await send_infraction_notification(self.bot, target_member, message.author, infraction_type, reason_text, inf_id, context_md)
+                            event = {
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "action": "infraction",
+                                "infraction_type": infraction_type,
+                                "infraction_id": inf_id,
+                                "target_id": target_member.id,
+                                "target": str(target_member),
+                                "moderator_id": message.author.id,
+                                "moderator": str(message.author),
+                                "reason": reason_text,
+                                "context_b64": context_b64
+                            }
+                            await update_tracking(target_member.id, event)
+                            logger.info(f"✅ {infraction_type} issued for {target_member}")
+                            await message.reply(f"✅ {infraction_type} issued for {target_member}", mention_author=False)
+                            return
+                        except Exception as e:
+                            logger.error(f"Infraction error: {e}")
+                            await message.reply(f"❌ Infraction failed: {str(e)}", mention_author=False)
+                            return
+
+                    # No action keyword found
+                    logger.info(f"No action keyword in admin reply: {content_lower}")
+                    await message.reply("❌ No action found. Use: ban, warn, strike, demotion, termination, suspension, activity notice", mention_author=False)
                     return
-            except Exception:
-                pass
+
+
+
 
         # =====================================================================
         # BYPASS CHECK (AFTER ADMIN REPLIES)
@@ -603,11 +595,12 @@ class Automod(commands.Cog):
         if not isinstance(message.author, discord.Member):
             return
 
-        # Check for matches
-        ban_matches = [m.group(0) for p in COMPILED_BAN for m in p.finditer(content) if m.group(0)]
-        quarantine_matches = [m.group(0) for p in COMPILED_QUARANTINE for m in p.finditer(content) if m.group(0)]
-        mute_matches = [m.group(0) for p in COMPILED_MUTE for m in p.finditer(content) if m.group(0)]
-        infraction_matches = [m.group(0) for p in COMPILED_INFRACTION for m in p.finditer(content) if m.group(0)]
+        # Check for exact word matches (case-insensitive)
+        content_words = content.lower().split()
+        ban_matches = [word.strip('.,!?;:"\'-') for word in content_words if word.strip('.,!?;:"\'-') in [w.lower() for w in BAN_WORDS]]
+        quarantine_matches = [word.strip('.,!?;:"\'-') for word in content_words if word.strip('.,!?;:"\'-') in [w.lower() for w in QUARANTINE_WORDS]]
+        mute_matches = [word.strip('.,!?;:"\'-') for word in content_words if word.strip('.,!?;:"\'-') in [w.lower() for w in MUTE_WORDS]]
+        infraction_matches = [word.strip('.,!?;:"\'-') for word in content_words if word.strip('.,!?;:"\'-') in [w.lower() for w in INFRACTION_WORDS]]
 
         all_matches = ban_matches + quarantine_matches + mute_matches + infraction_matches
 
