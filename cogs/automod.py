@@ -579,6 +579,18 @@ class Automod(commands.Cog):
 
 
         # =====================================================================
+        # SKIP AUTOMOD IF REPLYING TO BOT
+        # =====================================================================
+        if message.reference:
+            try:
+                target_msg = await message.channel.fetch_message(message.reference.message_id)
+                if target_msg.author.id in BOT_IDS or target_msg.author.id == self.bot.user.id:
+                    logger.info(f"Skipped: reply to bot, no automod")
+                    return
+            except Exception:
+                pass
+
+        # =====================================================================
         # BYPASS CHECK (AFTER ADMIN REPLIES)
         # =====================================================================
         if message.author.id in automodbypass or any(role.id == bypassrole for role in getattr(message.author, "roles", [])):
