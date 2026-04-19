@@ -450,7 +450,7 @@ class Automod(commands.Cog):
                 logger.info(f"Admin reply to {target_member}: action={infraction_type}, reason={reason_text}")
 
                 if (
-                    "ban" in content_lower
+                    re.search(r"\bban\b", content_lower)
                     and self.bot.user.mentioned_in(message)
                 ):
                     try:
