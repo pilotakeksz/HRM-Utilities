@@ -19,7 +19,6 @@ class Unauthorised(commands.Cog):
 
         await ctx.send("Please provide the server ID.")
 
-        # Wait for reply
         def check(m):
             return (
                 m.author == ctx.author
@@ -36,7 +35,6 @@ class Unauthorised(commands.Cog):
             await ctx.send("⏱️ Timed out waiting for server ID.")
             return
 
-        # Validate ID
         try:
             guild_id = int(msg.content)
         except ValueError:
@@ -52,7 +50,6 @@ class Unauthorised(commands.Cog):
         # Find category (optional fallback = None)
         category = None
 
-        # Create channel
         try:
             channel = await guild.create_text_channel(
                 name="unauthorised-server-log",
@@ -67,7 +64,6 @@ class Unauthorised(commands.Cog):
             await ctx.send(f"❌ Failed to create channel: {e}")
             return
 
-        # Send warning message
         try:
             await channel.send(
                 "⚠️ **This server is not authorised to use this bot.**\n\n"

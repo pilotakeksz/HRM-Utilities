@@ -22,7 +22,6 @@ class RoleRequestView(discord.ui.View):
 
     @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only reviewers can approve
         if not any(r.id == REVIEWER_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to review requests.", ephemeral=True)
             return
@@ -32,7 +31,6 @@ class RoleRequestView(discord.ui.View):
             await member.add_roles(role, reason="Role request approved")
             await interaction.response.send_message(f"✅ Approved and added {role.name} to {member.mention}.", ephemeral=True)
             await log_action(interaction.guild, f"APPROVED: {member} ({member.id}) for role {role.name} ({role.id}) by {interaction.user} ({interaction.user.id})", self.proof_url)
-            # DM notify
             try:
                 await member.send(f"✅ Your role request for **{role.name}** was approved!")
             except Exception:
@@ -43,7 +41,6 @@ class RoleRequestView(discord.ui.View):
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only reviewers can deny
         if not any(r.id == REVIEWER_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to review requests.", ephemeral=True)
             return
@@ -51,7 +48,6 @@ class RoleRequestView(discord.ui.View):
         role = interaction.guild.get_role(self.role_id)
         await interaction.response.send_message(f"❌ Denied request for {member.mention} ({role.name}).", ephemeral=True)
         await log_action(interaction.guild, f"DENIED: {member} ({member.id}) for role {role.name} ({role.id}) by {interaction.user} ({interaction.user.id})", self.proof_url)
-        # DM notify
         try:
             await member.send(f"❌ Your role request for **{role.name}** was denied.")
         except Exception:
@@ -59,12 +55,10 @@ class RoleRequestView(discord.ui.View):
         await self.update_embed(interaction, "❌ Denied", interaction.user)
 
 async def log_action(guild, message, proof_url):
-    # Log to .txt
     os.makedirs(LOGS_DIR, exist_ok=True)
     logline = f"[{discord.utils.utcnow().isoformat()}] {message}\nProof: {proof_url}\n"
     with open(os.path.join(LOGS_DIR, f"{discord.utils.utcnow().date()}.txt"), "a", encoding="utf-8") as f:
         f.write(logline)
-    # Log as embed in LOG_CHANNEL_ID
     ch = guild.get_channel(LOG_CHANNEL_ID)
     if isinstance(ch, discord.TextChannel):
         emb = discord.Embed(title="Role Request Log", description=message, color=discord.Color.purple())
@@ -79,7 +73,6 @@ class RoleRequestCog(commands.Cog):
     @discord.app_commands.command(name="role_request", description="Request a decorative role from staff.")
     @discord.app_commands.describe(role="Select the role to request", proof="Upload proof of eligibility (image)")
     async def role_request(self, interaction: discord.Interaction, role: discord.Role, proof: discord.Attachment):
-        # Only allow decorative roles (no admin/management perms)
         if role.permissions.administrator or role.permissions.manage_roles or role.permissions.kick_members or role.permissions.ban_members or role.managed or role.name == "@everyone":
             await interaction.response.send_message("You can only request decorative roles.", ephemeral=True)
             return

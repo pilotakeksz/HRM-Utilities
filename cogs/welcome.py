@@ -12,7 +12,6 @@ MILESTONE_MEMBER_COUNT = 600
 MILESTONE_COOLDOWN_HOURS = 48
 MILESTONE_DATA_FILE = os.path.join("data", "milestone_data.json")
 
-# Read env vars with safe fallbacks. If ROLE_ID_ON_JOIN isn't set, fall back to the
 # commonly used role for new members (1329910383678328922).
 DEFAULT_ROLE_ON_JOIN = 1329910383678328922
 DEFAULT_WELCOME_CHANNEL = None
@@ -30,7 +29,6 @@ except Exception:
     WELCOME_CHANNEL_ID = DEFAULT_WELCOME_CHANNEL
 
 # Users automatically blacklisted: the bot will DM and ban these user IDs on join
-# Add user IDs (integers) to this list to have them auto-banned when they join.
 BLACKLISTED_USER_IDS = [
     # Example: 1163179403954618469,
 ]
@@ -98,7 +96,6 @@ class Welcome(commands.Cog):
         now = datetime.datetime.utcnow()
         time_diff = now - last_time
         
-        # Check if 48 hours have passed
         return time_diff.total_seconds() >= (MILESTONE_COOLDOWN_HOURS * 3600)
 
     @commands.command(name="welcome")
@@ -139,7 +136,6 @@ class Welcome(commands.Cog):
                 try:
                     await member.send("You have been blacklisted from the Maplecliff National Guard server and will be banned upon joining.")
                 except Exception:
-                    # DM may fail if user has DMs closed
                     pass
                 try:
                     await member.ban(reason="Auto-ban: blacklisted user")
@@ -150,7 +146,6 @@ class Welcome(commands.Cog):
         except Exception as e:
             print(f"Error checking blacklist for {member.id}: {e}")
 
-        # Try to assign the default role on join (if available)
         try:
             role = member.guild.get_role(ROLE_ID_ON_JOIN)
             if role and role not in member.roles:
@@ -199,7 +194,6 @@ class Welcome(commands.Cog):
         # Check for 600 member milestone (only if 48 hours have passed since last milestone)
         if member_count == MILESTONE_MEMBER_COUNT and self.can_send_milestone(member.guild.id):
             await self.send_milestone_message(member.guild, member_count, is_test=False)
-            # Update the timestamp for this guild
             self.last_milestone_time[member.guild.id] = datetime.datetime.utcnow()
             self.save_milestone_data()
 
@@ -217,13 +211,11 @@ class Welcome(commands.Cog):
                 print(f"Milestone role {MILESTONE_ROLE_ID} not found in guild {guild.id}")
                 return
 
-            # Try to send in welcome channel, fallback to system channel
             channel = guild.get_channel(WELCOME_CHANNEL_ID) or guild.system_channel
             if not channel:
                 print(f"No channel found to send milestone message in guild {guild.id}")
                 return
 
-            # Create special milestone embed
             embed = discord.Embed(
                 title="🎉 MILESTONE ACHIEVED! 🎉",
                 description=f"# **WE'VE HIT {member_count} MEMBERS!**\n\n"
@@ -236,7 +228,6 @@ class Welcome(commands.Cog):
             embed.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
             embed.timestamp = datetime.datetime.utcnow()
 
-            # Only ping the role if it's not a test run
             if is_test:
                 content = f"**WE'VE REACHED {member_count} MEMBERS!** 🎉🎊🎉"
             else:

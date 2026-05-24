@@ -175,7 +175,6 @@ class PayloadView(ui.View):
         # local map of keys created for this view (not required but useful)
         self._local_keys: List[str] = []
 
-        # Handle both new message format and legacy embed format
         first = None
         if payload.get("messages"):
             # New message format - get first embed from first message
@@ -214,7 +213,6 @@ class PayloadView(ui.View):
                 orig_val = o.get("value") or ""
                 use_val = orig_val
 
-                # handle send_json: large base64 JSON embedded in option -> persist
                 if orig_val.startswith("send_json:"):
                     b64 = orig_val.split(":", 1)[1]
                     entry = {"type": "send_json", "b64": b64}
@@ -222,7 +220,6 @@ class PayloadView(ui.View):
                     use_val = f"send_map:{key}"
                     self._local_keys.append(key)
 
-                # handle send:KEY where KEY is present in payload.referenced_messages -> persist the referenced message dict
                 elif orig_val.startswith("send:"):
                     keyname = orig_val.split(":", 1)[1]
                     ref = (payload.get("referenced_messages") or {}).get(keyname)
@@ -239,14 +236,12 @@ class PayloadView(ui.View):
                 else:
                     use_val = orig_val
 
-                # create SelectOption (value will be short)
                 option_kwargs = {
                     "label": o.get("label") or o.get("value") or "Option",
                     "value": use_val,
                     "description": o.get("description")
                 }
                 
-                # Add emoji if provided
                 if o.get("emoji"):
                     option_kwargs["emoji"] = o.get("emoji")
                 
@@ -272,7 +267,6 @@ class PayloadView(ui.View):
                     if not entry:
                         await interaction.followup.send("Referenced embed not found (maybe expired or deleted).", ephemeral=True)
                         return
-                    # handle entry types
                     if entry.get("type") == "send_json":
                         try:
                             obj = _decode_base64_json_token(entry.get("b64", ""))
@@ -282,7 +276,6 @@ class PayloadView(ui.View):
                         if isinstance(obj, dict) and obj.get("embeds"):
                             embeds_list = obj.get("embeds", [])
                         elif isinstance(obj, dict) and obj.get("messages"):
-                            # Handle new message format - flatten all embeds from all messages
                             embeds_list = []
                             for message in obj.get("messages", []):
                                 embeds_list.extend(message.get("embeds", []))
@@ -303,10 +296,8 @@ class PayloadView(ui.View):
                         await interaction.followup.send("Unknown mapped entry type.", ephemeral=True)
                         return
 
-                    # send all embeds as a single message ephemerally
                     if embeds_list:
                         try:
-                            # Build all embeds
                             discord_embeds = []
                             for eobj in embeds_list:
                                 try:
@@ -323,7 +314,6 @@ class PayloadView(ui.View):
                             await interaction.followup.send(f"Error sending embeds: {e}", ephemeral=True)
                     else:
                         await interaction.followup.send("No embeds were found.", ephemeral=True)
-                    # NOTE: do NOT send a success confirmation message for ephemeral sends
                     return
 
                 # non-mapped targets handled normally (send:KEY loads saved file; link: posts URL)
@@ -350,7 +340,6 @@ class PayloadView(ui.View):
                 if isinstance(obj, dict) and obj.get("embeds"):
                     embeds_list = obj.get("embeds", [])
                 elif isinstance(obj, dict) and obj.get("messages"):
-                    # Handle new message format - flatten all embeds from all messages
                     embeds_list = []
                     for message in obj.get("messages", []):
                         embeds_list.extend(message.get("embeds", []))
@@ -374,7 +363,6 @@ class PayloadView(ui.View):
                     if isinstance(obj, dict) and obj.get("embeds"):
                         embeds_list = obj.get("embeds", [])
                     elif isinstance(obj, dict) and obj.get("messages"):
-                        # Handle new message format - flatten all embeds from all messages
                         embeds_list = []
                         for message in obj.get("messages", []):
                             embeds_list.extend(message.get("embeds", []))
@@ -413,7 +401,6 @@ class PayloadView(ui.View):
                         with open(path, "r", encoding="utf-8") as f:
                             saved = json.load(f)
                         payload = saved.get("payload") or saved
-                        # Handle both old embed format and new message format
                         if payload.get("embeds"):
                             embeds_list = payload.get("embeds", [])
                         elif payload.get("messages"):
@@ -435,10 +422,8 @@ class PayloadView(ui.View):
                 await interaction.followup.send(f"Unknown target: {target}", ephemeral=True)
                 return
 
-            # send all resolved embeds as a single message
             if embeds_list:
                 try:
-                    # Build all embeds
                     discord_embeds = []
                     for eobj in embeds_list:
                         try:
@@ -494,10 +479,8 @@ class EmbedNewCog(commands.Cog):
 
     def _register_persistent_views(self):
         """Register persistent views to survive bot restarts."""
-        # Create a generic persistent view that can handle any payload
         class PersistentPayloadView(PayloadView):
             def __init__(self, bot: commands.Bot):
-                # Create a minimal payload for the persistent view
                 super().__init__({}, bot, persistent=True)
                 self.bot = bot
             
@@ -511,7 +494,6 @@ class EmbedNewCog(commands.Cog):
     @app_commands.command(name="send_json", description="Send a complete message JSON (messages with embeds + referenced_messages + actions)")
     @app_commands.describe(channel="Optional target channel", persistent="Make buttons/selects persistent across bot restarts")
     async def send_json(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, persistent: bool = False):
-        # Create a view to collect JSON from chat
         view = JSONCollectorView(self, channel, persistent)
         
         embed = discord.Embed(
@@ -536,15 +518,12 @@ class EmbedNewCog(commands.Cog):
                    view.waiting_for_json)
         
         try:
-            # Wait for a message from the user
             message = await self.bot.wait_for('message', check=check, timeout=300)
             
-            # Check if it's a file attachment
             if message.attachments:
                 attachment = message.attachments[0]
                 if attachment.filename.endswith('.txt'):
                     try:
-                        # Read the file content
                         content = await attachment.read()
                         json_text = content.decode('utf-8')
                     except Exception as e:
@@ -554,10 +533,8 @@ class EmbedNewCog(commands.Cog):
                     await interaction.followup.send("Please upload a `.txt` file with your JSON content.", ephemeral=True)
                     return
             else:
-                # Use the message content directly
                 json_text = message.content
             
-            # Parse the JSON
             try:
                 data = json.loads(json_text)
             except json.JSONDecodeError as e:
@@ -565,10 +542,8 @@ class EmbedNewCog(commands.Cog):
                 return
             
             # Process and send the messages
-            # Use the persistent flag from the view (fix: was referencing self.persistent which doesn't exist)
             await self._process_and_send_messages(interaction, data, channel, view.persistent)
             
-            # Update the original message to show completion
             embed = discord.Embed(
                 title="JSON Processed Successfully",
                 description="Your JSON data has been processed and sent!",
@@ -589,7 +564,6 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send("JSON must be an object with 'messages' or 'embeds' array.", ephemeral=True)
             return
 
-        # Handle both new message format and legacy embed format
         messages_data = data.get("messages", [])
         embeds_raw = data.get("embeds", [])
         
@@ -613,14 +587,12 @@ class EmbedNewCog(commands.Cog):
             await interaction.followup.send("No valid target channel found.", ephemeral=True)
             return
 
-        # Send each message
         total_embeds_sent = 0
         for message_data in messages_data:
             embeds_raw = message_data.get("embeds", [])
             if not embeds_raw:
                 continue
                 
-            # Build embeds for this message
             primary_embeds = []
             for e in embeds_raw:
                 try:
@@ -631,7 +603,6 @@ class EmbedNewCog(commands.Cog):
             if not primary_embeds:
                 continue
 
-            # Create view for this message (only the first message gets the view)
             view = PayloadView(data, self.bot, persistent=persistent) if total_embeds_sent == 0 else None
             
             try:

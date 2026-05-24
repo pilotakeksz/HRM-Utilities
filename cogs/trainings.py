@@ -53,7 +53,6 @@ def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: 
     """Create the visual and summary embeds for a training result.
     Embeds will not include numeric IDs or timestamps; the summary embed has the same colour as the visual.
     """
-    # choose color and image based on pass/fail
     if result.lower().startswith("pass"):
         image_url = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854204768948469/PASS.png?ex=697a9e9c&is=69794d1c&hm=b79ecdb1b808c3fee803a514bd309254642a5e006959f8792688e90e7fc91491&"
         color = discord.Colour.green()
@@ -61,11 +60,9 @@ def build_result_embeds(trainer, trainee: discord.User, result: str, cotrainer: 
         image_url = "https://cdn.discordapp.com/attachments/1465844086480310342/1465854169750700093/FAIL.png?ex=697a9e94&is=69794d14&hm=78abbbd758d5033a80d44ec290f3a81d7f64848c3bad5fb1ebb3c6725c1f4c9b&"
         color = discord.Colour.red()
 
-    # big visual embed
     emb_visual = discord.Embed(title=f"Training Result — {trainee.display_name}", color=color)
     emb_visual.set_image(url=image_url)
 
-    # summary embed (with image, same colour as visual)
     emb2 = discord.Embed(title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training results", color=color)
     trainer_text = f"> {trainer.mention}"
     cotext = f"> {cotrainer.mention}" if cotrainer else "> None"
@@ -139,24 +136,19 @@ async def log_action(bot: commands.Bot, actor, action: str, extra: str = ""):
 
     line = f"[{ts}] {actor_repr} • {action}"
     if extra:
-        # keep extra on one line
         safe_extra = " ".join(str(extra).splitlines())
         line = f"{line} • {safe_extra}"
-    # write local file
     try:
         os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except Exception:
-        # silent fail for local write, but still try to post to channel
         pass
 
-    # send to log channel (best-effort)
     try:
         ch = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
         await ch.send(f"`{ts}` {actor_repr} • **{action}** {('• ' + extra) if extra else ''}")
     except Exception:
-        # write traceback to file if channel post fails
         try:
             with open(LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(traceback.format_exc() + "\n")
@@ -170,35 +162,28 @@ async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User,
     """
     ts = datetime.now(timezone.utc).isoformat()
 
-    # build embeds using module-level helper unless they were provided
     if emb_visual is None or emb2 is None:
         emb_visual, emb2 = build_result_embeds(trainer, trainee, result, cotrainer, remarks, notes, include_notice=include_notice)
 
-    # Send to RESULTS channel (both embeds in one message). Use channel-specific embeds if provided, otherwise use the provided or built embeds.
     try:
         ch_visual = emb_channel_visual if emb_channel_visual is not None else emb_visual
         ch_emb2 = emb_channel_2 if emb_channel_2 is not None else emb2
-        # Ensure embeds are not None before sending
         if ch_visual is not None and ch_emb2 is not None:
             out_ch = bot.get_channel(RESULT_CHANNEL_ID) or await bot.fetch_channel(RESULT_CHANNEL_ID)
             if out_ch:
-                # Use the channel-specific embed copies (may have different titles such as Ride-Along result) for the channel post
                 await out_ch.send(content=f"{trainee.mention}", embeds=[ch_visual, ch_emb2])
     except Exception:
         pass
 
-    # DM trainee (both embeds in one message). Use DM-specific embeds if provided; otherwise fallback to preview embeds so the DM matches the preview shown in confirmation.
     try:
         dm_visual = emb_dm_visual if emb_dm_visual is not None else emb_visual
         dm_emb2 = emb_dm_2 if emb_dm_2 is not None else emb2
-        # Ensure embeds are not None before sending
         if dm_visual is not None and dm_emb2 is not None:
             dm = await trainee.create_dm()
             await dm.send(embeds=[dm_visual, dm_emb2])
     except Exception:
         pass
 
-    # Log to central log channel as embed (no numeric IDs)
     try:
         log_ch = bot.get_channel(LOG_CHANNEL_ID) or await bot.fetch_channel(LOG_CHANNEL_ID)
         if log_ch:
@@ -216,7 +201,6 @@ async def log_training_result(bot: commands.Bot, trainer, trainee: discord.User,
     except Exception:
         pass
 
-    # Append to local results log
     try:
         os.makedirs(RESULTS_LOG_FOLDER, exist_ok=True)
         path = os.path.join(RESULTS_LOG_FOLDER, f"training_results_{datetime.now(timezone.utc).date().isoformat()}.log")
@@ -248,10 +232,8 @@ class ConfirmUnvoteView(discord.ui.View):
         self.parent_view.votes.pop(self.user_id, None)
         await self.parent_view._update_message()
         await interaction.response.send_message("Your vote was removed.", ephemeral=True)
-        # log unvote
         await log_action(self.parent_view.bot, interaction.user, "unvote_confirmed",
                          extra=f"message_id={getattr(self.parent_view.message, 'id', None)}")
-        # notify host about change
         try:
             await self.parent_view.notify_host()
         except Exception:
@@ -316,11 +298,9 @@ class TrainingVoteView(discord.ui.View):
             return
         yes, no = self.counts()
         embed = self.message.embeds[0]
-        # update votes field
         try:
             embed.set_field_at(0, name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
         except Exception:
-            # fallback: replace fields
             embed.clear_fields()
             embed.add_field(name="Votes", value=f"✅ Joining: {yes}\n❌ Not joining: {no}", inline=False)
         await self.message.edit(embed=embed, view=self)
@@ -330,7 +310,6 @@ class TrainingVoteView(discord.ui.View):
         user_id = interaction.user.id
         existing = self.votes.get(user_id)
         if existing == "yes":
-            # prompt confirm unvote
             await interaction.response.send_message("You already voted to join. Confirm unvote to remove your vote.", view=ConfirmUnvoteView(self, user_id), ephemeral=True)
             await log_action(self.bot, interaction.user, "prompt_confirm_unvote",
                              extra=f"vote=yes message_id={getattr(self.message, 'id', None)}")
@@ -339,7 +318,6 @@ class TrainingVoteView(discord.ui.View):
         await self._update_message()
         await interaction.response.send_message("Your 'join' vote was recorded.", ephemeral=True)
         await log_action(self.bot, interaction.user, "vote_yes", extra=f"message_id={getattr(self.message, 'id', None)}")
-        # notify host on every vote change
         try:
             await self.notify_host()
         except Exception:
@@ -358,7 +336,6 @@ class TrainingVoteView(discord.ui.View):
         await self._update_message()
         await interaction.response.send_message("Your 'not joining' vote was recorded.", ephemeral=True)
         await log_action(self.bot, interaction.user, "vote_no", extra=f"message_id={getattr(self.message, 'id', None)}")
-        # notify host on every vote change
         try:
             await self.notify_host()
         except Exception:
@@ -368,7 +345,6 @@ class TrainingVoteView(discord.ui.View):
     async def who_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         yes_list = []
         no_list = []
-        # include mentions so the host (and requester) can see/ping who voted
         for uid, v in self.votes.items():
             mention = f"<@{uid}>"
             member = interaction.guild.get_member(uid) if interaction.guild else None
@@ -389,7 +365,6 @@ class TrainingVoteView(discord.ui.View):
     # Start session button (yellow emoji). Only host can use it and only if at least one YES vote exists.
     @discord.ui.button(style=discord.ButtonStyle.secondary, emoji="🟨", label="Start Session")
     async def start_session_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only host allowed
         if interaction.user.id != self.author.id:
             await interaction.response.send_message("Only the host can start the session.", ephemeral=True)
             await log_action(self.bot, interaction.user, "start_session_denied_not_host", extra=f"message_id={getattr(self.message,'id',None)}")
@@ -406,14 +381,11 @@ class TrainingVoteView(discord.ui.View):
             return
 
         self.started = True
-        # Acknowledge the interaction quickly to avoid an interaction timeout
         # (sending DMs and editing the message can take longer than the 3s limit)
         try:
             await interaction.response.defer(ephemeral=True)
         except Exception:
-            # If we can't defer (rare), continue — we'll try to send a normal response later
             pass
-        # disable interactive buttons
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
@@ -423,7 +395,6 @@ class TrainingVoteView(discord.ui.View):
             except Exception:
                 pass
 
-        # DM embed text to voters
         dm_text = (
             "<:MCNGdot:1433174947899113614> The training server code is **AXEGK**\n\n"
             "> Once you join the server, please join the sheriff team, and do the following:\n\n"
@@ -437,7 +408,6 @@ class TrainingVoteView(discord.ui.View):
         )
 
         dm_failed = []
-        # DM each YES voter as an embed
         for uid, v in list(self.votes.items()):
             if v != "yes":
                 continue
@@ -452,7 +422,6 @@ class TrainingVoteView(discord.ui.View):
                 dm_failed.append(str(uid))
                 await log_action(self.bot, "system", "dm_failed_start_session", extra=f"user={uid} err={e}")
 
-        # Announce session start, ping host and joining voters
         votes_mentions = " ".join(f"<@{uid}>" for uid, v in self.votes.items() if v == "yes")
         host_mention = f"<@{self.author.id}>"
         announce_embed = discord.Embed(
@@ -471,11 +440,9 @@ class TrainingVoteView(discord.ui.View):
         except Exception as e:
             await log_action(self.bot, "system", "session_start_announce_failed", extra=str(e))
 
-        # Use a followup message since we already deferred the interaction above
         try:
             await interaction.followup.send("Session started. Voters have been DM'd and an announcement was posted.", ephemeral=True)
         except Exception:
-            # Fallback if followup fails
             try:
                 await interaction.response.send_message("Session started. Voters have been DM'd and an announcement was posted.", ephemeral=True)
             except Exception:
@@ -486,7 +453,6 @@ class TrainingVoteView(discord.ui.View):
         """Automatically start the training session after the 10 minute timer expires if there's at least 1 yes vote."""
         self.started = True
         
-        # DM embed text to voters
         dm_text = (
             "<:MCNGdot:1433174947899113614> The training server code is **AXEGK**\n\n"
             "> Once you join the server, please join the sheriff team, and do the following:\n\n"
@@ -500,7 +466,6 @@ class TrainingVoteView(discord.ui.View):
         )
 
         dm_failed = []
-        # DM each YES voter as an embed
         for uid, v in list(self.votes.items()):
             if v != "yes":
                 continue
@@ -515,7 +480,6 @@ class TrainingVoteView(discord.ui.View):
                 dm_failed.append(str(uid))
                 await log_action(self.bot, "system", "dm_failed_start_session_auto", extra=f"user={uid} err={e}")
 
-        # Announce session start, ping host and joining voters
         votes_mentions = " ".join(f"<@{uid}>" for uid, v in self.votes.items() if v == "yes")
         host_mention = f"<@{self.author.id}>"
         announce_embed = discord.Embed(
@@ -537,7 +501,6 @@ class TrainingVoteView(discord.ui.View):
         await log_action(self.bot, self.author, "session_started_auto", extra=f"yes_count={sum(1 for v in self.votes.values() if v == 'yes')} dm_failures={len(dm_failed)} message_id={getattr(self.message,'id',None)}")
 
     async def finalize(self):
-        # disable all buttons and edit message
         for child in self.children:
             child.disabled = True
         if self.message:
@@ -551,7 +514,6 @@ class TrainingVoteView(discord.ui.View):
             embed.set_footer(text=f"Ended • Host: {self.author.display_name}")
             await self.message.edit(embed=embed, view=self)
         await log_action(self.bot, self.author, "vote_finalized", extra=f"yes={self.counts()[0]} no={self.counts()[1]} message_id={getattr(self.message, 'id', None)}")
-        # send DM to author if votes exist
         if self.votes:
             yes, no = self.counts()
             try:
@@ -568,7 +530,6 @@ class TrainingVoteView(discord.ui.View):
                 await log_action(self.bot, self.author, "dm_sent_results", extra=f"recipient_id={self.author.id} message_id={getattr(self.message, 'id', None)}")
             except Exception as e:
                 await log_action(self.bot, self.author, "dm_failed", extra=str(e))
-        # Store last yes-voters for convenience (per-guild)
         try:
             if self.message and self.message.guild:
                 guild_id = self.message.guild.id
@@ -579,7 +540,6 @@ class TrainingVoteView(discord.ui.View):
         except Exception:
             pass
         
-        # Auto-start training if at least 1 bot vote
         yes_count = sum(1 for v in self.votes.values() if v == "yes")
         if yes_count >= 1 and not self.started:
             await self._auto_start_session()
@@ -622,7 +582,6 @@ class Trainings(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.guild_vote_cooldowns: Dict[int, datetime] = {}
-        # Tasks will be started after cog is added to the bot (see setup())
         self.schedule_check_task = None
         self.role_check_task = None
 
@@ -630,16 +589,13 @@ class Trainings(commands.Cog):
 
     @training.command(name="vote", description="Create a training vote")
     async def vote(self, interaction: discord.Interaction):
-        # log invocation
         await log_action(self.bot, interaction.user, "vote_command_invoked", extra=f"channel_id={getattr(interaction.channel, 'id', None)}")
-        # permission check
         user_roles = getattr(interaction.user, "roles", [])
         if not any(r.id == TRAINING_ROLE_ID for r in user_roles):
             await interaction.response.send_message("You don't have permission to run this command.", ephemeral=True)
             await log_action(self.bot, interaction.user, "vote_command_denied", extra="missing role")
             return
 
-        # server-wide cooldown (30 minutes) per guild; admins bypass
         guild = interaction.guild
         if guild:
             last = self.guild_vote_cooldowns.get(guild.id)
@@ -650,16 +606,13 @@ class Trainings(commands.Cog):
                 expire = last + cooldown
                 if now < expire:
                     remaining = expire - now
-                    # relative timestamp for when cooldown expires (use aware timestamp)
                     rel_ts = f"<t:{int(expire.replace(tzinfo=timezone.utc).timestamp())}:R>"
                     await interaction.response.send_message(f"Training vote is on cooldown for this server. Try again {rel_ts}.", ephemeral=True)
                     await log_action(self.bot, interaction.user, "vote_command_on_cooldown", extra=f"guild_id={guild.id} remaining_seconds={int(remaining.total_seconds())}")
                     return
             if is_admin and last:
-                # admin bypass - log it
                 await log_action(self.bot, interaction.user, "vote_cooldown_bypassed", extra=f"guild_id={guild.id}")
 
-        # compute relative timestamp for 10 minutes from now
         end_dt = datetime.now(timezone.utc) + timedelta(minutes=10)
         epoch = int(end_dt.timestamp())
         rel_ts = f"<t:{epoch}:R>"
@@ -678,18 +631,15 @@ class Trainings(commands.Cog):
         msg = await channel.send(content=content, embed=embed, view=view)
         view.message = msg
 
-        # set server-wide cooldown timestamp (mark now, timezone-aware)
         if guild:
             self.guild_vote_cooldowns[guild.id] = datetime.now(timezone.utc)
 
-        # log posted
         await log_action(self.bot, interaction.user, "vote_posted", extra=f"channel_id={ANNOUNCE_CHANNEL_ID} message_id={msg.id}")
 
         # ack to command runner
         await interaction.response.send_message("Training vote posted.", ephemeral=True)
         await log_action(self.bot, interaction.user, "vote_command_acknowledged", extra=f"recipient={interaction.user.id}")
 
-        # schedule finalize after 10 minutes
         async def _wait_and_finalize():
             await asyncio.sleep(600)
             await view.finalize()
@@ -707,20 +657,16 @@ class Trainings(commands.Cog):
         time: str,
         description: str
     ):
-        # Permission check
         if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You don't have permission to schedule trainings.", ephemeral=True)
             return
 
         try:
-            # Parse relative time
             time_delta = parse_relative_time(time)
             training_time = datetime.now(TIMEZONE) + time_delta
             
-            # Load existing schedule
             schedule = load_schedule()
             
-            # Create training entry
             training_id = str(len(schedule) + 1)
             schedule[training_id] = {
                 "timestamp": training_time.timestamp(),
@@ -729,10 +675,8 @@ class Trainings(commands.Cog):
                 "relative_time": time  # Store original relative time for reference
             }
             
-            # Save updated schedule
             save_schedule(schedule)
 
-            # Create announcement embed
             embed = discord.Embed(
                 title="<:MaplecliffNationalGaurd:1409463907294384169> `//` Training Scheduled",
                 description=description,
@@ -748,7 +692,6 @@ class Trainings(commands.Cog):
             embed.set_footer(text=f"Training ID: {training_id}")
             embed.set_image(url=IMAGE_URL)
 
-            # Send announcement
             channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID)
             await channel.send(
                 content=f"<@&{PING_ROLE_ID}> A new training has been scheduled!",
@@ -778,7 +721,6 @@ class Trainings(commands.Cog):
             color=EMBED_COLOR
         )
 
-        # Filter and sort upcoming trainings
         now = datetime.now(TIMEZONE).timestamp()
         upcoming = {
             k: v for k, v in schedule.items() 
@@ -818,7 +760,6 @@ class Trainings(commands.Cog):
 
         training = schedule[training_id]
         
-        # Check if user is the host or has admin permissions
         is_host = str(interaction.user.id) == training['host']
         is_admin = interaction.user.guild_permissions.administrator
         
@@ -826,11 +767,9 @@ class Trainings(commands.Cog):
             await interaction.response.send_message("You can only cancel trainings you scheduled!", ephemeral=True)
             return
 
-        # Remove the training
         del schedule[training_id]
         save_schedule(schedule)
 
-        # Send cancellation announcement
         embed = discord.Embed(
             title="❌ Training Cancelled",
             description=f"The training scheduled for <t:{int(float(training['timestamp']))}:F> has been cancelled.",
@@ -868,17 +807,14 @@ class Trainings(commands.Cog):
         cotrainer: Optional[discord.Member] = None,
         notes: Optional[str] = "",
     ):
-        # permission check
         if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You don't have permission to record training results.", ephemeral=True)
             return
 
         trainer = interaction.user
-        # Build preview embeds and ask for confirmation before sending
         try:
             emb_visual, emb2 = build_result_embeds(trainer, trainee, result.value, cotrainer, remarks or "", notes or "", include_notice=False)
             view = ConfirmResultView(self.bot, trainer, trainee, result.value, cotrainer, remarks or "", notes or "")
-            # send ephemeral preview with confirmation buttons
             await interaction.response.send_message(embeds=[emb_visual, emb2], view=view, ephemeral=True)
             await log_action(self.bot, trainer, "training_result_preview_shown", extra=f"trainee={getattr(trainee,'id',None)} result={result.value}")
         except Exception as e:
@@ -906,14 +842,12 @@ class Trainings(commands.Cog):
         cotrainer: Optional[discord.Member] = None,
         notes: Optional[str] = "",
     ):
-        # permission check: trainer role OR RA trusted role
         if not any(r.id == TRAINING_ROLE_ID or r.id == RA_TRUSTED_ROLE for r in interaction.user.roles):
             await interaction.response.send_message("You don't have permission to record R/A results.", ephemeral=True)
             return
 
         trainer = interaction.user
         try:
-            # Make sure the R/A preview does NOT include the training Notice. Do NOT change the embed titles or content — pass them to confirmation so final messages match the preview exactly.
             emb_visual, emb2 = build_result_embeds(trainer, trainee, result.value, cotrainer, remarks or "", notes or "", include_notice=False)
             view = ConfirmRAResultView(self.bot, trainer, trainee, result.value, cotrainer, remarks or "", notes or "", emb_visual=emb_visual, emb2=emb2)
             await interaction.response.send_message(embeds=[emb_visual, emb2], view=view, ephemeral=True)
@@ -922,7 +856,6 @@ class Trainings(commands.Cog):
             await interaction.response.send_message(f"Failed to build preview: {e}", ephemeral=True)
             await log_action(self.bot, trainer, "ra_result_preview_failed", extra=str(e))
 
-    # NOTE: The old `/training ra` alias was removed. Use `/training ra_result` or `/training result` instead.
 
     @training.command(name="list-tracked", description="List members with tracked training/R/A roles and their timestamps (assumes today if unknown)")
     @app_commands.describe(role="Optional role to filter to (PING or TRAINING_PASS)", output_format="How to show results: embed or code", persist="Whether to persist missing timestamps to the database")
@@ -934,7 +867,6 @@ class Trainings(commands.Cog):
         """List members for PING_ROLE_ID and TRAINING_PASS_ROLE. If a `role` is provided, only show that role.
         If a member has no stored timestamp, the command will assume it was set today for display purposes (does not persist unless you choose to use the enforcement task).
         """
-        # permission check: only trainers or admins
         if not any(r.id == TRAINING_ROLE_ID for r in interaction.user.roles) and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("You don't have permission to run this command.", ephemeral=True)
             return
@@ -966,15 +898,12 @@ class Trainings(commands.Cog):
                     ts = get_role_timestamp(rid, m.id)
                     missing_ts = False
                     if ts is None:
-                        # assume it was set today for display
                         ts = now_ts
                         missing_ts = True
-                    # human readable
                     elapsed = now_ts - int(ts)
                     days = elapsed // (24*60*60)
                     human = f"{days}d { (elapsed % (24*60*60))//3600 }h"
                     lines.append(f"{m.mention} — set <t:{int(ts)}:F> (<t:{int(ts)}:R>) — {human}")
-                    # persist if requested
                     if missing_ts and persist:
                         try:
                             set_role_timestamp(rid, m.id, ts)
@@ -987,7 +916,6 @@ class Trainings(commands.Cog):
             await interaction.response.send_message("No tracked roles or members found.", ephemeral=True)
             return
 
-        # send as ephemeral message to the invoker as embed or code
         fmt = str(output_format).lower()
         await interaction.response.defer(ephemeral=True)
         if fmt == "code":
@@ -1004,19 +932,16 @@ class Trainings(commands.Cog):
                 await interaction.followup.send(f"```\n{chunk}\n```", ephemeral=True)
             return
 
-        # Build an Embed representation
         emb = discord.Embed(title="Tracked Role Members", color=EMBED_COLOR)
         for r_obj, lines in role_entries:
             if not lines:
                 emb.add_field(name=r_obj.name, value="(no members)", inline=False)
                 continue
-            # assemble value, slice into chunks for embed field limit
             value_lines = [f"• {ln}" for ln in lines]
             joined = "\n".join(value_lines)
             if len(joined) <= 1024:
                 emb.add_field(name=r_obj.name, value=joined, inline=False)
             else:
-                # split manually
                 cur = []
                 cur_len = 0
                 chunks = []
@@ -1036,7 +961,6 @@ class Trainings(commands.Cog):
                     emb.add_field(name=title, value=chunkval, inline=False)
 
         await interaction.followup.send(embed=emb, ephemeral=True)
-        # If we persisted any timestamps, inform the user
         if persist and persisted_count > 0:
             await interaction.followup.send(f"Persisted {persisted_count} missing timestamp{'s' if persisted_count != 1 else ''}.", ephemeral=True)
 
@@ -1051,9 +975,7 @@ class Trainings(commands.Cog):
                 for training_id, training in list(schedule.items()):
                     training_time = float(training['timestamp'])
                     
-                    # If training time has passed (within last minute to avoid duplicates)
                     if now >= training_time and now - training_time < 60:
-                        # Send training vote embed
                         channel = self.bot.get_channel(ANNOUNCE_CHANNEL_ID)
                         host = await self.bot.fetch_user(int(training['host']))
                         
@@ -1087,14 +1009,12 @@ class Trainings(commands.Cog):
                         )
                         view.message = msg
 
-                        # Schedule view finalization
                         async def _wait_and_finalize():
                             await asyncio.sleep(600)
                             await view.finalize()
                         
                         asyncio.create_task(_wait_and_finalize())
                         
-                        # Remove the training from schedule
                         del schedule[training_id]
                         save_schedule(schedule)
                         
@@ -1106,7 +1026,6 @@ class Trainings(commands.Cog):
                         )
 
             except Exception as e:
-                # Log any errors but don't stop the task
                 await log_action(self.bot, "system", "schedule_check_error", extra=str(e))
             
             # Check every 30 seconds
@@ -1126,7 +1045,6 @@ class Trainings(commands.Cog):
                 for r in added:
                     if r in (PING_ROLE_ID, TRAINING_PASS_ROLE):
                         set_role_timestamp(r, after.id)
-                # Remove timestamps for removed roles
                 for r in removed:
                     if r in (PING_ROLE_ID, TRAINING_PASS_ROLE):
                         remove_role_timestamp(r, after.id)
@@ -1135,7 +1053,6 @@ class Trainings(commands.Cog):
 
     async def daily_role_check(self):
             await self.bot.wait_until_ready()
-            # Use fixed GMT+1 offset for the noon check as requested
             tz = timezone(timedelta(hours=1))
             while not self.bot.is_closed():
                 try:
@@ -1144,12 +1061,10 @@ class Trainings(commands.Cog):
                     next_noon = now.replace(hour=12, minute=0, second=0, microsecond=0)
                     if now >= next_noon:
                         next_noon = next_noon + timedelta(days=1)
-                    # sleep until next_noon in UTC
                     utc_next = next_noon.astimezone(timezone.utc)
                     seconds = (utc_next - datetime.now(timezone.utc)).total_seconds()
                     if seconds > 0:
                         await asyncio.sleep(seconds)
-                    # perform check
                     await self._perform_role_enforcement()
                 except asyncio.CancelledError:
                     break
@@ -1182,11 +1097,9 @@ class Trainings(commands.Cog):
                 if not role:
                     continue
                 lines.append(f"**{role.name}**")
-                # iterate members
                 for m in role.members:
                     ts = get_role_timestamp(role_id, m.id)
                     if ts is None:
-                        # set to now to start counting
                         set_role_timestamp(role_id, m.id)
                         ts = get_role_timestamp(role_id, m.id)
                     elapsed = now_ts - ts
@@ -1197,7 +1110,6 @@ class Trainings(commands.Cog):
                     lines.append(f"• {m.mention} — {human} {'(EXPIRED — will be removed)' if expired else ''}")
                 lines.append("")
 
-            # send message
             if not lines:
                 await channel.send("No tracked members for role enrollment.")
             else:
@@ -1221,7 +1133,6 @@ class Trainings(commands.Cog):
                         except Exception:
                             await log_action(self.bot, 'system', 'role_remove_failed', extra=f"role={role_id} user={m.id} {traceback.format_exc()}")
 
-    # Add cleanup on cog unload
     def cog_unload(self):
         if hasattr(self, 'schedule_check_task'):
             self.schedule_check_task.cancel()
@@ -1239,7 +1150,6 @@ async def setup(bot: commands.Bot):
         await log_action(bot, 'system', 'start_tasks_failed', extra=traceback.format_exc())
 
 
-# -------------------- Training Results UI & Command --------------------
 class AddTraineesModal(discord.ui.Modal, title="Add Trainees"):
     trainee_list = discord.ui.TextInput(label="Trainees (IDs or mentions, space/comma separated)", style=discord.TextStyle.long)
 
@@ -1283,7 +1193,6 @@ class TrainingIndividualModal(discord.ui.Modal):
             self.parent_view.trainees.append(tid)
         await interaction.response.send_message(f"Recorded individual result for <@{tid}>.", ephemeral=True)
         try:
-            # update original message
             await interaction.edit_original_response(embed=self.parent_view.build_embed(), view=self.parent_view)
         except Exception:
             pass
@@ -1440,13 +1349,11 @@ class ConfirmationView(discord.ui.View):
     @discord.ui.button(label="Confirm and Send", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        # perform sending for each
         for item in self.payload:
             trainee = await self.parent_view.bot.fetch_user(item['trainee'])
             cot = await (self.parent_view.bot.fetch_user(item['cotrainer']) if item.get('cotrainer') else None)
             await log_training_result(self.parent_view.bot, interaction.user, trainee, item['result'], cot, item.get('remarks',''), item.get('notes',''))
         await interaction.followup.send(f"Sent results for {len(self.payload)} trainees.", ephemeral=True)
-        # close the parent view message
         try:
             await interaction.edit_original_response(embed=self.parent_view.build_embed(final=True), view=self.parent_view)
         except Exception:
@@ -1467,16 +1374,13 @@ class ConfirmResultView(discord.ui.View):
 
     @discord.ui.button(label="Confirm and Send", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # only trainer may confirm
         if interaction.user.id != getattr(self.trainer, 'id', None):
             await interaction.response.send_message("Only the trainer may confirm.", ephemeral=True)
             return
-        # defer before performing long-running work to avoid interaction timeouts
         try:
             await interaction.response.defer(ephemeral=True)
         except Exception:
             pass
-        # disable buttons
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
@@ -1491,14 +1395,12 @@ class ConfirmResultView(discord.ui.View):
                         if member:
                             role_ping = guild.get_role(PING_ROLE_ID)
                             role_stage = guild.get_role(TRAINING_PASS_ROLE)
-                            # remove ping role
                             if role_ping and role_ping in member.roles:
                                 try:
                                     await member.remove_roles(role_ping, reason="Passed training")
                                 except Exception:
                                     pass
                                 remove_role_timestamp(role_ping.id, member.id)
-                            # add stage role
                             if role_stage and role_stage not in member.roles:
                                 try:
                                     await member.add_roles(role_stage, reason="Passed training")
@@ -1542,7 +1444,6 @@ class ConfirmRAResultView(discord.ui.View):
         self.cotrainer = cotrainer
         self.remarks = remarks
         self.notes = notes
-        # store the preview embeds so we can send the exact same embeds when confirming
         self.emb_visual = emb_visual
         self.emb2 = emb2
 
@@ -1559,8 +1460,6 @@ class ConfirmRAResultView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
         try:
-            # Send the RA result using the exact preview embeds for DM (suppress training notice).
-            # For the channel post, we want a labeled (Ride-Along) title while keeping the DM as the original preview.
             channel_visual = copy.deepcopy(self.emb_visual) if self.emb_visual is not None else None
             channel_emb2 = copy.deepcopy(self.emb2) if self.emb2 is not None else None
             if channel_visual is not None:
@@ -1583,7 +1482,6 @@ class ConfirmRAResultView(discord.ui.View):
                         if member:
                             role_stage = guild.get_role(TRAINING_PASS_ROLE)
                             role_extra = guild.get_role(RA_ROLE_TO_REMOVE)
-                            # remove stage and extra roles if present
                             to_remove = []
                             if role_stage and role_stage in member.roles:
                                 to_remove.append(role_stage)
@@ -1594,7 +1492,6 @@ class ConfirmRAResultView(discord.ui.View):
                                     await member.remove_roles(*to_remove, reason="Passed R/A")
                                 except Exception:
                                     pass
-                            # add final roles
                             final_objs = [guild.get_role(rid) for rid in RA_FINAL_ROLES]
                             final_objs = [r for r in final_objs if r is not None]
                             if final_objs:
@@ -1602,7 +1499,6 @@ class ConfirmRAResultView(discord.ui.View):
                                     await member.add_roles(*final_objs, reason="Passed R/A")
                                 except Exception:
                                     pass
-                            # remove timestamps for removed roles
                             remove_role_timestamp(TRAINING_PASS_ROLE, member.id)
                             remove_role_timestamp(RA_ROLE_TO_REMOVE, member.id)
                             await log_action(self.bot, self.trainer, "ra_role_changed", extra=f"user={member.id} removed={[r.id for r in to_remove]} added={RA_FINAL_ROLES}")
@@ -1707,7 +1603,6 @@ class TrainingResultView(discord.ui.View):
 
     @discord.ui.button(label="Preview & Confirm", style=discord.ButtonStyle.success, row=2)
     async def preview_confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # build payload
         payload = []
         for tid in self.trainees:
             entry = {"trainee": tid}
@@ -1720,7 +1615,6 @@ class TrainingResultView(discord.ui.View):
             entry['cotrainer'] = None
             entry['cotrainer'] = self.cotrainer
             payload.append(entry)
-        # build confirmation embed
         emb = discord.Embed(title="Confirm Training Results", color=EMBED_COLOR)
         for p in payload:
             emb.add_field(name=f"<@{p['trainee']}>", value=f"Result: {p['result']}\nRemarks: {p.get('remarks','')}\nNotes: {p.get('notes','')}", inline=False)

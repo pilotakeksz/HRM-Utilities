@@ -50,7 +50,6 @@ async def send_transcript_and_logs(channel, opener, guild):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_transcript)
 
-    # DM transcript to opener (embed + .txt transcript file)
     try:
         summary_embed = discord.Embed(
             title="Your Ticket Transcript",
@@ -66,7 +65,6 @@ async def send_transcript_and_logs(channel, opener, guild):
     except Exception:
         pass
 
-    # Send summary embed + transcript and html to logging channel (embed on top, files below)
     log_channel = guild.get_channel(CHANNEL_TICKET_LOGS)
     if log_channel:
         summary_embed = discord.Embed(
@@ -162,7 +160,6 @@ async def create_ticket(interaction, ticket_type, request_content):
         overwrites[guild.get_role(HC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
         overwrites[guild.get_role(MC_ROLE)] = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True)
 
-    # --- FIX: Ensure category exists ---
     category = guild.get_channel(category_id)
     if not category or not isinstance(category, discord.CategoryChannel):
         await interaction.response.send_message(
@@ -171,7 +168,6 @@ async def create_ticket(interaction, ticket_type, request_content):
         )
         return None
 
-    # Store opener ID in topic for accurate transcript delivery
     channel = await guild.create_text_channel(
         ticket_name,
         category=category,
@@ -192,13 +188,11 @@ async def create_ticket(interaction, ticket_type, request_content):
     embed2.set_image(url="attachment://bottom.png")
     embed2.set_footer(text=EMBED_FOOTER, icon_url=EMBED_ICON)
 
-    # Attach local image files
     file1 = discord.File(os.path.join(IMAGES_DIR, "ASSISTANCE.png"), filename="ASSISTANCE.png")
     file2 = discord.File(os.path.join(IMAGES_DIR, "bottom.png"), filename="bottom.png")
 
     await channel.send(content=f"<@&{TICKET_HANDLER_ROLE}>", embeds=[embed1, embed2], files=[file1, file2], view=TicketActionView())
 
-    # Return the channel so the modal can redirect the user
     return channel
 
 class TicketActionView(View):
@@ -228,12 +222,10 @@ class ClaimButton(Button):
                 opener_id = None
         opener = interaction.guild.get_member(opener_id) if opener_id else None
 
-        # Only allow claim by HC or Ticket Handler
         if hc_role not in interaction.user.roles and ticket_handler_role not in interaction.user.roles:
             await interaction.response.send_message("Only HC or Ticket Handlers can claim this ticket.", ephemeral=True)
             return
 
-        # Set permissions: only claimer and opener can send messages, staff can view
         overwrites = {
             interaction.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, embed_links=True),
@@ -277,7 +269,6 @@ class ConfirmCloseView(View):
     async def confirm(self, interaction: discord.Interaction, button: Button):
         # Archive
         await interaction.channel.edit(category=interaction.guild.get_channel(CATEGORY_ARCHIVED))
-        # Only allow opener, HC, MC (if general), and ticket handler to view archived ticket
         overwrites = {
             interaction.channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=False),
@@ -298,7 +289,6 @@ class ConfirmCloseView(View):
         if opener_id:
             opener = interaction.guild.get_member(opener_id) or await interaction.guild.fetch_member(opener_id)
         else:
-            # fallback to old logic
             messages = [msg async for msg in interaction.channel.history(limit=None, oldest_first=True)]
             for msg in messages:
                 if not msg.author.bot:
@@ -323,7 +313,6 @@ class ConfirmCloseView(View):
         ))
         # Transcript and logs
         await send_transcript_and_logs(interaction.channel, opener, interaction.guild)
-        # Schedule deletion
         save_pending_deletion(interaction.channel.id, delete_at)
         interaction.client.loop.create_task(schedule_ticket_deletion(interaction.client, interaction.channel.id, delete_at))
         self.stop()
@@ -338,7 +327,6 @@ def save_pending_deletion(channel_id, delete_at):
     if os.path.exists(DELETION_SCHEDULE_FILE):
         with open(DELETION_SCHEDULE_FILE, "r") as f:
             lines = [line.strip() for line in f if line.strip()]
-    # Remove any existing entry for this channel
     lines = [line for line in lines if not line.startswith(f"{channel_id}:")]
     lines.append(f"{channel_id}:{delete_at}")
     with open(DELETION_SCHEDULE_FILE, "w") as f:
@@ -359,10 +347,8 @@ async def schedule_ticket_deletion(bot, channel_id, delete_at):
     logging.info(f"[TicketSystem] Scheduling deletion for channel {channel_id} in {wait_time:.2f} seconds.")
     if wait_time > 0:
         await asyncio.sleep(wait_time)
-    # Try to get the channel from cache
     channel = bot.get_channel(int(channel_id))
     if not channel:
-        # Try to fetch the channel from API
         try:
             channel = await bot.fetch_channel(int(channel_id))
             logging.info(f"[TicketSystem] Successfully fetched channel {channel_id} from API.")
@@ -399,11 +385,9 @@ async def ensure_persistent_ticket_embed(bot):
     if embed_id:
         try:
             message = await channel.fetch_message(embed_id)
-            # If message exists, do nothing (don't resend)
             return
         except Exception:
             message = None
-    # If message doesn't exist, send it and store the ID
     embed1 = discord.Embed(color=EMBED_COLOUR, description="\u200b")
     embed1.set_image(url="attachment://ASSISTANCE.png")
     embed2 = discord.Embed(

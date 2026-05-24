@@ -75,7 +75,6 @@ class EmbedBuilder {
     }
 
     setupModalEvents() {
-        // Import modal
         document.getElementById('import-modal-close').addEventListener('click', () => this.closeModal('import-modal'));
         document.getElementById('import-cancel-btn').addEventListener('click', () => this.closeModal('import-modal'));
         document.getElementById('import-confirm-btn').addEventListener('click', () => this.importJSON());
@@ -90,7 +89,6 @@ class EmbedBuilder {
         document.getElementById('copy-json-cancel-btn').addEventListener('click', () => this.closeModal('copy-json-modal'));
         document.getElementById('copy-json-copy-btn').addEventListener('click', () => this.copyJSONToClipboard());
 
-        // Close modals on backdrop click
         document.querySelectorAll('.modal').forEach(modal => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -387,7 +385,6 @@ class EmbedBuilder {
             return;
         }
 
-        // Create a modal for message selection
         this.createMessageSelectionModal(savedMessages, (selectedKey) => {
             if (!selectedKey) return;
 
@@ -397,7 +394,6 @@ class EmbedBuilder {
                 return;
             }
 
-            // Update the option with the saved message reference
             const currentMessage = this.messages[this.currentMessageIndex];
             currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].label = selectedKey;
             currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].options[optionIndex].value = `send:${selectedKey}`;
@@ -415,7 +411,6 @@ class EmbedBuilder {
             return;
         }
 
-        // Create a modal for message selection
         this.createMessageSelectionModal(savedMessages, (selectedKey) => {
             if (!selectedKey) return;
 
@@ -425,7 +420,6 @@ class EmbedBuilder {
                 return;
             }
 
-            // Update the button with the saved message reference
             const currentMessage = this.messages[this.currentMessageIndex];
             currentMessage.embeds[this.currentEmbedIndex].actions[actionIndex].target = `send:${selectedKey}`;
             this.renderActions();
@@ -434,17 +428,14 @@ class EmbedBuilder {
     }
 
     createMessageSelectionModal(savedMessages, callback) {
-        // Create modal overlay
         const modal = document.createElement('div');
         modal.className = 'modal active';
         modal.style.zIndex = '2000';
 
-        // Create modal content
         const modalContent = document.createElement('div');
         modalContent.className = 'modal-content';
         modalContent.style.maxWidth = '600px';
 
-        // Create header
         const header = document.createElement('div');
         header.className = 'modal-header';
         header.innerHTML = `
@@ -457,7 +448,6 @@ class EmbedBuilder {
             </button>
         `;
 
-        // Create body with message list
         const body = document.createElement('div');
         body.className = 'modal-body';
         body.style.maxHeight = '400px';
@@ -520,7 +510,6 @@ class EmbedBuilder {
 
         body.appendChild(messageList);
 
-        // Create footer
         const footer = document.createElement('div');
         footer.className = 'modal-footer';
         footer.innerHTML = `
@@ -533,7 +522,6 @@ class EmbedBuilder {
         modal.appendChild(modalContent);
         document.body.appendChild(modal);
 
-        // Add event listeners
         document.getElementById('message-selection-close').addEventListener('click', () => {
             document.body.removeChild(modal);
         });
@@ -728,7 +716,6 @@ class EmbedBuilder {
         document.getElementById('footer-text').value = embed.footer.text || '';
         document.getElementById('footer-icon').value = embed.footer.icon_url || '';
 
-        // Update color picker
         const colorValue = embed.color || '7289da';
         document.getElementById('embed-color-picker').value = '#' + colorValue;
 
@@ -907,7 +894,6 @@ class EmbedBuilder {
                 optionsContainer.className = 'options-container';
                 optionsContainer.style.marginTop = '1rem';
 
-                // Add options header with buttons
                 const optionsHeader = document.createElement('div');
                 optionsHeader.style.display = 'flex';
                 optionsHeader.style.gap = '0.5rem';
@@ -936,7 +922,6 @@ class EmbedBuilder {
                     const optionItem = document.createElement('div');
                     optionItem.className = 'option-item';
 
-                    // Create inputs container
                     const inputsContainer = document.createElement('div');
                     inputsContainer.className = 'option-inputs';
 
@@ -973,7 +958,6 @@ class EmbedBuilder {
                     inputsContainer.appendChild(descriptionInput);
                     inputsContainer.appendChild(iconInput);
 
-                    // Create buttons container
                     const buttonsContainer = document.createElement('div');
                     buttonsContainer.className = 'option-buttons';
 
@@ -991,7 +975,6 @@ class EmbedBuilder {
                     buttonsContainer.appendChild(useSavedBtn);
                     buttonsContainer.appendChild(deleteOptionBtn);
 
-                    // Add description if value contains message reference
                     if (option.value && (option.value.startsWith('send:') || option.value.startsWith('send_json:'))) {
                         const description = document.createElement('div');
                         description.className = 'option-description';
@@ -1030,7 +1013,6 @@ class EmbedBuilder {
                 previewEmbed.style.marginTop = '1rem';
             }
 
-            // Add author if present
             if (embed.author && embed.author.name) {
                 const authorContainer = document.createElement('div');
                 authorContainer.className = 'preview-author-container';
@@ -1106,7 +1088,6 @@ class EmbedBuilder {
                 previewEmbed.appendChild(fieldsContainer);
             }
 
-            // Add thumbnail if present
             if (embed.thumbnail && embed.thumbnail.url) {
                 const thumbnailContainer = document.createElement('div');
                 thumbnailContainer.className = 'preview-thumbnail-container';
@@ -1131,7 +1112,6 @@ class EmbedBuilder {
                 previewEmbed.appendChild(thumbnailContainer);
             }
 
-            // Add main image if present
             if (embed.image && embed.image.url) {
                 const imageContainer = document.createElement('div');
                 imageContainer.className = 'preview-image-container';
@@ -1287,7 +1267,6 @@ class EmbedBuilder {
     }
 
     buildCompletePayload() {
-        // Collect all saved messages that are referenced
         const referencedMessages = this.collectReferencedMessages();
         
         const payload = {
@@ -1340,7 +1319,6 @@ class EmbedBuilder {
                         options: select.options.map(option => {
                             const resolvedOption = { ...option };
                             
-                            // If this option references a saved message, inline the message data
                             if (option.value && option.value.startsWith('send:')) {
                                 const messageKey = option.value.substring(5); // Remove 'send:' prefix
                                 const referencedMessage = referencedMessages[messageKey];
@@ -1392,7 +1370,6 @@ class EmbedBuilder {
                             if (option.value && option.value.startsWith('send:')) {
                                 const messageKey = option.value.substring(5); // Remove 'send:' prefix
                                 
-                                // Get the saved message data from localStorage
                                 const savedData = localStorage.getItem(`message_${messageKey}`);
                                 if (savedData) {
                                     try {
@@ -1430,7 +1407,6 @@ class EmbedBuilder {
             }, 2000);
             
         } catch (err) {
-            // Fallback for older browsers
             const textArea = document.createElement('textarea');
             textArea.value = jsonString;
             document.body.appendChild(textArea);
@@ -1452,7 +1428,6 @@ class EmbedBuilder {
             return;
         }
 
-        // Create comprehensive payload with all data including actions
         const payload = {
             embeds: this.messages.flatMap(message => 
                 message.embeds.map(embed => ({
@@ -1616,7 +1591,6 @@ class EmbedBuilder {
     }
 
     exportCompleteJSON() {
-        // Create comprehensive payload with all data including actions
         const payload = this.buildCompletePayload();
 
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -1632,14 +1606,12 @@ class EmbedBuilder {
     }
 }
 
-// Add these validation functions at the top of app.js
 function validateEmbed(embed) {
     // Check required fields
     if (!embed.title && !embed.description && !embed.image?.url) {
         throw new Error("Embed must have at least a title, description, or image");
     }
 
-    // Validate length limits
     if (embed.title && embed.title.length > 256) {
         throw new Error("Embed title must be 256 characters or less");
     }
@@ -1647,7 +1619,6 @@ function validateEmbed(embed) {
         throw new Error("Embed description must be 4096 characters or less"); 
     }
 
-    // Validate fields
     if (embed.fields) {
         if (embed.fields.length > 25) {
             throw new Error("Embed can have maximum 25 fields");
@@ -1666,17 +1637,14 @@ function validateEmbed(embed) {
         });
     }
 
-    // Validate footer
     if (embed.footer?.text && embed.footer.text.length > 2048) {
         throw new Error("Footer text must be 2048 characters or less");
     }
 
-    // Validate author
     if (embed.author?.name && embed.author.name.length > 256) {
         throw new Error("Author name must be 256 characters or less");
     }
 
-    // Validate URLs
     const urlFields = ['thumbnail', 'image'];
     urlFields.forEach(field => {
         if (embed[field]?.url && !isValidUrl(embed[field].url)) {
@@ -1705,7 +1673,6 @@ function validateMessage(message) {
         throw new Error("Message can have maximum 10 embeds");
     }
 
-    // Validate each embed
     message.embeds.forEach((embed, index) => {
         try {
             validateEmbed(embed);
@@ -1720,7 +1687,6 @@ function validateMessage(message) {
 // Modify the export/send functions to include validation:
 document.addEventListener('DOMContentLoaded', () => {
   try {
-    // Ensure single initialization
     if (!window.embedBuilder) {
       window.embedBuilder = new EmbedBuilder(); // constructor calls init()
     }

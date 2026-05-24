@@ -250,7 +250,6 @@ class CallsignCog(commands.Cog):
                 # Append callsign to end of their nickname or username as ' | CS'
                 try:
                     display = user.display_name
-                    # Remove existing ' | CS' suffix if present
                     display = re.sub(r"\s*\|\s*(CO|WO|E)-(G|S|J|W|N)\d{2}$", "", display)
                     new_nick = f"{display} | {new_callsign}"
                     if len(new_nick) > 32:
@@ -295,7 +294,6 @@ class CallsignCog(commands.Cog):
         return None
 
     async def _auto_promote_if_needed(self, member: discord.Member):
-        # Only consider members with an existing callsign
         callsigns = load_callsigns()
         current = callsigns.get(member.id)
         if not current:
@@ -313,13 +311,11 @@ class CallsignCog(commands.Cog):
         if (cur_first, cur_second) == (target_first, target_second):
             return False, "no_change"
 
-        # Build new callsign using same numeric suffix if possible, otherwise allocate
         new_num = cur_num or self._allocate_number_for_prefix(target_first, target_second, callsigns)
         if not new_num:
             return False, "no_number"
         new_callsign = f"{target_first}-{target_second}{new_num}"
 
-        # Ensure uniqueness (should be unique by allocation, but double-check)
         if new_callsign in callsigns.values():
             # If collision, allocate a different number
             alt = self._allocate_number_for_prefix(target_first, target_second, callsigns)
@@ -327,11 +323,9 @@ class CallsignCog(commands.Cog):
                 return False, "no_number"
             new_callsign = f"{target_first}-{target_second}{alt}"
 
-        # Update persistent store
         callsigns[member.id] = new_callsign
         save_callsigns(callsigns)
 
-        # Update display name / nickname: try to replace existing callsign in display_name
         try:
             display = member.display_name
             # Pattern for existing callsign occurrences
@@ -343,7 +337,6 @@ class CallsignCog(commands.Cog):
             if len(display_new) > 32:
                 display_new = display_new[:32]
             try:
-                # Only attempt nickname change if it differs
                 if member.nick != display_new:
                     await member.edit(nick=display_new, reason="Callsign auto-updated due to promotion")
             except Exception:
@@ -368,7 +361,6 @@ class CallsignCog(commands.Cog):
             return
         if message.channel.id != PROMOTION_CHANNEL_ID:
             return
-        # If message mentions users, check each mentioned user
         if not message.mentions:
             return
         guild_id = message.guild.id if message.guild else None
@@ -389,7 +381,6 @@ class CallsignCog(commands.Cog):
                 self._promotion_task = asyncio.create_task(self._process_pending_promotions())
 
     async def _process_pending_promotions(self, delay_seconds: int = 600):
-        # Wait delay then process accumulated promotion mentions in batches per guild
         try:
             await asyncio.sleep(delay_seconds)
             async with self._promotion_lock:
@@ -415,12 +406,10 @@ class CallsignCog(commands.Cog):
                     await asyncio.sleep(0.25)
                 # If any updates, announce in channel and then delete after 10s
                 if updates:
-                    # Choose the promotions channel in guild
                     ch = guild.get_channel(PROMOTION_CHANNEL_ID)
                     if ch:
                         lines = [f"{m.mention} -> **{cs}**" for m, cs in updates]
                         try:
-                            # Send as a silent-style announcement: prepend '@silent' and disable user/role/everyone mentions
                             content = "@silent\nUpdated callsigns:\n" + "\n".join(lines)
                             allowed = discord.AllowedMentions(users=False, roles=False, everyone=False)
                             sent = await ch.send(content, allowed_mentions=allowed)
@@ -431,7 +420,6 @@ class CallsignCog(commands.Cog):
                                 pass
                         except Exception:
                             pass
-                    # Also ensure DMs were sent by _auto_promote_if_needed
         except Exception:
             pass
 

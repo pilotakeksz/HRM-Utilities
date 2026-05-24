@@ -59,12 +59,10 @@ class Applications(commands.Cog):
         trainer_availability: app_commands.Choice[str],
         ping: bool = False
     ):
-        # Permission check
         if not any(role.id == APPLICATIONS_ROLE_ID for role in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
 
-        # Log the command usage
         log_application_command(
             user_id=interaction.user.id,
             open_status=open,
@@ -115,7 +113,6 @@ class Applications(commands.Cog):
         embed2.set_footer(text=FOOTER_TEXT, icon_url=FOOTER_ICON)
         embed2.set_image(url=BOTTOM_IMAGE)
 
-        # Send message
         await channel.send(
             content=ping_text,
             embeds=[embed1, embed2],

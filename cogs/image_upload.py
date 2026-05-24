@@ -57,7 +57,6 @@ class ImageUpload(commands.Cog):
             return
         
         try:
-            # Send image to Discord and get URL
             with open(image_path, 'rb') as f:
                 file = discord.File(f, filename=filename)
                 msg = await ctx.send(file=file)
@@ -66,12 +65,10 @@ class ImageUpload(commands.Cog):
             if msg.attachments:
                 discord_url = msg.attachments[0].url
                 
-                # Save to registry
                 urls = self.load_discord_urls()
                 urls[filename] = discord_url
                 self.save_discord_urls(urls)
                 
-                # Delete the message (we don't need it anymore)
                 await msg.delete()
                 
                 await ctx.send(f"✅ Uploaded: {filename}\n```{discord_url}```")
@@ -89,7 +86,6 @@ class ImageUpload(commands.Cog):
             await ctx.send("❌ Images directory not found")
             return
         
-        # Get all image files
         image_files = [f for f in self.images_dir.iterdir() 
                       if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.webp']]
         
@@ -201,7 +197,6 @@ def get_discord_image_url(image_filename):
         except:
             pass
     
-    # Return None if not found - cog should handle gracefully
     return None
 
 async def setup(bot):

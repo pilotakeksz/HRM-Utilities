@@ -48,7 +48,6 @@ QUARANTINE_FILE = os.path.join(DATA_DIR, "quarantine_data.json")
 ACTION_LOG_FILE = os.path.join(LOGS_DIR, "raid_protection.log")
 LEFT_RESTORE_FILE = os.path.join(DATA_DIR, "left_restore.json")
 
-# Ensure directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
@@ -116,10 +115,8 @@ class RaidProtection(commands.Cog):
         if duration:
             embed.add_field(name="Duration", value=f"{duration} seconds")
         
-        # Log to file
         logger.info(f"{action}: {user.id} - {reason}")
         
-        # Log to channel
         channel = self.bot.get_channel(LOG_CHANNEL_ID)
         if channel:
             await channel.send(embed=embed)
@@ -147,26 +144,21 @@ class RaidProtection(commands.Cog):
             logger.error(f"Cannot resolve guild member to quarantine for user id {getattr(user, 'id', None)}")
             return
 
-        # Use member from here on
         user = member
 
         # Final bypass check - only one check needed (protected user OR protected role)
         if self.has_bypass(user):
             return
 
-        # Store roles before removing (exclude @everyone and the quarantine role itself)
         roles = [role.id for role in user.roles if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID]
 
-        # Remove roles top-down (highest position first) - sort by position descending
         roles_to_remove = [
             role for role in user.roles 
             if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID
         ]
         
-        # Sort by position (highest position = highest number = remove first)
         roles_to_remove.sort(key=lambda r: r.position, reverse=True)
 
-        # Remove roles one-by-one with error handling (top-down order)
         for role in roles_to_remove:
             try:
                 await user.remove_roles(role, reason="Quarantine")
@@ -177,7 +169,6 @@ class RaidProtection(commands.Cog):
             except Exception as e:
                 logger.error(f"Error removing role {role.id} from user {user.id}: {e}")
 
-        # Add the quarantine role if available
         quarantine_role = user.guild.get_role(QUARANTINE_ROLE_ID)
         if quarantine_role:
             try:
@@ -187,7 +178,6 @@ class RaidProtection(commands.Cog):
         else:
             logger.error(f"Quarantine role {QUARANTINE_ROLE_ID} not found in guild {user.guild.id}")
         
-        # Store quarantine data
         self.quarantined_users[str(user.id)] = {
             "roles": roles,
             "reason": reason,
@@ -199,7 +189,6 @@ class RaidProtection(commands.Cog):
         except Exception:
             pass
 
-        # Attempt to timeout (mute) the user for the quarantine duration
         try:
             until = datetime.now(timezone.utc) + timedelta(seconds=QUARANTINE_DURATION)
             try:
@@ -213,7 +202,6 @@ class RaidProtection(commands.Cog):
             logger.error(f"Failed to apply timeout to quarantined user {user.id}: {e}")
         
 
-        # Create confirmation buttons
         class QuarantineActions(discord.ui.View):
             def __init__(self, cog: 'RaidProtection'):
                 super().__init__(timeout=None)
@@ -242,7 +230,6 @@ class RaidProtection(commands.Cog):
                     return
                 
                 try:
-                    # defer because restoring roles may take time and make it public
                     try:
                         await interaction.response.defer()
                     except Exception:
@@ -251,7 +238,6 @@ class RaidProtection(commands.Cog):
                     self.used = True
                     roles = self.cog.quarantined_users.get(str(user.id), {}).get("roles", [])
 
-                    # send an initial progress message to update live
                     try:
                         progress_embed = discord.Embed(
                             title="Unquarantining user...",
@@ -322,7 +308,6 @@ class RaidProtection(commands.Cog):
 
                 try:
                     await interaction.client.wait_for('message', timeout=30.0, check=check)
-                    # Try to DM the user before kicking so they are notified
                     try:
                         em = discord.Embed(
                             title="You have been kicked",
@@ -366,7 +351,6 @@ class RaidProtection(commands.Cog):
 
                 try:
                     await interaction.client.wait_for('message', timeout=30.0, check=check)
-                    # Try to DM the user before banning so they are notified
                     try:
                         em = discord.Embed(
                             title="You have been banned",
@@ -392,7 +376,6 @@ class RaidProtection(commands.Cog):
                 except asyncio.TimeoutError:
                     await interaction.followup.send("Ban cancelled", ephemeral=True)
 
-        # Send notification
         notify_channel = self.bot.get_channel(QUARANTINE_NOTIFY_CHANNEL_ID)
         if notify_channel:
             embed = discord.Embed(
@@ -408,7 +391,6 @@ class RaidProtection(commands.Cog):
                 view=QuarantineActions(self)  # Pass self (cog instance)
             )
 
-        # DM user with embed
         try:
             em = discord.Embed(
                 title="You have been quarantined",
@@ -587,11 +569,9 @@ class RaidProtection(commands.Cog):
         if message.author.bot:
             return
         
-        # Only check bypass once - if protected, skip all checks
         if self.has_bypass(message.author):
             return
         
-        # Check if user is interacting with a quarantined user
         # 1. Check if message mentions any quarantined users
         for mentioned_user in message.mentions:
             if self.is_quarantined(mentioned_user.id):
@@ -638,14 +618,12 @@ class RaidProtection(commands.Cog):
         
         if should_quarantine:
             try:
-                # Try to delete the message first
                 await message.delete()
             except:
                 pass
             await self.quarantine_user(message.author, reason)
             return
 
-        # Check if message author is quarantined (prevent them from sending messages)
         if self.is_quarantined(message.author.id):
             try:
                 await message.delete()
@@ -705,7 +683,6 @@ class RaidProtection(commands.Cog):
                             await member.timeout(until=until)
                             logger.info(f"Timed out member {member.id} for {MUTE_DURATION}s")
                         except TypeError:
-                            # Fallback: try passing a timedelta
                             try:
                                 await member.timeout(timedelta(seconds=MUTE_DURATION))
                                 logger.info(f"Timed out member {member.id} for {MUTE_DURATION}s (timedelta fallback)")
@@ -833,10 +810,8 @@ class RaidProtection(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
         try:
-            # Ensure we're in the right guild
             if channel.guild.id != GUILD_ID:
                 return
-            # Try to find the actor from audit logs (with retry)
             def check_target(e):
                 try:
                     return getattr(e.target, 'id', None) == channel.id
@@ -887,7 +862,6 @@ class RaidProtection(commands.Cog):
         if user.bot:
             return
         
-        # Only check bypass once - if protected, skip all checks
         # Convert User to Member if needed for bypass check
         if isinstance(user, discord.User) and reaction.message.guild:
             member = reaction.message.guild.get_member(user.id)
@@ -897,7 +871,6 @@ class RaidProtection(commands.Cog):
             if self.has_bypass(user):
                 return
         
-        # Check if the message author is quarantined
         if reaction.message.author and self.is_quarantined(reaction.message.author.id):
             try:
                 await reaction.remove(user)
@@ -924,15 +897,12 @@ class RaidProtection(commands.Cog):
         if before.guild.id != GUILD_ID:
             return
         
-        # Check if roles changed
         if before.roles == after.roles:
             return
         
-        # Check if the member being updated is quarantined
         if not self.is_quarantined(after.id):
             return
         
-        # Get the roles that were added/removed
         roles_before = set(before.roles)
         roles_after = set(after.roles)
         roles_added = roles_after - roles_before
@@ -948,7 +918,6 @@ class RaidProtection(commands.Cog):
         if not roles_added and not roles_removed:
             return
         
-        # Fetch the audit log actor who made the change
         def check_target(e):
             try:
                 return getattr(e.target, 'id', None) == after.id
@@ -969,7 +938,6 @@ class RaidProtection(commands.Cog):
         if self.has_bypass(actor):
             return
         
-        # Build reason with details
         reason_parts = [f"Modified roles of quarantined user: {after.name} ({after.id})"]
         if roles_added:
             role_names = [r.name for r in roles_added]
@@ -985,13 +953,11 @@ class RaidProtection(commands.Cog):
         
         # Restore the quarantined user's roles to what they should be (remove added roles, re-add removed ones if they were original)
         try:
-            # Remove any roles that were added
             if roles_added:
                 await after.remove_roles(*roles_added, reason="Quarantine protection: removing unauthorized role additions")
             
             # Re-add roles that were removed (if they were part of the original roles)
             if roles_removed:
-                # Check if removed roles were in the original stored roles
                 stored_data = self.quarantined_users.get(str(after.id), {})
                 original_roles = stored_data.get("roles", [])
                 roles_to_restore = [r for r in roles_removed if r.id in original_roles]
@@ -1021,7 +987,6 @@ class RaidProtection(commands.Cog):
             if not self.has_bypass(actor):
                 # increment role change counter (uses same limit)
                 now_ts = datetime.now(timezone.utc).timestamp()
-                # store a timestamp list using role_changes mapping by replacing int with list if needed
                 # we'll temporarily use role_changes as a list store by keying with actor.id in a separate structure
                 if not hasattr(self, 'role_change_events'):
                     self.role_change_events = defaultdict(list)
@@ -1073,7 +1038,6 @@ class RaidProtection(commands.Cog):
 
             logger.info(f"Emoji diff: removed={list(removed_emojis.keys())} added={list(added_emojis.keys())}")
 
-            # Handle deletions
             if removed_emojis:
                 # For each removed emoji, try to find the responsible audit log entry and attribute to that actor.
                 for eid, emo in removed_emojis.items():
@@ -1111,7 +1075,6 @@ class RaidProtection(commands.Cog):
                     # Increase attempts/delay to catch slightly delayed audit entries
                     actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_delete, target_check=_check, attempts=5, delay=1.0)
                     if not actor:
-                        # fallback: try generic emoji_delete entry (may be delayed)
                         actor = await self._fetch_audit_actor(guild, discord.AuditLogAction.emoji_delete, target_check=None, attempts=5, delay=1.0)
 
                     if not actor:
@@ -1121,12 +1084,10 @@ class RaidProtection(commands.Cog):
 
                     if actor and not self.has_bypass(actor):
                         self.emoji_counts[actor.id] += 1
-                        # build deleted info for logging/notification
                         deleted_info = f"- {emo.name} ({emo.id}) {str(emo)}"
                         if self.emoji_counts[actor.id] > EMOJI_ADD_LIMIT:
                             await self.quarantine_user(actor, f"Unauthorized emoji deletion\nDeleted emoji:\n{deleted_info}\nDeleted by: {actor.name} ({actor.id})")
 
-            # Handle additions
             if added_emojis:
                 for aid, emo in added_emojis.items():
                     logger.info(f"Processing added emoji {emo.name} ({aid})")
@@ -1190,7 +1151,6 @@ class RaidProtection(commands.Cog):
             if had_quarantine or had_special:
                 reason = "Left while quarantined or held special role"
                 try:
-                    # Try to DM the user before banning so they are notified (may fail if user left or DMs closed)
                     try:
                         await member.send(f"You have been banned from {member.guild.name} for: {reason}")
                     except Exception:
@@ -1220,7 +1180,6 @@ class RaidProtection(commands.Cog):
         try:
             if guild.id != GUILD_ID:
                 return
-            # Try to find the actor in audit logs
             def target_check(entry):
                 try:
                     return getattr(entry.target, 'id', None) == user.id
@@ -1268,7 +1227,6 @@ class RaidProtection(commands.Cog):
                 except Exception as e:
                     logger.error(f"Failed to restore roles on join for {member.id}: {e}")
 
-            # remove stored entry
             try:
                 del self.left_restore[str(member.id)]
                 self.save_left_restore()
@@ -1277,7 +1235,6 @@ class RaidProtection(commands.Cog):
         except Exception as e:
             logger.error(f"Error in on_member_join: {e}")
 
-        # --- Join-raid detection ---
         try:
             # record join event
             now_ts = datetime.now(timezone.utc).timestamp()
@@ -1306,7 +1263,6 @@ class RaidProtection(commands.Cog):
         except Exception as e:
             logger.error(f"Error in join-raid detection: {e}")
 
-    # Add this method to reset counters periodically
     @tasks.loop(hours=1)
     async def reset_counters(self):
         """Reset all counters every hour"""
@@ -1328,7 +1284,6 @@ class RaidProtection(commands.Cog):
         reason: str,
         duration: Optional[float] = 2.0
     ):
-        # Check if user has admin role
         if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             await interaction.response.send_message(
                 "You need the admin role to use this command.",
@@ -1336,7 +1291,6 @@ class RaidProtection(commands.Cog):
             )
             return
 
-        # Check if target user has immunity
         if self.has_bypass(user):
             await interaction.response.send_message(
                 "This user has immunity from quarantine.",
@@ -1350,16 +1304,13 @@ class RaidProtection(commands.Cog):
         except Exception:
             pass
 
-        # Store roles before removing them (exclude @everyone and the quarantine role)
         stored_roles = [role.id for role in user.roles if role != user.guild.default_role and role.id != QUARANTINE_ROLE_ID]
         
-        # Build list of roles to remove (exclude @everyone and quarantine role)
         roles_to_remove = [r for r in user.roles if r != user.guild.default_role and r.id != QUARANTINE_ROLE_ID]
         
         # Sort roles top-down (highest position first)
         roles_to_remove.sort(key=lambda r: r.position, reverse=True)
 
-        # Send an initial public progress embed so we can update live
         try:
             progress_embed = discord.Embed(
                 title="Quarantining user...",
@@ -1372,14 +1323,12 @@ class RaidProtection(commands.Cog):
         except Exception:
             progress_msg = None
 
-        # Remove roles one by one with error handling and live updates (top-down order)
         removed_count = 0
         for role in roles_to_remove:
             try:
                 await user.remove_roles(role, reason="Quarantine")
                 removed_count += 1
                 last_name = role.name
-                # update progress embed
                 if progress_msg:
                     try:
                         progress_embed = discord.Embed(
@@ -1405,12 +1354,10 @@ class RaidProtection(commands.Cog):
         # Convert days to seconds
         duration_seconds = int(duration * 86400)
 
-        # Add quarantine role
         try:
             quarantine_role = interaction.guild.get_role(QUARANTINE_ROLE_ID)
             if quarantine_role:
                 await user.add_roles(quarantine_role, reason="Quarantine")
-                # update progress with quarantine role added
                 if progress_msg:
                     try:
                         progress_embed = discord.Embed(
@@ -1443,7 +1390,6 @@ class RaidProtection(commands.Cog):
                 pass
             return
 
-        # Store quarantine data
         self.quarantined_users[str(user.id)] = {
             "roles": stored_roles,
             "reason": reason,
@@ -1452,13 +1398,11 @@ class RaidProtection(commands.Cog):
         }
         self.save_quarantine_data()
 
-        # Attempt to timeout (mute) the user for the quarantine duration
         try:
             until = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
             try:
                 await user.timeout(until=until)
             except TypeError:
-                # fallback: try passing a timedelta
                 try:
                     await user.timeout(timedelta(seconds=duration_seconds))
                 except Exception as e:
@@ -1466,7 +1410,6 @@ class RaidProtection(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to apply timeout to quarantined user {user.id}: {e}")
 
-        # Create embed for response (include roles removed count)
         roles_removed_count = len(stored_roles)
         embed = discord.Embed(
             title="Manual Quarantine",
@@ -1478,7 +1421,6 @@ class RaidProtection(commands.Cog):
         embed.add_field(name="Quarantined by", value=interaction.user.mention)
         embed.add_field(name="Roles removed", value=f"{roles_removed_count} roles removed", inline=False)
 
-        # Log the action
         await self.log_action(
             "MANUAL_QUARANTINE",
             user,
@@ -1486,7 +1428,6 @@ class RaidProtection(commands.Cog):
             duration_seconds
         )
 
-        # Try to DM the user with an embed
         try:
             em = discord.Embed(
                 title="You have been quarantined",
@@ -1507,7 +1448,6 @@ class RaidProtection(commands.Cog):
                 inline=False
             )
 
-        # Send final response as followup (we deferred earlier) if we didn't already update a progress message
         try:
             if progress_msg is None:
                 await interaction.followup.send(embed=embed)
@@ -1516,7 +1456,6 @@ class RaidProtection(commands.Cog):
                 try:
                     await progress_msg.edit(embed=embed)
                 except Exception:
-                    # fallback to sending a new followup
                     await interaction.followup.send(embed=embed)
         except Exception:
             try:
@@ -1527,7 +1466,6 @@ class RaidProtection(commands.Cog):
     @app_commands.command(name="unquarantine", description="Unquarantine a user (admin only)")
     @app_commands.describe(user="The user to unquarantine")
     async def unquarantine_command(self, interaction: discord.Interaction, user: discord.Member):
-        # Permission check
         if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             await interaction.response.send_message("You need the admin role to use this command.", ephemeral=True)
             return
@@ -1546,7 +1484,6 @@ class RaidProtection(commands.Cog):
         except Exception:
             pass
 
-        # Send initial progress message so we can update live
         try:
             progress_embed = discord.Embed(
                 title="Unquarantining user...",
@@ -1566,14 +1503,12 @@ class RaidProtection(commands.Cog):
             logger.error(f"Error restoring roles for unquarantine {user.id}: {e}")
             added = 0
 
-        # remove from persisted quarantine list
         try:
             del self.quarantined_users[str(user.id)]
             self.save_quarantine_data()
         except KeyError:
             pass
 
-        # DM the user with an embed
         try:
             em = discord.Embed(
                 title="You have been unquarantined",
@@ -1618,7 +1553,6 @@ class RaidProtection(commands.Cog):
         Returns the number of roles successfully restored.
         """
         try:
-            # Remove quarantine role if present
             quarantine_role = member.guild.get_role(QUARANTINE_ROLE_ID)
             if quarantine_role and quarantine_role in member.roles:
                 try:
@@ -1643,7 +1577,6 @@ class RaidProtection(commands.Cog):
                     except Exception as e:
                         logger.error(f"Failed to add role {role.id} to {member.id}: {e}")
 
-                    # Update progress message if provided
                     if progress_message:
                         try:
                             prog = discord.Embed(
@@ -1659,7 +1592,6 @@ class RaidProtection(commands.Cog):
                 except Exception:
                     continue
 
-            # Log the restoration
             try:
                 await self.log_action(
                     "ROLES_RESTORED",
@@ -1669,7 +1601,6 @@ class RaidProtection(commands.Cog):
             except Exception:
                 pass
 
-            # Try to DM user
             try:
                 em = discord.Embed(
                     title="Your roles have been restored",
@@ -1693,14 +1624,12 @@ class RaidProtection(commands.Cog):
     def has_bypass(self, user) -> bool:
         """Check if user has bypass protection. Only checks ONE protected user OR ONE protected role."""
         try:
-            # Check if user ID matches protected user
             user_id = getattr(user, 'id', None)
             if user_id == IMMUNE_USER_ID:
                 return True
             if user_id == BOT:
                 return True
             
-            # Check if user has protected role (only if we can access roles)
             if hasattr(user, 'roles'):
                 roles = getattr(user, 'roles', None)
                 if roles:

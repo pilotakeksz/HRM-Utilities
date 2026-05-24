@@ -88,7 +88,6 @@ class Leveling(commands.Cog):
         if not awarded_role:
             return None
 
-        # Remove lower level roles
         roles_to_remove = [member.guild.get_role(rid) for lvl, rid in LEVEL_ROLES.items() if lvl < level]
         await member.remove_roles(*filter(None, roles_to_remove))
         await member.add_roles(awarded_role)

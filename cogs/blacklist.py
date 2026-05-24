@@ -115,7 +115,6 @@ class Blacklist(commands.Cog):
         embed = self.get_blacklist_embed(
             blacklist_id, user, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), mcng_wide, ban
         )
-        # Only send the embed to the log channel, with only the ping in content
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
             msg = await channel.send(content=user.mention, embed=embed)
@@ -131,7 +130,6 @@ class Blacklist(commands.Cog):
             except Exception:
                 pass
 
-        # DM the blacklisted user (simple embed, not the log embed)
         try:
             dm_embed = discord.Embed(
                 title=f"{EMOJI_MCNG} // MCNG Blacklist",
@@ -157,7 +155,6 @@ class Blacklist(commands.Cog):
             except Exception:
                 await interaction.followup.send("Failed to ban the user. Please check my permissions.", ephemeral=True)
 
-        # Add blacklisted role
         try:
             role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
             if role and role not in user.roles:
@@ -176,7 +173,6 @@ class Blacklist(commands.Cog):
             embed=True
         )
 
-        # Log to logging channel
         log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
         if log_channel:
             log_embed = discord.Embed(
@@ -193,7 +189,6 @@ class Blacklist(commands.Cog):
             log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
             await log_channel.send(embed=log_embed)
 
-        # Only send a simple confirmation to the moderator, not the embed
         await interaction.response.send_message(f"User blacklisted and logged. Blacklist ID: {blacklist_id}", ephemeral=True)
 
     @app_commands.command(name="blacklist-void", description="Void (remove) a blacklist by its ID.")
@@ -225,7 +220,6 @@ class Blacklist(commands.Cog):
                 )
                 await db.commit()
 
-            # Remove blacklisted role if present
             try:
                 member = interaction.guild.get_member(user_id)
                 role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
@@ -249,7 +243,6 @@ class Blacklist(commands.Cog):
                 except Exception:
                     pass
 
-            # DM the user if not banned
             try:
                 if not ban:
                     user = await interaction.guild.fetch_member(user_id)
@@ -269,7 +262,6 @@ class Blacklist(commands.Cog):
             except Exception:
                 pass
 
-            # Log to logging channel
             log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
             if log_channel:
                 log_embed = discord.Embed(
@@ -285,7 +277,6 @@ class Blacklist(commands.Cog):
                 log_embed.set_footer(text=f"Logged at {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
                 await log_channel.send(embed=log_embed)
 
-            # Only send the embed to the moderator as confirmation
             embed = self.get_blacklist_embed(
                 blacklist_id, user_name, moderator_name, orig_reason, proof, date, mcng_wide, ban, voided=True, void_reason=reason
             )
@@ -405,7 +396,6 @@ class Blacklist(commands.Cog):
         embed = self.get_blacklist_embed(
             blacklist_id, user_display, interaction.user, reason, proof_url, datetime.datetime.utcnow().isoformat(), mcng_wide, ban
         )
-        # Only send the embed to the log channel, with only the ping in content (no ping if user not in server)
         content = user_obj.mention if user_obj and hasattr(user_obj, "mention") else user_display
         if proof and proof.content_type and proof.content_type.startswith("image/"):
             embed.set_image(url=proof.url)
@@ -422,7 +412,6 @@ class Blacklist(commands.Cog):
             except Exception:
                 pass
 
-        # DM the blacklisted user (if possible)
         if user_obj:
             try:
                 dm_embed = discord.Embed(
@@ -454,7 +443,6 @@ class Blacklist(commands.Cog):
             except Exception:
                 await interaction.followup.send("Failed to ban the user. Please check my permissions.", ephemeral=True)
 
-        # Add blacklisted role if user is in the guild
         try:
             if member:
                 role = interaction.guild.get_role(BLACKLISTED_ROLE_ID)
@@ -474,7 +462,6 @@ class Blacklist(commands.Cog):
             embed=True
         )
 
-        # Log to logging channel
         log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
         if log_channel:
             log_embed = discord.Embed(
@@ -539,7 +526,6 @@ class Blacklist(commands.Cog):
                 await interaction.response.send_message("You are not blacklisted.", ephemeral=True)
                 return
 
-            # Create an embed for the blacklist information
             embed = discord.Embed(
                 title="Your Blacklist Information",
                 color=discord.Color.orange()

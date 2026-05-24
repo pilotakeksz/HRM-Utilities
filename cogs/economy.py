@@ -170,7 +170,6 @@ class Economy(commands.Cog):
                         bank INTEGER DEFAULT 0
                     )
                 """)
-                # --- FIXED INVENTORY TABLE ---
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS inventory (
                         user_id INTEGER,
@@ -213,7 +212,6 @@ class Economy(commands.Cog):
             )
             await db.commit()
 
-    # --- NEW add_item ---
     async def add_item(self, user_id, item, amount, value=None):
         async with aiosqlite.connect(DB_PATH) as db:
             # For fish/junk, store each instance with its value
@@ -233,15 +231,12 @@ class Economy(commands.Cog):
                     await db.execute("INSERT INTO inventory (user_id, item, amount, value) VALUES (?, ?, ?, NULL)", (user_id, item, amount))
             await db.commit()
 
-    # --- NEW get_inventory ---
     async def get_inventory(self, user_id):
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("SELECT rowid, item, amount, value FROM inventory WHERE user_id = ?", (user_id,))
             rows = await cursor.fetchall()
-            # return list of (rowid, item, amount, value)
             return rows
 
-    # --- DAILY ---
     def get_daily_amount(self, member):
         for role_id, amount in [
             (1329910391840702515, 1000),
@@ -294,7 +289,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- BANK SYSTEM ---
     def get_bank_interest(self, member):
         for role_id, interest in BANK_ROLE_TIERS:
             if hasattr(member, "roles") and any(r.id == role_id for r in getattr(member, "roles", [])):
@@ -320,7 +314,6 @@ class Economy(commands.Cog):
                         await db.execute("UPDATE users SET bank = bank + ? WHERE user_id = ?", (interest_amount, user_id))
             await db.commit()
 
-    # --- BALANCE ---
     @commands.command(name="bal", aliases=["balance"])
     async def balance_command(self, ctx):
         await self.show_balance(ctx.author, ctx)
@@ -345,7 +338,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- SELL ALL ---
     @commands.command(name="sellall")
     async def sellall_command(self, ctx):
         await self.sell_all(ctx.author, ctx)
@@ -433,7 +425,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- ECON LEADERBOARD ---
     @commands.command(name="eclb", aliases=["econlb", "econleaderboard"])
     async def eclb_command(self, ctx):
         await self.econ_leaderboard(ctx)
@@ -478,7 +469,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- WORK ---
     @commands.command(name="work")
     @cooldown(1, 120, BucketType.user)
     async def work_command(self, ctx):
@@ -505,7 +495,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- GARAGE ---
     @commands.command(name="garage")
     async def garage_command(self, ctx):
         await self.garage(ctx.author, ctx)
@@ -531,7 +520,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- FISHING ---
     @commands.command(name="fish")
     @cooldown(1, 2, BucketType.user)
     async def fish_command(self, ctx):
@@ -561,7 +549,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- SELL ---
     @commands.command(name="sell")
     async def sell_command(self, ctx, item: str, amount: int = 1):
         await self.sell(ctx.author, item.lower(), amount, ctx)
@@ -654,7 +641,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- INVENTORY ---
     @commands.command(name="inventory", aliases=["inv"])
     async def inventory_command(self, ctx):
         await self.show_inventory(ctx.author, ctx)
@@ -688,7 +674,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- SELL AUTOCOMPLETE FOR SLASH COMMAND ---
     @sell_slash.autocomplete("item")
     async def sell_item_autocomplete(self, interaction: discord.Interaction, current: str):
         inventory = await self.get_inventory(interaction.user.id)
@@ -711,7 +696,6 @@ class Economy(commands.Cog):
         ]
         return choices[:25]
 
-    # --- SELL ALL FISH/JUNK ---
     @commands.command(name="sellallfish")
     async def sellallfish_command(self, ctx):
         await self.sell_all_fish(ctx.author, ctx)
@@ -721,9 +705,7 @@ class Economy(commands.Cog):
         try:
             await self.sell_all_fish(interaction.user, interaction)
         except Exception as e:
-            # Log and surface the error so the slash command doesn't fail silently
             log_econ_action("sellallfish_error", interaction.user, extra=str(e))
-            # Try to respond with an ephemeral error message
             try:
                 await interaction.response.send_message(f"An error occurred while selling fish: {e}", ephemeral=True)
             except Exception:
@@ -740,7 +722,6 @@ class Economy(commands.Cog):
         sold_items = []
         async with aiosqlite.connect(DB_PATH) as db:
             for item in fish_types:
-                # Get all instances with value
                 cursor = await db.execute(
                     "SELECT rowid, value FROM inventory WHERE user_id = ? AND item = ? AND value IS NOT NULL",
                     (user.id, item)
@@ -773,7 +754,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- BANK ---
     @commands.command(name="bank")
     async def bank_command(self, ctx):
         await self.show_bank(ctx.author, ctx)
@@ -798,7 +778,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- DEPOSIT ---
     @commands.command(name="deposit", aliases=["dep"])
     async def deposit_command(self, ctx, amount: int):
         await self.deposit(ctx.author, amount, ctx)
@@ -830,7 +809,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- ROB (wallet only, not bank) ---
     @commands.command(name="rob")
     @cooldown(1, 180, BucketType.user)
     async def rob_command(self, ctx, target: discord.Member):
@@ -885,7 +863,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- SHOP ---
     @commands.command(name="shop")
     async def shop_command(self, ctx, page: int = 1):
         await self.shop(ctx, page)
@@ -903,7 +880,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed, view=view)
 
-    # --- ROULETTE ---
     @commands.command(name="roulette")
     async def roulette_command(self, ctx, color: str, amount: int):
         await self.roulette(ctx.author, color.lower(), amount, ctx)
@@ -955,7 +931,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- CRIME ---
     @commands.command(name="crime")
     @cooldown(1, 180, BucketType.user)
     async def crime_command(self, ctx):
@@ -981,7 +956,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- BANK HEIST ---
     @commands.command(name="bankheist")
     @cooldown(1, 300, BucketType.user)
     async def bankheist_command(self, ctx, amount: int):
@@ -1025,7 +999,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- ERROR HANDLER FOR COOLDOWNS ---
     @work_command.error
     @fish_command.error
     @crime_command.error
@@ -1043,7 +1016,6 @@ class Economy(commands.Cog):
         else:
             raise error
 
-    # --- BUY ---
     @commands.command(name="buy")
     async def buy_command(self, ctx, item: str, amount: int = 1):
         await self.buy(ctx.author, item.lower(), amount, ctx)
@@ -1093,7 +1065,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- WITHDRAW ---
     @commands.command(name="withdraw", aliases=["with"])
     async def withdraw_command(self, ctx, amount: int):
         await self.withdraw(ctx.author, amount, ctx)
@@ -1125,7 +1096,6 @@ class Economy(commands.Cog):
         else:
             await destination.send(embed=embed)
 
-    # --- ENSURE ONLY WALLET IS USED FOR SPENDING ---
     # In all commands that spend coins (buy, bet, crime, rob, etc.), always use data["balance"] (wallet) only.
     # No changes needed if you already use data["balance"] for all spending checks and updates.
 

@@ -7,9 +7,7 @@ import random
 import asyncio
 from io import BytesIO
 
-# ---------------------------
 # Logging setup
-# ---------------------------
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "../logs")
 os.makedirs(LOGS_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_DIR, "octoprint_buttons.log")
@@ -31,13 +29,9 @@ def log_button_click(user: discord.User, button_name: str, action: str, result: 
     except Exception as e:
         print(f"Failed to log button click: {e}")
 
-# ---------------------------
 # Authorized E-STOP users
-# ---------------------------
 ESTOP_ALLOWED = {840949634071658507, 735167992966676530}
-# ---------------------------
 # Authorized BEEP users
-# ---------------------------
 BEEP_ALLOWED = {
     735167992966676530,
 1370958508241064059,
@@ -55,9 +49,7 @@ BEEP_COOLDOWNS = {}
 # Cooldown duration (3 hours)
 BEEP_COOLDOWN_HOURS = 3
 
-# ---------------------------
 # LCD Message Modal
-# ---------------------------
 class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
     message = discord.ui.TextInput(
         label="Message",
@@ -95,7 +87,6 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
                 )
                 return
         
-        # Check if printer is still connected
         data = self.cog._get_status()
         connected = data.get("connected", False)
         
@@ -104,15 +95,12 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
             await interaction.response.send_message("Printer went offline. Cannot send message.", ephemeral=True)
             return
         
-        # Send M117 G-code command to display message on LCD
         gcode_command = f"M117 {message_text}"
         result = self.cog._send_gcode(gcode_command)
         
-        # Update cooldown
         self.cog.lcd_cooldowns[user_id] = datetime.utcnow()
         
         if result == "OK":
-            # Update current LCD message tracking
             self.cog.current_lcd_message = {
                 "message": message_text,
                 "sender_id": user_id,
@@ -120,7 +108,6 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
                 "timestamp": datetime.utcnow()
             }
             
-            # Update the status embed to show the new LCD message
             try:
                 channel_id = os.getenv("OCTO_NOTIFY_CHANNEL_ID")
                 if channel_id:
@@ -143,9 +130,7 @@ class LCDMessageModal(discord.ui.Modal, title="Send Message to Printer LCD"):
                 ephemeral=True
             )
 
-# ---------------------------
 # E-STOP view (button on every embed)
-# ---------------------------
 class EStopView(discord.ui.View):
     def __init__(self, bot, cog=None):
         super().__init__(timeout=None)
@@ -191,9 +176,7 @@ class EStopView(discord.ui.View):
                     self.bot.active_tokens.pop(user_id, None)
                 asyncio.create_task(expire_token())
                 return
-            # ---------------------------
             # BEEP PRINTER
-            # ---------------------------
             if action == "beep_printer":
                 user_id = interaction.user.id
 
@@ -244,7 +227,6 @@ class EStopView(discord.ui.View):
                     )
                     return
 
-                # Send beep command
                 gcode_command = "M300 S1000 P500"
                 result = self.cog._send_gcode(gcode_command)
 
@@ -279,7 +261,6 @@ class EStopView(discord.ui.View):
 
                 return
                 
-            # UPDATE IMAGE
             if action == "update_image":
                 log_button_click(interaction.user, "Update Image", "Select used")
                 await interaction.response.defer()
@@ -327,7 +308,6 @@ class EStopView(discord.ui.View):
                     await interaction.followup.send(f"Failed to update message: {e}", ephemeral=True)
                 return
 
-            # SEND LCD MESSAGE
             if action == "lcd_message":
                 log_button_click(interaction.user, "Send LCD Message", "Select used")
                 if not self.cog:
@@ -355,7 +335,6 @@ class EStopView(discord.ui.View):
                             ephemeral=True
                         )
                         return
-                # Check if printer is connected
                 data = self.cog._get_status()
                 connected = data.get("connected", False)
                 if not connected:
@@ -367,7 +346,6 @@ class EStopView(discord.ui.View):
                 await interaction.response.send_modal(modal)
                 return
 
-            # ENABLE / DISABLE PER-PRINT CAMERA
             if action == "enable_per_print":
                 user_id = interaction.user.id
                 if not (getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator and str(user_id).startswith("840949634071658507")):
@@ -427,9 +405,7 @@ class EStopView(discord.ui.View):
         select.callback = select_callback
         self.add_item(select)
 
-# ---------------------------
 # OctoPrint Monitoring Cog
-# ---------------------------
 class OctoPrintMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -466,9 +442,6 @@ class OctoPrintMonitor(commands.Cog):
         
         self.check_status.start()
 
-    # ---------------------------
-    # Send G-code (E-STOP)
-    # ---------------------------
     def _send_gcode(self, command):
         url = f"{self.api}/api/printer/command"
         headers = {"X-Api-Key": self.api_key} if self.api_key else {}
@@ -481,13 +454,9 @@ class OctoPrintMonitor(commands.Cog):
         except Exception as e:
             return f"Exception: {e}"
 
-    # ---------------------------
-    # Get printer status - simple and reliable
-    # ---------------------------
     def _get_status(self):
         headers = {"X-Api-Key": self.api_key} if self.api_key else {}
         try:
-            # Try to get printer status
             r = requests.get(f"{self.api}/api/printer", headers=headers, timeout=5)
             job_r = requests.get(f"{self.api}/api/job", headers=headers, timeout=5)
             
@@ -495,14 +464,12 @@ class OctoPrintMonitor(commands.Cog):
             if r.status_code in [409, 503]:
                 return {"connected": False}
             
-            # If we got 200, printer is connected
             if r.status_code == 200:
                 data = r.json()
                 # Check for error in response
                 if "error" in data:
                     return {"connected": False}
                 
-                # Get job data
                 if job_r.status_code == 200:
                     data["job"] = job_r.json()
                 else:
@@ -517,9 +484,6 @@ class OctoPrintMonitor(commands.Cog):
         except Exception as e:
             return {"connected": False}
 
-    # ---------------------------
-    # Build embed with snapshot
-    # ---------------------------
     def _format_embed(self, data, title_prefix="🖨️ OctoPrint Status Update"):
         connected = data.get("connected", False)
         if not connected:
@@ -568,7 +532,6 @@ class OctoPrintMonitor(commands.Cog):
         embed.add_field(name="Nozzle Temp", value=f"{nozzle} °C", inline=True)
         embed.add_field(name="Bed Temp", value=f"{bed} °C", inline=True)
         
-        # Add current LCD message if available
         if self.current_lcd_message:
             lcd_info = f"`{self.current_lcd_message['message']}`\n*Sent by {self.current_lcd_message['sender_name']}*"
             embed.add_field(name="📺 Current LCD Message", value=lcd_info, inline=False)
@@ -576,7 +539,6 @@ class OctoPrintMonitor(commands.Cog):
         embed.set_footer(text="Automatic OctoPrint Monitor")
 
         snapshot_file = None
-        # Use the active snapshot URL so that Switch Camera Now and per-print switching are reflected
         if getattr(self, 'active_snapshot_url', None):
             try:
                 headers = {"X-Api-Key": self.api_key} if self.api_key else {}
@@ -591,14 +553,10 @@ class OctoPrintMonitor(commands.Cog):
 
         return embed, snapshot_file
 
-    # ---------------------------
-    # Send message to channel
-    # ---------------------------
     async def _send_update(self, channel, data, title_prefix="🖨️ OctoPrint Status Update", update_existing=False):
         embed, snapshot_file = self._format_embed(data, title_prefix=title_prefix)
         view = EStopView(self.bot, cog=self)
         try:
-            # Try to update existing message if requested and available
             if update_existing and self.last_status_message_id:
                 try:
                     message = await channel.fetch_message(self.last_status_message_id)
@@ -612,7 +570,6 @@ class OctoPrintMonitor(commands.Cog):
                     self.last_status_message_id = None
                     pass
             
-            # Send new message
             if snapshot_file:
                 sent = await channel.send(embed=embed, file=snapshot_file, view=view)
             else:
@@ -623,9 +580,7 @@ class OctoPrintMonitor(commands.Cog):
             print(f"Failed to send update: {e}")
             return False
 
-    # ---------------------------
     # Polling loop
-    # ---------------------------
     @tasks.loop(seconds=10)
     async def check_status(self):
         await self.bot.wait_until_ready()
@@ -640,11 +595,9 @@ class OctoPrintMonitor(commands.Cog):
             except:
                 return
 
-        # Get current status
         data = self._get_status()
         connected = data.get("connected", False)
         
-        # Get current state, progress and printing flag
         current_state_text = None
         current_progress = None
         current_printing = False
@@ -663,7 +616,6 @@ class OctoPrintMonitor(commands.Cog):
                 if "progress" in job_data:
                     progress_obj = job_data["progress"]
                     progress_value = progress_obj.get("completion")
-                    # Only set progress if we have a valid value
                     if progress_value is not None:
                         current_progress = float(progress_value)
                     # Leave as None if no progress data (not printing)
@@ -671,7 +623,6 @@ class OctoPrintMonitor(commands.Cog):
                     # No progress key means not printing
                     current_progress = None
 
-            # Handle print start: if printing just started and admin had enabled per-print camera
             if current_printing and not getattr(self, '_was_printing', False):
                 if getattr(self, 'camera_allowed_once', False):
                     self.camera_for_current_print = True
@@ -719,7 +670,6 @@ class OctoPrintMonitor(commands.Cog):
                 await self._send_update(channel, data, "🟢 Printer Connected")
             else:
                 await self._send_update(channel, data, "🔴 Printer Disconnected")
-            # Update state immediately after connection change
             self.last_connected = connected
             if connected:
                 self.last_state_text = current_state_text
@@ -731,10 +681,8 @@ class OctoPrintMonitor(commands.Cog):
                 self.last_sent_progress = None
             return  # Skip further checks this cycle
         
-        # Update connection state
         self.last_connected = connected
         
-        # Only check for state/progress changes if connected
         if connected:
             state_changed = False
             progress_changed = False
@@ -745,16 +693,12 @@ class OctoPrintMonitor(commands.Cog):
             
             # Check for progress change (5% threshold or print just started)
             # Always check progress independently of state changes
-            # Use last_sent_progress to track cumulative progress since last update
             if current_progress is not None:
-                # If we don't have a last sent progress value (print just started or first time)
                 if self.last_sent_progress is None:
                     # Print just started - always send update
                     progress_changed = True
-                # If we have a last sent progress value, check cumulative change
                 else:
                     progress_diff = abs(current_progress - self.last_sent_progress)
-                    # Send update if we've accumulated 5% or more since last update
                     if progress_diff >= 5:
                         progress_changed = True
             # If current_progress is None but last_progress wasn't, print finished
@@ -762,7 +706,6 @@ class OctoPrintMonitor(commands.Cog):
                 # Print finished - progress went from a value to None
                 # Reset last_sent_progress when print finishes
                 self.last_sent_progress = None
-                # If we had per-print camera active, revert to primary and notify
                 try:
                     if getattr(self, 'camera_for_current_print', False):
                         self.camera_for_current_print = False
@@ -776,14 +719,11 @@ class OctoPrintMonitor(commands.Cog):
                     pass
                 # Don't send update for this, state change will handle it
             
-            # Send update if state OR progress changed
             if state_changed or progress_changed:
                 await self._send_update(channel, data)
-                # Update last_sent_progress only when we actually send an update
                 if progress_changed and current_progress is not None:
                     self.last_sent_progress = current_progress
             
-            # Update last state AFTER checking for changes
             # Always update tracking variables, even if we didn't send an update
             self.last_state_text = current_state_text
             self.last_progress = current_progress
@@ -818,9 +758,7 @@ class OctoPrintMonitor(commands.Cog):
             self.last_progress = None
             self.last_sent_progress = None
 
-    # ---------------------------
     # Monitor chat for E-STOP token confirmation
-    # ---------------------------
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
@@ -876,7 +814,6 @@ class OctoPrintMonitor(commands.Cog):
         try:
             await ctx.send("\n".join(info_lines))
         except Exception:
-            # Fallback to channel send
             channel = ctx.channel
             await channel.send("\n".join(info_lines))
 
@@ -897,15 +834,12 @@ class OctoPrintMonitor(commands.Cog):
             await ctx.send("Printer is offline. Cannot send G-code.", delete_after=10)
             return
 
-        # Send the G-code and log the result
         result = self._send_gcode(command)
         log_button_click(ctx.author, "Send GCODE", "Sent", result, f"GCODE: {command}")
 
-        # Send confirmation (short-lived to avoid clutter)
         try:
             await ctx.send(f"✅ G-code sent: `{command}`\nResponse: `{result}`", delete_after=30)
         except Exception:
-            # Fallback if delete_after not allowed
             await ctx.send(f"✅ G-code sent: `{command}`\nResponse: `{result}`")
 
     @commands.command(name="octo_replace_buttons")
@@ -924,7 +858,6 @@ class OctoPrintMonitor(commands.Cog):
         channel = ctx.channel
         replaced = 0
         async for msg in channel.history(limit=limit):
-            # Only consider messages sent by the bot and that contain an embed
             if msg.author.id != self.bot.user.id or not msg.embeds:
                 continue
 
@@ -952,9 +885,7 @@ class OctoPrintMonitor(commands.Cog):
         log_button_click(ctx.author, "Replace Buttons", "Completed", "Success", f"Replaced {replaced} messages in channel {channel.id}")
         await ctx.send(f"✅ Replaced {replaced} message(s) with select-based view.", delete_after=15)
 
-# ---------------------------
 # Setup
-# ---------------------------
 async def setup(bot):
     bot.active_tokens = {}  # Tracks E-STOP tokens
     await bot.add_cog(OctoPrintMonitor(bot))

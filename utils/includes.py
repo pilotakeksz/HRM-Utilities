@@ -1,4 +1,3 @@
-# Use this file if your VERY lazy and do not want to type in all of these includes.
 
 import discord
 from discord.ext.commands import cooldown, BucketType, CommandOnCooldown, ui

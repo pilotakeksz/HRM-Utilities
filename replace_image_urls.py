@@ -63,7 +63,6 @@ def replace_urls_in_file(file_path, port=8889):
             print(f"   ✓ Replaced {len(matches)} instance(s) of {old_url.split('/')[-1]}")
             replacements_made += len(matches)
     
-    # Write back if changes were made
     if content != original_content:
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -93,7 +92,6 @@ def main():
     cog_name = sys.argv[1]
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 8889
     
-    # Build file path
     cog_file = Path(__file__).parent / "cogs" / f"{cog_name}.py"
     
     if not cog_file.exists():

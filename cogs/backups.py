@@ -99,7 +99,6 @@ class BackupCog(commands.Cog):
                 f"{member} ({member.id}): {[role.name for role in member.roles if not role.is_default()]}"
             )
 
-        # Save backup files
         date_str = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
         backup_json = {
             "guild_name": guild.name,

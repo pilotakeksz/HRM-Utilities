@@ -56,7 +56,6 @@ bypassrole = 1329910230066401361
 QUARANTINE_ROLE_ID = 1432834406791254058
 INFRACTION_CHANNEL_ID = 1384141458163896382  # Log channel for infraction embeds
 
-# Infraction role routing
 WARNING_1_ROLE_ID = int(os.getenv("WARNING_1_ROLE_ID", "0"))
 WARNING_2_ROLE_ID = int(os.getenv("WARNING_2_ROLE_ID", "0"))
 STRIKE_1_ROLE_ID = int(os.getenv("STRIKE_1_ROLE_ID", "0"))
@@ -77,7 +76,6 @@ async def collect_context_proof(message: discord.Message, limit: int = 3) -> tup
     """Collect context messages and return (markdown, base64)."""
     ctx_msgs = []
     try:
-        # Collect the most recent `limit` messages that occurred BEFORE the offending message.
         # `history(limit=..., before=message)` returns newest->oldest by default, so gather
         # them then reverse to get chronological order (oldest -> newest), then append culprit.
         recent = []
@@ -101,13 +99,11 @@ async def collect_context_proof(message: discord.Message, limit: int = 3) -> tup
         "created_at": message.created_at.isoformat()
     })
     
-    # Build markdown
     markdown_context = "**Message Context:**\n"
     for idx, m in enumerate(ctx_msgs):
         marker = ">>> " if idx == len(ctx_msgs) - 1 else "  "
         markdown_context += f"{marker}**{m['author']}**: {m['content']}\n"
     
-    # Build JSON
     payload = {
         "guild": message.guild.id if message.guild else None,
         "channel": message.channel.id,
@@ -169,7 +165,6 @@ async def send_action_log(bot: commands.Bot, target_id: int, action: str, reason
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Action ID", value=action_id, inline=True)
         
-        # Create undo button view
         view = discord.ui.View()
         undo_button = discord.ui.Button(
             style=discord.ButtonStyle.danger,
@@ -221,7 +216,6 @@ async def send_action_log(bot: commands.Bot, target_id: int, action: str, reason
 async def send_infraction_notification(bot: commands.Bot, target: discord.Member, moderator: discord.Member, action: str, reason: str, infraction_id: str, context: str = ""):
     """Send infraction embed to log channel and DM to user."""
     try:
-        # Create embed
         color_map = {
             "Warning": discord.Color.yellow(),
             "Strike": discord.Color.orange(),
@@ -243,7 +237,6 @@ async def send_infraction_notification(bot: commands.Bot, target: discord.Member
             embed.add_field(name="Transcript", value=context, inline=False)
         embed.add_field(name="Infraction ID", value=str(infraction_id), inline=True)
         
-        # Send to log channel
         log_channel = bot.get_channel(INFRACTION_CHANNEL_ID)
         if log_channel:
             try:
@@ -251,7 +244,6 @@ async def send_infraction_notification(bot: commands.Bot, target: discord.Member
             except Exception as e:
                 logger.error(f"Could not send to log channel: {e}")
         
-        # Send DM to user
         try:
             await target.send(embed=embed)
         except Exception as e:
@@ -270,7 +262,6 @@ class Automod(commands.Cog):
         roles_to_add = []
         roles_to_remove = []
         
-        # Get current role states
         has_w1 = any(r.id == WARNING_1_ROLE_ID for r in member.roles)
         has_w2 = any(r.id == WARNING_2_ROLE_ID for r in member.roles)
         has_s1 = any(r.id == STRIKE_1_ROLE_ID for r in member.roles)
@@ -284,10 +275,8 @@ class Automod(commands.Cog):
                 roles_to_remove += [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID]
                 # Escalate to next strike
                 if has_s1 and has_s2:
-                    # Already has S1 and S2, next is S3+Suspension
                     roles_to_remove += [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID]
                     if has_s3:
-                        # Already has S3, should terminate
                         return "terminate"
                     else:
                         roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
@@ -304,7 +293,6 @@ class Automod(commands.Cog):
             if has_s1 and has_s2:
                 roles_to_remove += [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID]
                 if has_s3:
-                    # Already has S3, should terminate
                     return "terminate"
                 else:
                     roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
@@ -362,22 +350,18 @@ class Automod(commands.Cog):
         content = message.content or ""
         logger.info(f"Processing message from {message.author} in {message.guild.name}: {content[:100]}")
 
-        # =====================================================================
         # ADMIN REPLY-TO-MESSAGE TRIGGER
-        # =====================================================================
         # Bulletproof: Check reference -> bot mention -> admin -> personnel -> action
         if not message.reference:
             pass  # Skip to automod
         else:
             # This is a reply
             try:
-                # Fetch the message being replied to
                 target_msg = await message.channel.fetch_message(message.reference.message_id)
             except Exception as e:
                 logger.error(f"Could not fetch replied message: {e}")
                 return
 
-            # Check if bot was mentioned (including bot itself)
             mentioned_ids = [m.id for m in message.mentions]
             bot_mentioned = any(m_id in BOT_IDS for m_id in mentioned_ids) or self.bot.user.id in mentioned_ids
             
@@ -390,14 +374,12 @@ class Automod(commands.Cog):
                 # Bot was mentioned in a reply
                 logger.info(f"Bot mentioned in reply by {message.author}")
 
-                # Check if replier is admin
                 is_replier_admin = any(role.id == ADMIN_ROLE_ID for role in message.author.roles)
                 if not is_replier_admin:
                     logger.info(f"{message.author} tried to use admin reply but is not admin")
                     await message.reply("❌ You need ADMIN role to use this", mention_author=False)
                     return
 
-                # Get target member
                 target_member = target_msg.author
                 if not isinstance(target_member, discord.Member):
                     try:
@@ -407,7 +389,6 @@ class Automod(commands.Cog):
                         await message.reply("❌ Could not get target member", mention_author=False)
                         return
 
-                # Check if target is personnel
                 is_target_personnel = any(role.id == PERSONNEL_ROLE_ID for role in target_member.roles)
                 if not is_target_personnel:
                     logger.info(f"Target {target_member} is not personnel")
@@ -442,7 +423,6 @@ class Automod(commands.Cog):
                         # Extract reason after the keyword
                         idx = content_lower.find(keyword)
                         reason_part = message.content[idx + len(keyword):].strip()
-                        # Remove bot mention if present
                         reason_part = reason_part.replace(f"<@{self.bot.user.id}>", "").strip()
                         reason_text = reason_part if reason_part else f"Admin issued {inf_type}"
                         break
@@ -540,7 +520,6 @@ class Automod(commands.Cog):
                         logger.error(f"Mute error: {e}")
                         await message.reply(f"❌ Mute failed: {str(e)}", mention_author=False)
                         return
-                # INFRACTION (all types: Warning, Strike, Demotion, Termination, Suspension, Activity Notice)
                 if infraction_type:
                     inf_cog = self.bot.get_cog("Infraction")
                     if not inf_cog:
@@ -580,16 +559,12 @@ class Automod(commands.Cog):
                 return
 
 
-        # =====================================================================
         # BYPASS CHECK (AFTER ADMIN REPLIES)
-        # =====================================================================
         if message.author.id in automodbypass or any(role.id == bypassrole for role in getattr(message.author, "roles", [])):
             logger.info(f"Skipped: author in bypass list")
             return
 
-        # =====================================================================
         # AUTOMATIC KEYWORD-BASED MODERATION
-        # =====================================================================
         if not isinstance(message.author, discord.Member):
             return
 
@@ -608,7 +583,6 @@ class Automod(commands.Cog):
                     logger.info(f"Skipped blocked word: {match}")
                     return
 
-        # Delete message if match found
         if all_matches:
             try:
                 await message.delete()
@@ -697,7 +671,6 @@ class Automod(commands.Cog):
                 logger.error(f"Mute error: {e}")
 
         if infraction_matches:
-            # Infraction only applies to personnel
             if not any(role.id == PERSONNEL_ROLE_ID for role in message.author.roles):
                 logger.info(f"Infraction match for non-personnel {message.author}, skipping")
             else:

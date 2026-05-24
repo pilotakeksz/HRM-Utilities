@@ -10,7 +10,6 @@ import asyncio
 from typing import Dict, Any, Optional, List, Tuple
 import glob
 
-# -------------------- CONFIG CONSTANTS --------------------
 IMAGE_URL = "https://cdn.discordapp.com/attachments/1409252771978280973/1409308813835894875/bottom.png?ex=68bac05c&is=68b96edc&hm=b48ce53b741b93847d34dc04a79709fa47badfd867e95afc68a6712de4d86856&"
 
 ROLE_MANAGE_REQUIRED = 1329910329701830686  # can use /shift manage
@@ -23,7 +22,6 @@ LOG_CHANNEL_ID = 1329910573739147296          # logs channel
 MSG_COUNT_CHANNEL_ID = 1329910508182179900     # message-count channel
 PROMOTIONS_CHANNEL_ID = 1329910502205427806    # promotions channel for ping tracking
 SHIFT_REMINDER_CHANNEL_ID = 1439406099110297771  # channel for 15-min shift reminders
-# Allowed channel/category for shift commands (non-admins)
 ALLOWED_SHIFT_CHANNEL_ID = 1329910518659551272
 ALLOWED_SHIFT_CATEGORIES = [
     1330504054744416308,
@@ -32,7 +30,6 @@ ALLOWED_SHIFT_CATEGORIES = [
     1329910434823933983,
 ]
 
-# Quotas (minutes)
 DEFAULT_QUOTA = 45
 QUOTA_ROLE_0 = 1329910253814550608  # quota 0
 QUOTA_ROLE_15 = 1329910255584546950 # quota 15
@@ -46,12 +43,10 @@ PROMO_COOLDOWN_8 = 1329910281903673344   # 8 days
 PROMO_COOLDOWN_6 = [1329910295703064577, 1355842399338889288]  # 6 days
 PROMO_COOLDOWN_4 = 1329910298525696041   # 4 days
 
-# Infraction thresholds (minutes)
 WARN_THRESHOLD = 45  # under 45s is a warning
 STRIKE_THRESHOLD = 30  # under 30 minutes is a strike
 DEMOTION_THRESHOLD = 15  # under 15 minutes is a demotion
 
-# -------------------- STORAGE PATHS --------------------
 DATA_DIR = "data"
 LOGS_DIR = os.path.join(DATA_DIR, "logs")
 STATE_FILE = os.path.join(DATA_DIR, "shift_state.json")
@@ -61,7 +56,6 @@ META_FILE = os.path.join(DATA_DIR, "meta.json")  # includes logging_enabled, las
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
-# -------------------- UTILITIES --------------------
 
 def utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
@@ -99,7 +93,6 @@ def colour_err() -> discord.Colour:
 def colour_info() -> discord.Colour:
     return discord.Colour.blurple()
 
-# -------------------- PERSISTENCE LAYER --------------------
 class Store:
     """Simple JSON-backed storage.
     state: per-user ongoing shifts
@@ -140,7 +133,6 @@ class Store:
         if os.path.exists(META_FILE):
             with open(META_FILE, "r", encoding="utf-8") as f:
                 self.meta = json.load(f)
-        # defaults
         if "logging_enabled" not in self.meta:
             self.meta["logging_enabled"] = True
         if "last_reset_ts" not in self.meta:
@@ -166,7 +158,6 @@ class Store:
         with open(META_FILE, "w", encoding="utf-8") as f:
             json.dump(self.meta, f, indent=2)
 
-    # ---- Shift state helpers ----
     def is_on_shift(self, user_id: int) -> bool:
         return str(user_id) in self.state
 
@@ -188,13 +179,11 @@ class Store:
         now = ts_to_int(utcnow())
         st = self.state[str(user_id)]
         if st["on_break"]:
-            # resume: set last_ts to now
             st["on_break"] = False
             st["last_ts"] = now
             self.save()
             return False  # now off break
         else:
-            # go on break: accumulate until now
             st["accum"] += max(0, now - st["last_ts"])
             st["on_break"] = True
             st["breaks"] += 1
@@ -238,7 +227,6 @@ class Store:
 
     def total_for_user(self, user_id: int) -> int:
         total = sum(r["duration"] for r in self.records if r["user_id"] == user_id)
-        # add current active if any
         st = self.state.get(str(user_id))
         if st and not st["on_break"]:
             now = ts_to_int(utcnow())
@@ -248,8 +236,6 @@ class Store:
         return total
 
     def get_statistics(self) -> Tuple[int, int]:
-        # number of unique shifts = number of records
-        # total time = sum durations
         return len(self.records), sum(r["duration"] for r in self.records)
 
     def get_promotion_cooldown(self, user_id: int) -> int:
@@ -277,7 +263,6 @@ class Store:
         elif PROMO_COOLDOWN_4 in role_ids:
             cooldown_days = 4
         
-        # Check if enough time has passed
         days_since_promo = (ts_to_int(utcnow()) - last_promo) / (24 * 60 * 60)
         return days_since_promo >= cooldown_days
 
@@ -327,7 +312,6 @@ class Store:
         return False
 
 
-# -------------------- UI VIEWS --------------------
 class ShiftManageView(discord.ui.View):
     def __init__(self, bot: commands.Bot, owner_id: Optional[int] = None):
         super().__init__(timeout=None)
@@ -352,7 +336,6 @@ class ShiftManageView(discord.ui.View):
         return True
 
     async def refresh_buttons(self, interaction: discord.Interaction, logging_enabled: bool, on_shift: bool, on_break: bool):
-        # update button disabled states based on current status
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 if not logging_enabled:
@@ -384,10 +367,8 @@ class ShiftManageView(discord.ui.View):
         if not any(r.id == ROLE_MANAGE_REQUIRED for r in user.roles):  # type: ignore
             await interaction.response.edit_message(embed=cog.embed_error("You do not have permission to manage shifts."), view=self)
             return
-        # Business logic
         st = cog.store.get_user_state(user.id)
         if st:
-            # If user is on break, allow Start Shift to resume (get off break)
             if st.get("on_break"):
                 # toggle_break will resume and update timestamps
                 cog.store.toggle_break(user.id)
@@ -408,11 +389,9 @@ class ShiftManageView(discord.ui.View):
                 except Exception:
                     pass
                 return
-            # already actively on shift
             await interaction.response.edit_message(embed=cog.embed_warn("You're already on shift."), view=self)
             return
         cog.store.start_shift(user.id)
-        # role changes
         role_on = guild.get_role(ROLE_SHIFT_ON)
         role_break = guild.get_role(ROLE_BREAK)
         try:
@@ -424,7 +403,6 @@ class ShiftManageView(discord.ui.View):
             pass
         # log
         await cog.log_event(guild, f"🟢 {user.mention} started a shift.")
-        # update UI with stats
         embed = await cog.build_manage_embed(user)
         await interaction.response.edit_message(embed=embed, view=self)
         try:
@@ -490,7 +468,6 @@ class ShiftManageView(discord.ui.View):
             await interaction.response.edit_message(embed=cog.embed_warn("You are not on a shift."), view=self)
             return
 
-        # Remove the break check so shifts can be ended while on break
         record = cog.store.stop_shift(user.id)
         role_on = guild.get_role(ROLE_SHIFT_ON)
         role_break = guild.get_role(ROLE_BREAK)
@@ -564,7 +541,6 @@ class ShiftListsView(discord.ui.View):
                 member, _ = self.promo_candidates[idx-1]
                 del self.promo_candidates[idx-1]
                 await interaction.channel.send(f"Removed {member.mention} from promotion list.")
-                # Refresh the embed
                 await self.refresh_embed(interaction)
             else:
                 await interaction.channel.send("Invalid number.")
@@ -581,13 +557,10 @@ class ShiftListsView(discord.ui.View):
             user_id = int(msg.content.strip())
             member = self.guild.get_member(user_id)
             if member:
-                # Get user's total shift time
                 total_seconds = self.cog.store.total_for_user(member.id)
                 self.promo_candidates.append((member, total_seconds))
-                # Sort by shift time (highest first)
                 self.promo_candidates.sort(key=lambda x: x[1], reverse=True)
                 await interaction.channel.send(f"Added {member.mention} to promotion list.")
-                # Refresh the embed
                 await self.refresh_embed(interaction)
             else:
                 await interaction.channel.send("User not found.")
@@ -605,14 +578,12 @@ class ShiftListsView(discord.ui.View):
             idx = int(msg.content.strip())
             if 1 <= idx <= len(all_infractions):
                 member, _ = all_infractions[idx-1]
-                # Remove from appropriate category
                 for category in ["demotions", "strikes", "warns"]:
                     for i, (m, _) in enumerate(self.infractions[category]):
                         if m.id == member.id:
                             del self.infractions[category][i]
                             break
                 await interaction.channel.send(f"Removed {member.mention} from infractions list.")
-                # Refresh the embed
                 await self.refresh_embed(interaction)
             else:
                 await interaction.channel.send("Invalid number.")
@@ -629,7 +600,6 @@ class ShiftListsView(discord.ui.View):
             user_id = int(msg.content.strip())
             member = self.guild.get_member(user_id)
             if member:
-                # Get user's total shift time and quota to determine infraction type
                 total_seconds = self.cog.store.total_for_user(member.id)
                 quota_minutes = await self.cog._get_quota(member)
                 
@@ -642,7 +612,6 @@ class ShiftListsView(discord.ui.View):
                     else:
                         self.infractions["warns"].append((member, total_seconds))
                     
-                    # Sort the category by shift time
                     if minutes_short >= 15:
                         self.infractions["demotions"].sort(key=lambda x: x[1])
                     elif minutes_short >= 30:
@@ -651,7 +620,6 @@ class ShiftListsView(discord.ui.View):
                         self.infractions["warns"].sort(key=lambda x: x[1])
                     
                     await interaction.channel.send(f"Added {member.mention} to infractions list.")
-                    # Refresh the embed
                     await self.refresh_embed(interaction)
                 else:
                     await interaction.channel.send(f"{member.mention} meets their quota, no infraction needed.")
@@ -690,7 +658,6 @@ class ShiftListsView(discord.ui.View):
             for i, (member, total_seconds) in enumerate(self.promo_candidates, 1):
                 time_str = self.cog._format_duration(total_seconds)
                 
-                # Add cooldown information
                 last_promo_ts = self.cog.store.meta["last_promotions"].get(str(member.id), 0)
                 if last_promo_ts == 0:
                     cooldown_info = "🆕 First promotion"
@@ -712,7 +679,6 @@ class ShiftListsView(discord.ui.View):
         lines.append("-#      ")
         lines.append("")
         
-        # Demotions
         if self.infractions["demotions"]:
             lines.append("***__Demotions__***")
             for i, (member, total_seconds) in enumerate(self.infractions["demotions"], 1):
@@ -740,7 +706,6 @@ class ShiftListsView(discord.ui.View):
         
         return "\n".join(lines)
 
-# -------------------- SHIFT REMINDER VIEW --------------------
 class ShiftReminderView(discord.ui.View):
     def __init__(self, cog, user_id: int):
         super().__init__(timeout=None)
@@ -749,7 +714,6 @@ class ShiftReminderView(discord.ui.View):
 
     @discord.ui.button(label="End Shift", style=discord.ButtonStyle.danger, custom_id="shift_reminder_end")
     async def end_shift_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only allow the user who clicked to be the one ending their shift
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("Only the person on shift can end it.", ephemeral=True)
             return
@@ -808,7 +772,6 @@ class ChannelEndShiftView(discord.ui.View):
 
         await interaction.response.send_message(f"✅ Your shift has been ended. Duration: **{human_td(record['duration'])}**", ephemeral=True)
 
-# -------------------- MAIN COG --------------------
 class ShiftCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -821,7 +784,6 @@ class ShiftCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Track when users are pinged in the promotions channel for cooldown calculation."""
-        # Only track messages in the promotions channel
         if message.channel.id != PROMOTIONS_CHANNEL_ID:
             return
         
@@ -829,7 +791,6 @@ class ShiftCog(commands.Cog):
         if message.author.bot:
             return
         
-        # Check if message contains any user mentions
         if not message.mentions:
             return
         
@@ -841,13 +802,11 @@ class ShiftCog(commands.Cog):
             
         updated = False
         for user in message.mentions:
-            # Get the full member object to check roles
             member = guild.get_member(user.id)
             if member and any(r.id == ROLE_MANAGE_REQUIRED for r in member.roles):
                 self.store.meta["last_promotions"][str(user.id)] = timestamp
                 updated = True
                 print(f"🎯 Recorded ping for {user.display_name} (ID: {user.id}) in promotions channel")
-                # DM notifications for cooldown start and schedule end notification
                 try:
                     cooldown_days, seconds_remaining = self._calculate_member_cooldown(member)
                     if cooldown_days > 0:
@@ -860,7 +819,6 @@ class ShiftCog(commands.Cog):
                             await member.send(embed=embed)
                         except Exception:
                             pass
-                        # schedule end DM (best-effort; not persistent across restarts)
                         asyncio.create_task(self._schedule_cooldown_end_dm(member.id, timestamp + seconds_remaining))
                 except Exception as e:
                     print(f"Failed to DM cooldown info to {user.display_name}: {e}")
@@ -869,7 +827,6 @@ class ShiftCog(commands.Cog):
             else:
                 print(f"❌ Could not find member {user.display_name} in guild")
         
-        # Save the updated data
         if updated:
             self.store.save()
 
@@ -888,10 +845,8 @@ class ShiftCog(commands.Cog):
                 delta_seconds = (next_quarter - now).total_seconds()
                 if delta_seconds <= 0:
                     delta_seconds = 15 * 60
-                # Sleep until the next exact quarter (accounts for seconds/microseconds)
                 await asyncio.sleep(delta_seconds)
                 
-                # Get the guild and channel
                 try:
                     channel = self.bot.get_channel(SHIFT_REMINDER_CHANNEL_ID) or await self.bot.fetch_channel(SHIFT_REMINDER_CHANNEL_ID)
                     if not isinstance(channel, discord.TextChannel):
@@ -899,7 +854,6 @@ class ShiftCog(commands.Cog):
                     
                     guild = channel.guild
                     
-                    # Get all users currently on shift
                     on_shift_users = []
                     for uid_str, st in self.store.state.items():
                         uid = int(uid_str)
@@ -913,27 +867,22 @@ class ShiftCog(commands.Cog):
                     if not on_shift_users:
                         continue
                     
-                    # Build the reminder message (ping the on-duty role if available)
                     role = guild.get_role(ROLE_ON_DUTY)
                     mentions = " ".join([f"<@{member.id}>" for member, _, _ in on_shift_users])
                     content = role.mention if role and role.members else mentions
 
-                    # Create embed with shift times
                     embed = self.base_embed("Shift Reminder", colour_info())
                     embed.description = f"**Remember you are still on shift!** {mentions}"
                     
-                    # Add field with all users on shift and their elapsed times
                     shift_lines = []
                     for member, start_ts, elapsed in on_shift_users:
                         shift_lines.append(f"> <@{member.id}> — {human_td(elapsed)}")
                     
                     embed.add_field(name="Currently On Shift", value="\n".join(shift_lines), inline=False)
                     
-                    # Send message with a view containing end shift button for each user
                     try:
                         msg = await channel.send(content=content, embed=embed, view=ChannelEndShiftView(self))
                     except Exception:
-                        # Fallback: send without content if mention failed
                         msg = await channel.send(embed=embed, view=ChannelEndShiftView(self))
                     
                     # For each user, send a copy of the message with their personal end shift button
@@ -951,7 +900,6 @@ class ShiftCog(commands.Cog):
                 print(f"Shift reminder loop error: {e}")
                 await asyncio.sleep(60)  # Retry after 1 minute on error
 
-    # ---------- EMBED HELPERS ----------
     def base_embed(self, title: str, colour: discord.Colour) -> discord.Embed:
         e = discord.Embed(title=title, colour=colour, timestamp=utcnow())
         e.set_image(url=IMAGE_URL)
@@ -973,11 +921,9 @@ class ShiftCog(commands.Cog):
         return e
 
     async def log_event(self, guild: discord.Guild, message: str):
-        # write to file
         logline = f"[{utcnow().isoformat()}] {message}\n"
         with open(os.path.join(LOGS_DIR, f"{utcnow().date()}.log"), "a", encoding="utf-8") as f:
             f.write(logline)
-        # send embed
         ch = guild.get_channel(LOG_CHANNEL_ID)
         if isinstance(ch, discord.TextChannel):
             emb = self.base_embed("Shift Log", colour_info())
@@ -1003,7 +949,6 @@ class ShiftCog(commands.Cog):
         role = guild.get_role(ROLE_ON_DUTY)
         members = role.members if role else []
 
-        # Build embed
         if members:
             embed = self.base_embed("On Duty Now", colour_info())
             embed.description = f"{role.mention} — Current on-duty personnel"
@@ -1048,7 +993,6 @@ class ShiftCog(commands.Cog):
                 self.store.meta.pop("on_duty_msg_id", None)
                 self.store.save()
 
-    # ---------- COMMANDS ----------
     @app_commands.command(name="shift_manage", description="Open the shift management panel.")
     async def shift_manage(self, interaction: discord.Interaction):
         user = interaction.user
@@ -1106,7 +1050,6 @@ class ShiftCog(commands.Cog):
                 inline=True
             )
         
-        # Add total shift time for the week and leaderboard placement
         total_seconds = self.store.total_for_user(user.id)
         e.add_field(name="Total This Week", value=human_td(total_seconds), inline=True)
         
@@ -1115,13 +1058,11 @@ class ShiftCog(commands.Cog):
         if guild:
             manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
             if manage_role:
-                # Build leaderboard data
                 totals: Dict[int, int] = {}
                 for member in manage_role.members:
                     total = self.store.total_for_user(member.id)
                     totals[member.id] = total
                 
-                # Sort by total (descending)
                 sorted_users = sorted(totals.items(), key=lambda x: x[1], reverse=True)
                 
                 # Find user's rank
@@ -1132,7 +1073,6 @@ class ShiftCog(commands.Cog):
         e.set_footer(text=f"User: {user.display_name}")
         return e
 
-# ---------------- ADMIN ----------------
     admin_group = app_commands.Group(name="shift_admin", description="Administrative shift controls.")
 
     @admin_group.command(name="user", description="Admin actions for a specific user (optional user to target).")
@@ -1229,7 +1169,6 @@ class ShiftCog(commands.Cog):
             if time_minutes <= 0:
                 await interaction.response.send_message("Time must be positive.", ephemeral=True)
                 return
-            # Add time to user's total by creating a fake record
             fake_record = {
                 "id": f"admin_add_{uuid.uuid4().hex[:8]}",
                 "user_id": target.id,
@@ -1316,35 +1255,29 @@ class ShiftCog(commands.Cog):
             week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
             week_start_ts = ts_to_int(week_start)
 
-            # Remove all records started this week
             before_count = len(self.store.records)
             self.store.records = [r for r in self.store.records if r["start_ts"] < week_start_ts]
             removed_count = before_count - len(self.store.records)
 
-            # Remove all ongoing shifts
             ongoing_count = len(self.store.state)
             self.store.state = {}
 
             # Reset stats since last reset
             self.store.meta["last_reset_ts"] = ts_to_int(now)
 
-            # --- NEW: Reset all infractions and promotions ---
             self.store.meta["infractions"] = {}
             self.store.meta["last_promotions"] = {}
 
-            # --- NEW: Set all users' total shift time to 0 by clearing all records ---
             self.store.records = []
 
             self.store.save()
 
-            # Remove leaderboard files in data/
             for path in glob.glob(os.path.join(DATA_DIR, "leaderboard_*.txt")):
                 try:
                     os.remove(path)
                 except Exception:
                     pass
 
-            # Remove shift log files in data/logs/
             for path in glob.glob(os.path.join(LOGS_DIR, "*.log")):
                 try:
                     os.remove(path)
@@ -1370,7 +1303,6 @@ class ShiftCog(commands.Cog):
                 # messages since last reset - with timeout protection
                 last_reset = int_to_ts(self.store.meta.get("last_reset_ts", ts_to_int(utcnow())))
                 
-                # Use asyncio.wait_for to add a timeout to message counting
                 try:
                     msg_count = await asyncio.wait_for(
                         self.count_messages_since(guild, last_reset), 
@@ -1389,16 +1321,13 @@ class ShiftCog(commands.Cog):
                 await interaction.response.send_message(embed=emb, ephemeral=False)
                 return
             except Exception as e:
-                # Fallback response if anything goes wrong
                 print(f"Error in stats command: {e}")
                 emb = self.base_embed("Shift Stats (Global)", colour_err())
                 emb.description = f"Error retrieving statistics: {str(e)}"
                 await interaction.response.send_message(embed=emb, ephemeral=True)
                 return
         elif action.value in ("leaderboard_txt", "leaderboard_met", "leaderboard_notmet"):
-            # build leaderboard lines
             lines = await self._build_leaderboard_lines(guild, filter_mode=action.value)
-            # write file
             path = os.path.join(DATA_DIR, f"leaderboard_{action.value}_{utcnow().date()}.txt")
             with open(path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))
@@ -1419,7 +1348,6 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message(embed=embed, view=view)
             return
         elif action.value == "set_wipe":
-            # Set current time as wipe timestamp
             self.store.meta["last_wipe_ts"] = ts_to_int(utcnow())
             self.store.save()
             await self.log_event(guild, f"🔄 Admin {user.mention} set wipe timestamp to now.")
@@ -1487,7 +1415,6 @@ class ShiftCog(commands.Cog):
             return 0
         
         try:
-            # Use a more efficient approach with reasonable limits
             # Count messages in reverse order (newest first) for better performance
             count = 0
             max_messages = 1000  # Reasonable limit to prevent timeout
@@ -1531,11 +1458,9 @@ class ShiftCog(commands.Cog):
             if QUOTA_ROLE_15 in mids and total_seconds >= 15 * 60:
                 continue  # Exempt from infractions above 15 minutes
 
-            # Check if excused for this shift wave
             if self.store.is_excused(member.id):
                 continue  # Excused from infractions for this shift wave
             
-            # Infractions
             if total_seconds < quota_minutes * 60:
                 minutes_short = quota_minutes - (total_seconds / 60)
                 if minutes_short >= DEMOTION_THRESHOLD:
@@ -1564,7 +1489,6 @@ class ShiftCog(commands.Cog):
         for i, (member, total_seconds) in enumerate(promo_candidates, 1):
             time_str = self._format_duration(total_seconds)
             
-            # Add cooldown information
             last_promo_ts = self.store.meta["last_promotions"].get(str(member.id), 0)
             if last_promo_ts == 0:
                 cooldown_info = "🆕 First promotion"
@@ -1584,7 +1508,6 @@ class ShiftCog(commands.Cog):
         
         sections = []
         
-        # Demotions
         if infractions["demotions"]:
             lines = []
             for i, (member, total_seconds) in enumerate(infractions["demotions"], 1):
@@ -1631,9 +1554,7 @@ class ShiftCog(commands.Cog):
         
         return ", ".join(parts)
 
-    # ---------------- OTHER COMMANDS ----------------
 
-    # ---------------- OTHER COMMANDS ----------------
     @app_commands.command(name="shift_leaderboard", description="Show the shift leaderboard.")
     async def shift_leaderboard(self, interaction: discord.Interaction):
         user = interaction.user
@@ -1708,7 +1629,6 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message("You lack admin role.", ephemeral=True)
             return
         
-        # Defer the response first to prevent timeout
         await interaction.response.defer(ephemeral=False)
         
         try:
@@ -1740,7 +1660,6 @@ class ShiftCog(commands.Cog):
             emb.description = f"Error retrieving statistics: {str(e)}"
             await interaction.followup.send(embed=emb, ephemeral=True)
 
-    # ---------------- LOGGING TOGGLE ----------------
     @app_commands.command(name="shift_lists", description="Show promotion and infractions lists (admin only).")
     @app_commands.describe(list_type="Choose which list to show")
     @app_commands.choices(list_type=[
@@ -1786,7 +1705,6 @@ class ShiftCog(commands.Cog):
             status = self.store.meta.get("logging_enabled", True)
             await interaction.response.send_message(embed=self.embed_info(f"Logging is **{'ENABLED' if status else 'DISABLED'}**."), ephemeral=True)
             return
-        # set and if disabling: end all current shifts and log
         self.store.meta["logging_enabled"] = enabled
         self.store.save()
         if not enabled:
@@ -1804,12 +1722,10 @@ class ShiftCog(commands.Cog):
 
     # Removed redundant promotion_cooldown slash command as requested
 
-    # ---------- COOLDOWN HELPERS AND COMMANDS ----------
     def _calculate_member_cooldown(self, member: discord.Member) -> Tuple[int, int]:
         """Return (cooldown_days, seconds_remaining) for promotion cooldown based on roles and last ping."""
         last_ts = self.store.meta.get("last_promotions", {}).get(str(member.id), 0)
         if last_ts == 0:
-            # Return default cooldown period based on roles
             role_ids = {r.id for r in member.roles}
             cooldown_days = 4
             if PROMO_COOLDOWN_14 in role_ids:
@@ -1826,13 +1742,11 @@ class ShiftCog(commands.Cog):
         
         seconds_since = ts_to_int(utcnow()) - last_ts
         
-        # Check if this is an admin-specified cooldown
         admin_cooldown_days = self.store.meta.get("admin_cooldowns", {}).get(str(member.id))
         if admin_cooldown_days is not None:
             cooldown_days = admin_cooldown_days
             cooldown_seconds = cooldown_days * 24 * 60 * 60
         else:
-            # Use role-based cooldown
             role_ids = {r.id for r in member.roles}
             cooldown_days = 4
             if PROMO_COOLDOWN_14 in role_ids:
@@ -1847,7 +1761,6 @@ class ShiftCog(commands.Cog):
                 cooldown_days = 4
             cooldown_seconds = cooldown_days * 24 * 60 * 60
         
-        # Add any admin extensions
         extension_seconds = self.store.meta.get("cooldown_extensions", {}).get(str(member.id), 0)
         total_cooldown_seconds = cooldown_seconds + extension_seconds
         
@@ -1860,7 +1773,6 @@ class ShiftCog(commands.Cog):
             now = ts_to_int(utcnow())
             to_sleep = max(0, end_ts - now)
             await asyncio.sleep(to_sleep)
-            # fetch user and DM
             user = self.bot.get_user(user_id)
             if user is None:
                 try:
@@ -1958,7 +1870,6 @@ class ShiftCog(commands.Cog):
             shift_lines = [f"> <@{member.id}> — {human_td(elapsed)}" for member, _, elapsed in on_shift_users]
             embed.add_field(name="Currently On Shift", value="\n".join(shift_lines), inline=False)
 
-            # attach a channel view so users can end their own shift from the channel message
             role = (guild.get_role(ROLE_ON_DUTY) if guild else None)
             content = role.mention if role and role.members else ""
             try:
@@ -2022,7 +1933,6 @@ class ShiftCog(commands.Cog):
             embed.description = "\n".join(lines)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ---------- COOLDOWN ADMIN COMMANDS ----------
     @admin_group.command(name="cooldown", description="Manage promotion cooldowns for users (admin only).")
     @app_commands.describe(
         action="Choose an action",
@@ -2053,10 +1963,8 @@ class ShiftCog(commands.Cog):
                 await interaction.response.send_message("Please provide a positive number of days.", ephemeral=True)
                 return
             
-            # Set cooldown by setting last_promotions to current time (start of cooldown)
             current_time = ts_to_int(utcnow())
             self.store.meta["last_promotions"][str(user.id)] = current_time
-            # Store admin-specified cooldown period
             self.store.meta["admin_cooldowns"][str(user.id)] = days
             # Clear any existing extensions when adding new cooldown
             if str(user.id) in self.store.meta.get("cooldown_extensions", {}):
@@ -2066,7 +1974,6 @@ class ShiftCog(commands.Cog):
             # Calculate when cooldown ends using admin-specified days
             cooldown_ts = current_time + (days * 24 * 60 * 60)
             
-            # DM the user
             try:
                 embed = self.base_embed("Promotion Cooldown Added", colour_warn())
                 embed.description = f"An admin has placed you on a promotion cooldown for **{days} day(s)**."
@@ -2077,14 +1984,12 @@ class ShiftCog(commands.Cog):
             except Exception:
                 pass
             
-            # Schedule end DM
             asyncio.create_task(self._schedule_cooldown_end_dm(user.id, cooldown_ts))
             
             await self.log_event(guild, f"🔒 Admin {admin_user.mention} added {days}-day cooldown for {user.mention}.")
             await interaction.response.send_message(embed=self.embed_info(f"Added {days}-day cooldown for {user.mention}. Ends <t:{cooldown_ts}:R>."), ephemeral=True)
             
         elif action.value == "remove":
-            # Remove cooldown by setting last promotion to 0 and clearing extensions/admin cooldowns
             self.store.meta["last_promotions"][str(user.id)] = 0
             if str(user.id) in self.store.meta.get("cooldown_extensions", {}):
                 del self.store.meta["cooldown_extensions"][str(user.id)]
@@ -2092,7 +1997,6 @@ class ShiftCog(commands.Cog):
                 del self.store.meta["admin_cooldowns"][str(user.id)]
             self.store.save()
             
-            # DM the user
             try:
                 embed = self.base_embed("Promotion Cooldown Removed", colour_ok())
                 embed.description = "🎉 **Your promotion cooldown has been removed!**"
@@ -2110,19 +2014,16 @@ class ShiftCog(commands.Cog):
                 await interaction.response.send_message("Please provide a positive number of days.", ephemeral=True)
                 return
             
-            # Get current cooldown status
             last_ts = self.store.meta["last_promotions"].get(str(user.id), 0)
             if last_ts == 0:
                 await interaction.response.send_message(f"{user.mention} is not currently on cooldown. Use 'add' instead.", ephemeral=True)
                 return
             
-            # Check if currently on cooldown
             cooldown_days, remaining = self._calculate_member_cooldown(user)
             if remaining == 0:
                 await interaction.response.send_message(f"{user.mention} is not currently on cooldown. Use 'add' instead.", ephemeral=True)
                 return
             
-            # Add extension to the extensions tracking
             extension_seconds = days * 24 * 60 * 60
             current_extension = self.store.meta.get("cooldown_extensions", {}).get(str(user.id), 0)
             self.store.meta["cooldown_extensions"][str(user.id)] = current_extension + extension_seconds
@@ -2132,7 +2033,6 @@ class ShiftCog(commands.Cog):
             new_remaining = remaining + extension_seconds
             new_end_ts = ts_to_int(utcnow()) + new_remaining
             
-            # DM the user
             try:
                 embed = self.base_embed("Promotion Cooldown Extended", colour_warn())
                 embed.description = f"Your promotion cooldown has been extended by **{days} day(s)**."
@@ -2171,12 +2071,10 @@ class ShiftCog(commands.Cog):
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # --------------- SHIFT EXCUSE COMMANDS ---------------
     @app_commands.command(name="shift_excuse", description="Excuse a personnel for one shift wave (admin only).")
     @app_commands.describe(personnel="The personnel to excuse")
     async def shift_excuse(self, interaction: discord.Interaction, personnel: discord.Member):
         """Excuse a personnel for one shift wave. Only valid until shifts reset."""
-        # Check if user has the admin role
         ALLOWED_ADMIN_ROLE_ID = 1355842403134603275
         if not any(r.id == ALLOWED_ADMIN_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
@@ -2187,13 +2085,11 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message("Guild only.", ephemeral=True)
             return
         
-        # Check if personnel has the manage role
         manage_role = guild.get_role(ROLE_MANAGE_REQUIRED)
         if not manage_role or manage_role not in personnel.roles:
             await interaction.response.send_message(f"{personnel.mention} does not have the personnel role.", ephemeral=True)
             return
         
-        # Check if already excused for this wave
         if self.store.is_excused(personnel.id):
             current_reset_ts = self.store.meta.get("last_reset_ts", ts_to_int(utcnow()))
             await interaction.response.send_message(
@@ -2205,7 +2101,6 @@ class ShiftCog(commands.Cog):
             )
             return
         
-        # Add excuse
         self.store.add_excuse(personnel.id)
         current_reset_ts = self.store.meta.get("last_reset_ts", ts_to_int(utcnow()))
         
@@ -2222,7 +2117,6 @@ class ShiftCog(commands.Cog):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
         
-        # DM the personnel
         try:
             dm_embed = self.base_embed("Shift Excuse", colour_ok())
             dm_embed.description = "You have been excused for this shift wave."
@@ -2237,7 +2131,6 @@ class ShiftCog(commands.Cog):
     @app_commands.describe(personnel="The personnel to revoke excuse from")
     async def shift_excuse_revoke(self, interaction: discord.Interaction, personnel: discord.Member):
         """Revoke a shift excuse for a personnel."""
-        # Check if user has the admin role
         ALLOWED_ADMIN_ROLE_ID = 1355842403134603275
         if not any(r.id == ALLOWED_ADMIN_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
@@ -2248,7 +2141,6 @@ class ShiftCog(commands.Cog):
             await interaction.response.send_message("Guild only.", ephemeral=True)
             return
         
-        # Check if personnel has an excuse
         if not self.store.is_excused(personnel.id):
             await interaction.response.send_message(
                 embed=self.embed_warn(f"{personnel.mention} does not have an active excuse for this shift wave."),
@@ -2256,7 +2148,6 @@ class ShiftCog(commands.Cog):
             )
             return
         
-        # Remove excuse
         removed = self.store.remove_excuse(personnel.id)
         
         if removed:
@@ -2270,7 +2161,6 @@ class ShiftCog(commands.Cog):
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
-            # DM the personnel
             try:
                 dm_embed = self.base_embed("Shift Excuse Revoked", colour_warn())
                 dm_embed.description = "Your shift excuse has been revoked."
@@ -2284,7 +2174,5 @@ class ShiftCog(commands.Cog):
                 ephemeral=True
             )
 
-    # --------------- LEADERBOARD (PING USERS) ---------------
-    # already mentions users via <@igitd> in lines eee
 async def setup(bot: commands.Bot):
     await bot.add_cog(ShiftCog(bot))

@@ -38,7 +38,6 @@ def log_action(user, action, details):
 async def log_to_discord(bot, user, action, details):
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if channel:
-        # Choose color based on action
         if "arrest" in action.lower():
             color = 0x8d5524  # brown for arrest log
         elif "deployment started" in action.lower():
@@ -93,7 +92,6 @@ def get_next_arrest_id():
     return arrest_id
 
 def get_roblox_user_info(username):
-    # Get userId and displayName from username
     url = "https://users.roblox.com/v1/usernames/users"
     resp = requests.post(url, json={"usernames": [username], "excludeBannedUsers": False}, timeout=10)
     if resp.status_code != 200:
@@ -118,7 +116,6 @@ def get_roblox_avatar_url(user_id, size=420):
             return data["data"][0]["imageUrl"]
     except Exception:
         pass
-    # fallback
     return "https://tr.rbxcdn.com/6c6b8e6b7b7e7b7b7b7b7b7b7b7b7b/420/420/AvatarHeadshot/Png"
 
 class ArrestLogModal(ui.Modal, title="Log Arrest"):
@@ -136,7 +133,6 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
         notes = self.notes.value.strip()
         arrest_id = get_next_arrest_id()
 
-        # Try to get Roblox info and validate username
         info = None
         avatar_url = None
         try:
@@ -169,14 +165,12 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
         embed.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854151505346642/bottom.png?ex=697a9e8f&is=69794d0f&hm=d687302a54dc5b14344e758259c4869481eea57a454b2f8b507a8bfb992c1722&")
         embed.set_footer(text=f"ID: {arrest_id}")
 
-        # Log to file
         log_action(
             interaction.user,
             "Arrest Log",
             f"ID: {arrest_id} | Username: {roblox_username} | Display: {display_name} | Charges: {charges} | Notes: {notes}"
         )
 
-        # Log to Discord
         await log_to_discord(
             self.bot,
             interaction.user,
@@ -184,7 +178,6 @@ class ArrestLogModal(ui.Modal, title="Log Arrest"):
             f"ID: {arrest_id} | Username: {roblox_username} | Display: {display_name} | Charges: {charges} | Notes: {notes}"
         )
 
-        # Send to arrest log channel
         channel = interaction.client.get_channel(ARREST_LOG_CHANNEL_ID)
         if channel:
             await channel.send(embed=embed)
@@ -215,7 +208,6 @@ class MDTView(ui.View):
         can_start = not state["active"]
         can_move = state["active"]
         can_end = state["active"]
-        # Build deployment management embed
         embed1 = discord.Embed(color=TAN)
         embed1.set_image(url="https://cdn.discordapp.com/attachments/1465844086480310342/1465854201539203267/MDT.png?ex=697a9e9b&is=69794d1b&hm=3f8647178b6e530cddc6aa79172292ca2cca19a457afce9b39f41cb390b99d27&")
         embed2 = discord.Embed(

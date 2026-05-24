@@ -26,7 +26,6 @@ class DeleteArchiveCog(commands.Cog):
             wait_seconds = (next_half - now).total_seconds()
             await asyncio.sleep(wait_seconds)
 
-            # Delete all channels in the archive category in all guilds
             for guild in self.bot.guilds:
                 category = guild.get_channel(ARCHIVE_CATEGORY_ID)
                 if not category or not isinstance(category, discord.CategoryChannel):

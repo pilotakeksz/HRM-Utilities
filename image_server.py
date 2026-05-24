@@ -83,7 +83,6 @@ async def _async_catalog_image(filename: str, file_path: Path) -> str:
         
         await client.login(DISCORD_TOKEN)
         
-        # Get catalog server and channel
         guild = client.get_guild(CATALOG_SERVER_ID)
         if not guild:
             guild = await client.fetch_guild(CATALOG_SERVER_ID)
@@ -100,7 +99,6 @@ async def _async_catalog_image(filename: str, file_path: Path) -> str:
         if msg.attachments:
             discord_url = msg.attachments[0].url
             
-            # Update discord_urls.json
             IMAGES_DIR.mkdir(parents=True, exist_ok=True)
             discord_map = {}
             if DISCORD_URLS_FILE.exists():
@@ -212,7 +210,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'File too large'}).encode())
                 return
             
-            # Parse multipart form data manually
             boundary = None
             if 'boundary=' in content_type:
                 boundary = content_type.split('boundary=')[1].split(';')[0].strip()
@@ -247,7 +244,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'No file provided'}).encode())
                 return
             
-            # Validate file extension
             filename = Path(filename).name
             allowed_ext = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
             if Path(filename).suffix.lower() not in allowed_ext:
@@ -255,7 +251,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': f'Unsupported file type. Allowed: {allowed_ext}'}).encode())
                 return
             
-            # Save file
             IMAGES_DIR.mkdir(parents=True, exist_ok=True)
             file_path = IMAGES_DIR / filename
             
@@ -269,7 +264,6 @@ class Handler(BaseHTTPRequestHandler):
             if DISCORD_AVAILABLE and DISCORD_TOKEN:
                 auto_catalog_result = auto_catalog_image(filename, file_path)
             
-            # Return success with file info
             self._set_headers(200, 'application/json')
             response = {
                 'success': True,
@@ -296,7 +290,6 @@ class Handler(BaseHTTPRequestHandler):
         if not IMAGES_DIR.exists():
             IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Load discord_urls.json if present - check multiple locations
         discord_map = {}
         discord_file = IMAGES_DIR / 'discord_urls.json'
         
@@ -352,7 +345,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def get_local_ip():
-    # best-effort local IP detection
     import socket
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -492,7 +484,6 @@ body { padding: 1.5rem; }
         }catch(err){ console.error('exec copy failed', err); showToast('Copy failed', true); return false; }
     }
 
-    // Handle file uploads
     const uploadZone = document.getElementById('upload-zone');
     const fileInput = document.getElementById('file-input');
     const uploadStatus = document.getElementById('upload-status');

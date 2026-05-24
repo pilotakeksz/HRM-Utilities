@@ -13,10 +13,8 @@ def get_version() -> Tuple[int, str, dict]:
     Get the current version number, formatted version string, and additional info.
     Returns: (version_number, version_string, info_dict)
     """
-    # Ensure data directory exists
     os.makedirs("data", exist_ok=True)
     
-    # Read current version
     if os.path.exists(VERSION_FILE):
         try:
             with open(VERSION_FILE, "r", encoding="utf-8") as f:
@@ -29,18 +27,15 @@ def get_version() -> Tuple[int, str, dict]:
     # Increment version
     version_num += 1
     
-    # Get git and cog information
     commit_hash, commit_message = get_git_info()
     updated_cogs = get_updated_cogs()
     
     # Track cog updates for this version
     track_cog_updates(updated_cogs, version_num)
     
-    # Save new version
     with open(VERSION_FILE, "w", encoding="utf-8") as f:
         f.write(str(version_num))
     
-    # Save metadata
     metadata = {
         "version": version_num,
         "version_string": f"v{version_num}",
@@ -77,12 +72,10 @@ def get_git_info() -> Tuple[Optional[str], Optional[str]]:
     Returns: (commit_hash, commit_message)
     """
     try:
-        # Get commit hash
         result = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], 
                               capture_output=True, text=True, timeout=5)
         commit_hash = result.stdout.strip() if result.returncode == 0 else None
         
-        # Get commit message
         result = subprocess.run(['git', 'log', '-1', '--pretty=format:%s'], 
                               capture_output=True, text=True, timeout=5)
         commit_message = result.stdout.strip() if result.returncode == 0 else None
@@ -97,7 +90,6 @@ def get_updated_cogs() -> List[str]:
     Returns: List of cog names that were modified
     """
     try:
-        # Get list of modified files in cogs directory
         result = subprocess.run(['git', 'diff', '--name-only', 'HEAD~1', 'HEAD'], 
                               capture_output=True, text=True, timeout=10)
         
@@ -122,7 +114,6 @@ def track_cog_updates(updated_cogs: List[str], version_num: int):
     """
     os.makedirs("data", exist_ok=True)
     
-    # Load existing tracking data
     tracking_data = {}
     if os.path.exists(COGS_TRACKING_FILE):
         try:
@@ -131,14 +122,12 @@ def track_cog_updates(updated_cogs: List[str], version_num: int):
         except Exception:
             tracking_data = {}
     
-    # Add this version's updates
     tracking_data[str(version_num)] = {
         "cogs": updated_cogs,
         "timestamp": datetime.datetime.now().isoformat(),
         "version": version_num
     }
     
-    # Save tracking data
     with open(COGS_TRACKING_FILE, "w", encoding="utf-8") as f:
         json.dump(tracking_data, f, indent=2)
 

@@ -96,7 +96,6 @@ class LOARequestModal(discord.ui.Modal, title="LOA Request"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Only allow if user has LOA_REQUEST_ROLE
         if not any(r.id == LOA_REQUEST_ROLE for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to request an LOA.", ephemeral=True)
             return
@@ -108,7 +107,6 @@ class LOARequestModal(discord.ui.Modal, title="LOA Request"):
             await interaction.response.send_message("Please enter a valid duration (1-28 days).", ephemeral=True)
             return
 
-        # use timezone-aware UTC datetimes to avoid local tz shifts
         end_date = datetime.now(timezone.utc) + timedelta(days=days)
         request = {
             "user_id": interaction.user.id,
@@ -144,13 +142,11 @@ class LOAReviewView(discord.ui.View):
     async def update_embed(self, interaction, status, reviewer):
         # copy existing embed and preserve non-status fields
         embed = interaction.message.embeds[0].copy()
-        # collect existing fields except Status/Reviewed by
         preserved = [(f.name, f.value, f.inline) for f in embed.fields if f.name not in ("Status", "Reviewed by")]
         embed.clear_fields()
         for name, value, inline in preserved:
             embed.add_field(name=name, value=value, inline=inline)
 
-        # set color based on status
         if "Approved" in status or "✅" in status:
             embed.color = discord.Color.green()
         elif "Denied" in status or "❌" in status:
@@ -175,7 +171,6 @@ class LOAReviewView(discord.ui.View):
 
         # Find end_date for this user (from requests). If not present, skip adding active LOA here;
         # update_loa_status sets Pending->Approved for any pending entries; try to capture end_date.
-        # helper to parse stored ISO datetimes as UTC-aware
         def _parse_iso_utc(s):
             try:
                 d = datetime.fromisoformat(s)
@@ -198,13 +193,11 @@ class LOAReviewView(discord.ui.View):
             req_end_date = None
 
         if req_end_date:
-            # store ISO string (already saved) and ensure DB/display parsing uses UTC
             add_active_loa(self.user_id, req_end_date)
 
         try:
             if member and loa_role:
                 await member.add_roles(loa_role, reason="LOA approved")
-                # DM the user as embed
                 try:
                     dm_embed = discord.Embed(
                         title="✅ LOA Approved",
@@ -234,7 +227,6 @@ class LOAReviewView(discord.ui.View):
         log_loa_action(f"DENIED: {member} ({self.user_id}) by {interaction.user} ({interaction.user.id})")
         try:
             if member:
-                # send denied DM as embed
                 try:
                     dm_embed = discord.Embed(
                         title="❌ LOA Denied",
@@ -282,9 +274,7 @@ class LOACog(commands.Cog):
             await interaction.response.send_message(embed=embed)
             return
         
-        # Get member info for each active LOA
         loa_entries = []
-        # parse stored ISO datetimes as UTC-aware to compute remaining correctly
         def _parse_iso_utc(s):
             try:
                 d = datetime.fromisoformat(s)
@@ -306,7 +296,6 @@ class LOACog(commands.Cog):
             except Exception:
                 continue
         
-        # Sort by remaining time (shortest first)
         loa_entries.sort(key=lambda x: x[2].total_seconds())
         
         embed = discord.Embed(
@@ -340,14 +329,12 @@ class LOACog(commands.Cog):
         # Determine target user
         target_user = member if member else interaction.user
         
-        # Check if viewing someone else's history (admin only)
         if member and member != interaction.user:
             admin_role_id = 1355842403134603275
             if not any(r.id == admin_role_id for r in interaction.user.roles):
                 await interaction.response.send_message("You can only view your own LOA history.", ephemeral=True)
                 return
         
-        # Load LOA requests
         try:
             with open(LOA_DATA_FILE, "r", encoding="utf-8") as f:
                 all_requests = json.load(f)
@@ -369,7 +356,6 @@ class LOACog(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Sort by requested_at (most recent first)
         def parse_date(req):
             try:
                 dt = datetime.fromisoformat(req.get("requested_at", ""))
@@ -381,7 +367,6 @@ class LOACog(commands.Cog):
         
         user_requests.sort(key=parse_date, reverse=True)
         
-        # Helper to parse ISO dates
         def _parse_iso_utc(s):
             try:
                 d = datetime.fromisoformat(s)
@@ -391,7 +376,6 @@ class LOACog(commands.Cog):
             except Exception:
                 return None
         
-        # Create embed with pagination if needed
         embed = discord.Embed(
             title=f"LOA History - {target_user.display_name}",
             color=discord.Color.blue()
@@ -404,7 +388,6 @@ class LOACog(commands.Cog):
         if len(user_requests) > 10:
             embed.set_footer(text=f"Showing 10 most recent of {len(user_requests)} total requests")
         
-        # Build description with request details
         lines = []
         for i, req in enumerate(display_requests, 1):
             status = req.get("status", "Unknown")
@@ -424,7 +407,6 @@ class LOACog(commands.Cog):
             # Format date
             date_str = f"<t:{int(requested_at.timestamp())}:D>" if requested_at else "Unknown"
             
-            # Build line
             line = f"**{i}. {status_emoji} {status}** - {duration} days\n"
             line += f"   Requested: {date_str}"
             if end_date:
@@ -470,7 +452,6 @@ class LOACog(commands.Cog):
                 await interaction.response.send_message("Please provide a positive number of days to extend.", ephemeral=True)
                 return
             
-            # Check if user has active LOA
             try:
                 with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
                     active_loas = json.load(f)
@@ -508,12 +489,10 @@ class LOACog(commands.Cog):
                 pass
         
         elif action.value == "administer":
-            # Check if user already has LOA role
             if loa_role in user.roles:
                 await interaction.response.send_message(f"{user.mention} already has the LOA role.", ephemeral=True)
                 return
 
-            # Add LOA role
             try:
                 await user.add_roles(loa_role, reason="LOA administered by admin")
                 log_loa_action(f"ADMINISTERED: {user} ({user.id}) LOA role added by {interaction.user} ({interaction.user.id})")
@@ -568,7 +547,6 @@ class LOACog(commands.Cog):
                 await interaction.response.send_message(f"Failed to add LOA role: {e}", ephemeral=True)
         
         elif action.value == "end":
-            # Remove LOA role and active LOA entry
             removed_role = False
             removed_entry = False
             
@@ -580,7 +558,6 @@ class LOACog(commands.Cog):
                     await interaction.response.send_message(f"Failed to remove LOA role: {e}", ephemeral=True)
                     return
             
-            # Remove from active LOAs
             try:
                 with open(ACTIVE_LOAS_FILE, "r", encoding="utf-8") as f:
                     active_loas = json.load(f)
@@ -624,7 +601,6 @@ class LOACog(commands.Cog):
         except Exception:
             active_loas = {}
 
-        # Use correct guild lookup
         guild = self.bot.get_guild(GUILD_ID)
         if guild is None:
             try:
@@ -636,7 +612,6 @@ class LOACog(commands.Cog):
         expired_users = []
         for user_id, end_date_str in active_loas.items():
             try:
-                # parse as UTC-aware
                 d = datetime.fromisoformat(end_date_str)
                 if d.tzinfo is None:
                     end_date = d.replace(tzinfo=timezone.utc)
@@ -662,7 +637,6 @@ class LOACog(commands.Cog):
                     except Exception:
                         pass
                 expired_users.append(user_id)
-        # Remove expired users from active_loas.json
         for user_id in expired_users:
             remove_active_loa(user_id)
 

@@ -13,7 +13,6 @@ class VersionCog(commands.Cog):
         """Display the current bot version with additional information."""
         version_num, version_string = get_current_version()
         
-        # Try to get additional info from metadata
         version_info = {}
         meta_file = os.path.join("data", "version_meta.json")
         if os.path.exists(meta_file):
@@ -30,12 +29,10 @@ class VersionCog(commands.Cog):
         )
         embed.add_field(name="Version Number", value=str(version_num), inline=True)
         
-        # Add git information if available (commit message only, no hash)
         if version_info.get("commit_message"):
             commit_msg = version_info['commit_message'][:100] + "..." if len(version_info['commit_message']) > 100 else version_info['commit_message']
             embed.add_field(name="Last Commit", value=commit_msg, inline=False)
         
-        # Add last updated cogs if available
         if version_info.get("updated_cogs"):
             cogs_list = ", ".join(version_info['updated_cogs'])
             if len(cogs_list) > 100:

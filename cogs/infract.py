@@ -114,7 +114,6 @@ class ActivityNoticeModal(discord.ui.Modal, title="Issue Activity Notice"):
         embed.add_field(name="Infraction ID", value=str(infraction_id), inline=True)
         msg = await inf_channel.send(content=personnel.mention, embed=embed)
 
-        # DM the user
         try:
             dm_embed = discord.Embed(
                 title="You have received an Activity Notice",
@@ -135,7 +134,6 @@ class ActivityNoticeModal(discord.ui.Modal, title="Issue Activity Notice"):
             infraction_id, personnel, issued_by, action, f"Required Duty Time: {required_time} | {reason}", proof_url, msg.id
         )
 
-        # Log to logging file
         log_to_file(
             issued_by.id,
             interaction.channel.id,
@@ -199,7 +197,6 @@ class Infraction(commands.Cog):
     async def update_roles(self, member, action, guild, add=True):
         roles_to_add = []
         roles_to_remove = []
-        # Get current role states
         has_w1 = any(r.id == WARNING_1_ROLE_ID for r in member.roles)
         has_w2 = any(r.id == WARNING_2_ROLE_ID for r in member.roles)
         has_s1 = any(r.id == STRIKE_1_ROLE_ID for r in member.roles)
@@ -213,10 +210,8 @@ class Infraction(commands.Cog):
                 roles_to_remove += [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID]
                 # Escalate to next strike
                 if has_s1 and has_s2:
-                    # Already has S1 and S2, next is S3+Suspension
                     roles_to_remove += [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID]
                     if has_s3:
-                        # Already has S3, should terminate
                         return "terminate"
                     else:
                         roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
@@ -233,7 +228,6 @@ class Infraction(commands.Cog):
             if has_s1 and has_s2:
                 roles_to_remove += [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID]
                 if has_s3:
-                    # Already has S3, should terminate
                     return "terminate"
                 else:
                     roles_to_add += [STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]
@@ -267,7 +261,6 @@ class Infraction(commands.Cog):
     @app_commands.command(name="infraction-issue", description="Issue an infraction to personnel.")
     @app_commands.describe(personnel="User to discipline", action="Type", reason="Reason", proof="Proof file")
     async def infraction_issue(self, interaction: discord.Interaction, personnel: discord.Member, action: str, reason: str, proof: discord.Attachment = None):
-        # Permission checks
         if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("You do not have permission to issue infractions.", ephemeral=True)
             return
@@ -286,7 +279,6 @@ class Infraction(commands.Cog):
             await interaction.response.send_modal(ActivityNoticeModal(self, personnel, interaction))
             return
 
-        # Log command usage to txt
         log_command_to_txt(
             "infraction-issue",
             interaction.user,
@@ -308,8 +300,6 @@ class Infraction(commands.Cog):
             await interaction.followup.send("Infraction cancelled.", ephemeral=True)
             return
 
-        # --- Discipline Logic Fix ---
-        # Get current role states
         has_w1 = any(r.id == WARNING_1_ROLE_ID for r in personnel.roles)
         has_w2 = any(r.id == WARNING_2_ROLE_ID for r in personnel.roles)
         has_s1 = any(r.id == STRIKE_1_ROLE_ID for r in personnel.roles)
@@ -325,14 +315,12 @@ class Infraction(commands.Cog):
 
         if action == "Warning":
             if has_s3:
-                # Already at max strikes, escalate to termination (no more roles)
                 termination_required = True
             elif not has_w1:
                 discipline_action = "warning1"
             elif not has_w2:
                 discipline_action = "warning2"
             else:
-                # Already has W1 and W2, escalate to next strike
                 await personnel.remove_roles(
                     interaction.guild.get_role(WARNING_1_ROLE_ID),
                     interaction.guild.get_role(WARNING_2_ROLE_ID),
@@ -384,7 +372,6 @@ class Infraction(commands.Cog):
                 await personnel.add_roles(interaction.guild.get_role(STRIKE_3_ROLE_ID), reason="Issued Strike 3")
             if suspension_required:
                 await personnel.add_roles(interaction.guild.get_role(SUSPENDED_ROLE_ID), reason="Issued Suspension")
-                # Remove all warnings and strikes
                 await personnel.remove_roles(
                     *(role for role in [
                         interaction.guild.get_role(WARNING_1_ROLE_ID),
@@ -396,7 +383,6 @@ class Infraction(commands.Cog):
                     reason="Suspension issued"
                 )
         if termination_required:
-            # Remove all discipline roles
             await personnel.remove_roles(
                 *(role for role in [
                     interaction.guild.get_role(WARNING_1_ROLE_ID),
@@ -419,7 +405,6 @@ class Infraction(commands.Cog):
             embed.set_image(url=proof.url)
         msg = await inf_channel.send(content=personnel.mention, embed=embed)
 
-        # --- Add second red embed if suspended or terminated ---
         extra_embed = None
         if termination_required:
             extra_embed = discord.Embed(
@@ -441,7 +426,6 @@ class Infraction(commands.Cog):
         if extra_embed:
             await inf_channel.send(embed=extra_embed)
 
-        # DM the infracted user
         dm_success = False
         try:
             dm_embed = discord.Embed(
@@ -467,7 +451,6 @@ class Infraction(commands.Cog):
 
         await self.add_infraction(infraction_id, personnel, interaction.user, action, reason, proof_url, msg.id)
 
-        # Log to logging file (one line per infraction)
         log_to_file(
             interaction.user.id,
             interaction.channel.id,
@@ -476,7 +459,6 @@ class Infraction(commands.Cog):
         )
         await interaction.followup.send(f"Infraction issued and logged. Infraction ID: {infraction_id}", ephemeral=True)
 
-        # After issuing the infraction, send a log embed to the log channel
         log_channel = interaction.guild.get_channel(INFRACTION_VIEW_CHANNEL_ID)
         if log_channel:
             log_embed = discord.Embed(
@@ -588,12 +570,10 @@ class Infraction(commands.Cog):
     @app_commands.describe(infraction_id="The infraction ID to void", reason="Reason for voiding this infraction")
     async def infraction_void(self, interaction: discord.Interaction, infraction_id: str, reason: str):
         try:
-            # Permission check
             if not any(r.id == INFRACTION_PERMISSIONS_ROLE_ID for r in getattr(interaction.user, "roles", [])):
                 await interaction.response.send_message("You do not have permission to void infractions.", ephemeral=True)
                 return
 
-            # Fetch infraction details and message_id from the database
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
                     "SELECT user_id, user_name, action, reason, date, message_id, voided FROM infractions WHERE infraction_id = ?",
@@ -616,7 +596,6 @@ class Infraction(commands.Cog):
                 )
                 await db.commit()
 
-            # Remove from logs/infraction.txt (optional, or you can keep for history)
             log_file = os.path.join("logs", "infraction.txt")
             if os.path.exists(log_file):
                 with open(log_file, "r", encoding="utf-8") as f:
@@ -649,7 +628,6 @@ class Infraction(commands.Cog):
                 except Exception:
                     pass
 
-            # DM the user about the voided infraction
             try:
                 user = await interaction.guild.fetch_member(user_id)
                 dm_embed = discord.Embed(
@@ -666,29 +644,23 @@ class Infraction(commands.Cog):
                 now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
                 dm_embed.set_footer(text=f"Voided: {now_utc}")
                 await user.send(embed=dm_embed)
-                # --- REVERSE ROLES LOGIC ---
-                # Remove discipline roles if appropriate
                 member = user
                 guild = interaction.guild
                 if action == "Warning":
-                    # Remove warning roles
                     for rid in [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID]:
                         role = guild.get_role(rid)
                         if role and role in member.roles:
                             await member.remove_roles(role, reason="Infraction voided")
                 elif action == "Strike":
-                    # Remove strike roles and suspension if present
                     for rid in [STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID, STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]:
                         role = guild.get_role(rid)
                         if role and role in member.roles:
                             await member.remove_roles(role, reason="Infraction voided")
                 elif action == "Suspension":
-                    # Remove suspension role
                     role = guild.get_role(SUSPENDED_ROLE_ID)
                     if role and role in member.roles:
                         await member.remove_roles(role, reason="Infraction voided")
                 elif action == "Termination":
-                    # Remove all discipline roles
                     for rid in [WARNING_1_ROLE_ID, WARNING_2_ROLE_ID, STRIKE_1_ROLE_ID, STRIKE_2_ROLE_ID, STRIKE_3_ROLE_ID, SUSPENDED_ROLE_ID]:
                         role = guild.get_role(rid)
                         if role and role in member.roles:
@@ -697,7 +669,6 @@ class Infraction(commands.Cog):
             except Exception:
                 pass
 
-            # Log the void action
             now_utc = datetime.datetime.utcnow().strftime("UTC %Y-%m-%d %H:%M")
             log_to_file(
                 interaction.user.id,
@@ -706,7 +677,6 @@ class Infraction(commands.Cog):
                 embed=False
             )
 
-            # Log command usage to txt
             log_command_to_txt(
                 "infraction-void",
                 interaction.user,
@@ -718,7 +688,6 @@ class Infraction(commands.Cog):
                 void_reason=reason
             )
 
-            # After voiding, send a log embed to the log channel
             log_channel = interaction.guild.get_channel(INFRACTION_VIEW_CHANNEL_ID)
             if log_channel:
                 log_embed = discord.Embed(

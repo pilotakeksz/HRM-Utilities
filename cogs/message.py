@@ -16,12 +16,10 @@ class MessageLogger(commands.Cog):
         if message.author.bot:
             return
 
-        # Log to file
         log_entry = f"[{message.created_at}] ({message.guild.name if message.guild else 'DM'}) #{message.channel} | {message.author} ({message.author.id}): {message.content}\n"
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_entry)
 
-        # Log as embed
         embed = discord.Embed(
             title="Message Logged",
             description=message.content or "[No Content]",

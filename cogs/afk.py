@@ -79,7 +79,6 @@ class AFK(commands.Cog):
     def get_usually_active_time(self, user_id: int) -> Optional[str]:
         """Calculate and return the usually active time frame for a user based on message activity."""
         try:
-            # Ensure user_id is an int
             user_id = int(user_id)
             
             if user_id not in self.activity_data or not self.activity_data[user_id]:
@@ -111,7 +110,6 @@ class AFK(commands.Cog):
             if not sorted_hours:
                 return None
             
-            # Get hours that are at least 50% as active as the most active hour
             max_count = sorted_hours[0][1]
             threshold = max(1, max_count * 0.5)
             active_hours = [h for h, count in sorted_hours if count >= threshold]
@@ -146,12 +144,10 @@ class AFK(commands.Cog):
                     end_hour = current_end
             
             # Format as Discord timestamps (short time format)
-            # Create timestamps for today at the specified hours (UTC)
             now = datetime.datetime.utcnow()
             
             def create_timestamp(hour):
                 """Create a Discord timestamp for today at the specified hour."""
-                # Create datetime for today at the specified hour in UTC
                 dt = now.replace(hour=hour, minute=0, second=0, microsecond=0)
                 timestamp = int(dt.timestamp())
                 return f"<t:{timestamp}:t>"
@@ -249,7 +245,6 @@ class AFK(commands.Cog):
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
-        # Add usually active time if available
         usually_active = self.get_usually_active_time(ctx.author.id)
         if usually_active:
             embed.add_field(name="Usually Active", value=usually_active, inline=False)
@@ -270,7 +265,6 @@ class AFK(commands.Cog):
             color=discord.Color.blurple()
         )
         embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
-        # Add usually active time if available
         usually_active = self.get_usually_active_time(interaction.user.id)
         if usually_active:
             embed.add_field(name="Usually Active", value=usually_active, inline=False)
@@ -302,7 +296,6 @@ class AFK(commands.Cog):
     @app_commands.command(name="afkremove", description="Admin: Remove someone's AFK status.")
     @app_commands.describe(member="The member to remove AFK from", reason="Reason for removal")
     async def afk_remove_slash(self, interaction: discord.Interaction, member: discord.Member, reason: Optional[str] = None):
-        # Only allow users with the specific admin role
         if not any(r.id in AFK_ADMIN_ROLE_IDS for r in getattr(interaction.user, "roles", [])):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
@@ -352,7 +345,6 @@ class AFK(commands.Cog):
             return
 
         # Track message activity for "usually active" calculation
-        # Only tracks messages in guilds (not DMs)
         if message.guild:
             self.record_message_activity(message.author.id)
 
@@ -366,7 +358,6 @@ class AFK(commands.Cog):
                     description=f"**That user is currently AFK:**\n> {afk_text}",
                     color=discord.Color.blurple()
                 )
-                # Add usually active time if available
                 try:
                     usually_active = self.get_usually_active_time(user_id)
                     if usually_active:
@@ -386,7 +377,6 @@ class AFK(commands.Cog):
                 color=discord.Color.green()
             )
             embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
-            # Add usually active time if available
             try:
                 usually_active = self.get_usually_active_time(message.author.id)
                 if usually_active:

@@ -626,7 +626,6 @@ class EmbedNewCog(commands.Cog):
             if not primary_embeds:
                 continue
 
-            # Only the first message carries the interactive view
             if not first_message_sent:
                 view_key = uuid.uuid4().hex
                 view = PayloadView(data, self.bot, view_key=view_key)
@@ -692,7 +691,6 @@ class EmbedNewCog(commands.Cog):
         if len(json_str) <= 1900:
             await interaction.followup.send(f"```json\n{json_str}\n```", ephemeral=True)
         else:
-            # Send as file
             import io
             file = discord.File(fp=io.BytesIO(json_str.encode("utf-8")), filename=f"payload_{mid}.json")
             await interaction.followup.send(

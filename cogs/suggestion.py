@@ -177,7 +177,6 @@ class SuggestionNoButton(discord.ui.Button):
         view: SuggestionView = self.view
         await view.handle_vote(interaction, "no")
 
-# Add persistence logic to the view
 class SuggestionView(discord.ui.View):
     def __init__(self, suggestion_id, yes=0, no=0, disabled=False):
         super().__init__(timeout=None)
@@ -224,13 +223,11 @@ class SuggestionView(discord.ui.View):
 class Suggestion(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Load persisted votes and message_map
         self.votes = load_pickle(VOTES_FILE, {})
         self.message_map = load_pickle(MESSAGE_MAP_FILE, {})
         # Re-add persistent views for all suggestions with active voting
         for suggestion_id, msg_id in self.message_map.items():
             votes = self.votes.get(suggestion_id, {"yes": set(), "no": set()})
-            # Only add view if not approved/denied (i.e., message still has voting)
             # You may want to persist status in the future for more robustness
             self.bot.add_view(SuggestionView.from_votes(suggestion_id, votes))
 
@@ -251,7 +248,6 @@ class Suggestion(commands.Cog):
         embed.set_thumbnail(url=THUMBNAIL_URL)
         embed.add_field(name="**Suggestor:**", value=interaction.user.mention, inline=False)
         embed.add_field(name="**Suggestion:**", value=suggestion, inline=False)
-        # REMOVE the emoji bar field entirely
         embed.set_footer(text=f"Suggestion ID: {suggestion_id}")
 
         channel = interaction.guild.get_channel(SUGGESTION_CHANNEL_ID)
@@ -298,7 +294,6 @@ class Suggestion(commands.Cog):
             pass
         embed.insert_field_at(0, name="✅ **APPROVED**", value="This suggestion has been approved.", inline=False)
         embed.set_footer(text=f"Suggestion ID: {suggestion_id} | Approved by {interaction.user.display_name}")
-        # Remove any image and clear attachments so the progress image doesn't reappear
         embed.set_image(url=None)
         await msg.edit(embed=embed, view=None, attachments=[])
         await interaction.response.send_message("Suggestion approved.", ephemeral=True)
@@ -326,7 +321,6 @@ class Suggestion(commands.Cog):
         if reason:
             embed.add_field(name="Denial Reason", value=reason, inline=False)
         embed.set_footer(text=f"Suggestion ID: {suggestion_id} | Denied by {interaction.user.display_name}")
-        # Remove any image and clear attachments so the progress image doesn't reappear
         embed.set_image(url=None)
         await msg.edit(embed=embed, view=None, attachments=[])
         await interaction.response.send_message("Suggestion denied.", ephemeral=True)

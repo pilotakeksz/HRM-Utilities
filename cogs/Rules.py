@@ -127,7 +127,6 @@ class Rules(commands.Cog):
             await ctx.send("You do not have permission to use this command.")
             return
 
-        # Try to fetch the channel globally in case it's not cached
         channel = ctx.guild.get_channel(REGS_CHANNEL_ID)
         if not channel:
             try:

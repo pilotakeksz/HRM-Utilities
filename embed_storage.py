@@ -91,7 +91,6 @@ def list_recent_embeds(limit: int = 10) -> list:
     """List recent embeds stored."""
     db = load_embeds_db()
     embeds = list(db["embeds"].values())
-    # Sort by timestamp descending (newest first)
     embeds.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     return embeds[:limit]
 

@@ -98,7 +98,6 @@ def main():
     print("=" * 100)
     print(f"📍 Location: {images_dir}\n")
     
-    # Get actual files
     actual_files = set()
     if images_dir.exists():
         actual_files = {f.name for f in images_dir.iterdir() if f.is_file()}

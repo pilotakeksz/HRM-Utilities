@@ -126,7 +126,6 @@ class LogMessage(commands.Cog):
             )
             await ctx.send(embed=embed)
             return
-        # Validate date and name
         if not re.match(r"^[\w\-]+$", date):
             await ctx.send("Invalid date format. Use only letters, numbers, dashes, or underscores.")
             return
@@ -209,7 +208,6 @@ class LogMessage(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
-        # Validate date and name
         if not re.match(r"^[\w\-]+$", date):
             await interaction.response.send_message(
                 "Invalid date format. Use only letters, numbers, dashes, or underscores.",
@@ -249,7 +247,6 @@ class LogMessage(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Do NOT send documentation to the log channel anymore.
         pass
 
 async def setup(bot):

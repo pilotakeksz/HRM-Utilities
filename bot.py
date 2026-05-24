@@ -30,7 +30,6 @@ else:
     except ValueError:
         raise ValueError("APPLICATION_ID must be an integer")
 
-# Load the base64-encoded Discord bot token and decode it
 encoded_token = os.getenv("DISCORD_BOT_TOKEN_BASE64")
 if not encoded_token:
     raise ValueError("No DISCORD_BOT_TOKEN_BASE64 found in environment variables")
@@ -44,7 +43,6 @@ except Exception as e:
 LOG_CHANNEL_ID = 1343686645815181382  # channel to send command-use embeds to
 LOGS_FOLDER = "logs"  # local folder to append daily command logs
 
-# --- Discord Bot Setup ---
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
@@ -58,7 +56,6 @@ bot = commands.Bot(
 
 # Image server is no longer managed by the bot. Run `image_server.py` manually.
 
-# --- Capture stdout/stderr ---
 startup_output = io.StringIO()
 old_stdout = sys.stdout
 old_stderr = sys.stderr
@@ -73,7 +70,6 @@ async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[dis
     """
     try:
         ts = datetime.now(timezone.utc)
-        # Build embed
         emb = discord.Embed(title=f"Command: {command_name}", colour=discord.Colour.blurple(), timestamp=ts)
         try:
             emb.add_field(name="Invoker", value=f"{user.mention} ({user.id})", inline=True)
@@ -103,7 +99,6 @@ async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[dis
         affected = ", ".join(f"<@{uid}>" for uid in affected_ids) if affected_ids else "None"
         emb.add_field(name="Affected", value=affected, inline=False)
 
-        # Send embed to channel if available
         try:
             log_ch = bot.get_channel(LOG_CHANNEL_ID)
             if isinstance(log_ch, discord.TextChannel):
@@ -111,7 +106,6 @@ async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[dis
         except Exception as e:
             print(f"Failed to send command log embed: {e}")
  
-        # Append to local file b 
         try:
             os.makedirs(LOGS_FOLDER, exist_ok=True)
             path = os.path.join(LOGS_FOLDER, f"commands_{date.today().isoformat()}.log")
@@ -151,7 +145,6 @@ async def on_command(ctx: commands.Context):
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     """Handle interactions: also log slash command invocations and handle embed-send buttons."""
-    # If this is an application command (slash command), log it centrally
     try:
         if interaction.type == discord.InteractionType.application_command:
             try:
@@ -189,16 +182,13 @@ async def on_interaction(interaction: discord.Interaction):
         # Non-fatal for logging
         pass
 
-    # Handle button interactions for embed sending.
     if not interaction.data or not interaction.data.get("custom_id"):
         return
     
     custom_id = interaction.data["custom_id"]
     
-    # Handle sendembed buttons
     if custom_id.startswith("sendembed:"):
         try:
-            # Parse the custom_id: sendembed:target:ephemeral_flag
             parts = custom_id.split(":", 2)
             if len(parts) != 3:
                 await interaction.response.send_message("Invalid button configuration.", ephemeral=True)
@@ -208,10 +198,8 @@ async def on_interaction(interaction: discord.Interaction):
             ephemeral_flag = parts[2]
             is_ephemeral = ephemeral_flag == "e"
             
-            # Load the embed data
             embed_data = None
             
-            # Check if target is a send_json:b64 format
             if target.startswith("send_json:"):
                 import base64
                 import json
@@ -223,7 +211,6 @@ async def on_interaction(interaction: discord.Interaction):
                     await interaction.response.send_message(f"Failed to decode embed data: {e}", ephemeral=True)
                     return
             
-            # Check if target is a saved embed key
             elif target:
                 import os
                 embed_dir = os.path.join(os.path.dirname(__file__), "embed-builder-web", "data")
@@ -246,14 +233,12 @@ async def on_interaction(interaction: discord.Interaction):
                 await interaction.response.send_message("No embed data found.", ephemeral=True)
                 return
             
-            # Create Discord embed
             embed = discord.Embed(
                 title=embed_data.get("title"),
                 description=embed_data.get("description"),
                 color=discord.Color(embed_data.get("color", 0)) if embed_data.get("color") else None
             )
             
-            # Add fields
             for field in embed_data.get("fields", []):
                 embed.add_field(
                     name=field.get("name", ""),
@@ -261,7 +246,6 @@ async def on_interaction(interaction: discord.Interaction):
                     inline=field.get("inline", False)
                 )
             
-            # Add footer
             if embed_data.get("footer"):
                 footer = embed_data["footer"]
                 embed.set_footer(
@@ -269,15 +253,12 @@ async def on_interaction(interaction: discord.Interaction):
                     icon_url=footer.get("icon_url")
                 )
             
-            # Add thumbnail
             if embed_data.get("thumbnail"):
                 embed.set_thumbnail(url=embed_data["thumbnail"].get("url"))
             
-            # Add image
             if embed_data.get("image"):
                 embed.set_image(url=embed_data["image"].get("url"))
             
-            # Add author
             if embed_data.get("author"):
                 author = embed_data["author"]
                 embed.set_author(
@@ -286,7 +267,6 @@ async def on_interaction(interaction: discord.Interaction):
                     icon_url=author.get("icon_url")
                 )
             
-            # Send the embed (always ephemeral for button interactions)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
         except Exception as e:
@@ -303,7 +283,6 @@ async def on_ready():
     
     # Image server is not auto-started by the bot anymore.
     
-    # Get and increment version
     version_num, version_string, version_info = get_version()
     print(f"Bot version: {version_string}")
     
@@ -313,7 +292,6 @@ async def on_ready():
     if version_info.get("updated_cogs"):
         print(f"Updated cogs: {', '.join(version_info['updated_cogs'])}")
     
-    # DM yourself logs on startup
     try:
         user = await bot.fetch_user(840949634071658507)  # Your user ID here
         if user:
@@ -326,13 +304,11 @@ async def on_ready():
     print(f"Configured tuna admins: {TUNA_ADMIN_IDS}")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="Always Ready, Always There"))
     
-    # Send version to specified channel
     try:
         # Check for silent and force-ping flags
         silent_reboot = os.getenv("REBOOT_SILENT", "").lower() in ("1", "true", "yes")
         force_ping = os.getenv("REBOOT_PING", "").lower() in ("1", "true", "yes")
         
-        # Get restart initiator info to always include in embed
         reboot_initiator_id = os.getenv("REBOOT_INITIATOR_ID", "")
         reboot_initiator_name = os.getenv("REBOOT_INITIATOR_NAME", "")
         
@@ -346,7 +322,6 @@ async def on_ready():
         else:
             version_channel_id = 1329910508182179900
             secondary_channel_id = 1329910465333170216
-            # Build embed once
             embed = discord.Embed(
                 title="Bot Restart",
                 description=f"Bot has restarted with version **{version_string}**",
@@ -387,11 +362,9 @@ async def on_ready():
 
             now_ts = int(datetime.now(timezone.utc).timestamp())
             can_ping = (now_ts - int(ping_data.get("last_ping_ts", 0)) >= 43200) and (int(ping_data.get("daily_count", 0)) < 5)
-            # If this process should never dev-ping (e.g. the production or alternate bot), avoid pinging the role
             NO_DEV_PING_BOT_ID = 1403146651543015445
             is_dev_ping_blocked = (bot.user is not None and getattr(bot.user, "id", None) == NO_DEV_PING_BOT_ID)
 
-            # Fetch channels
             version_channel = bot.get_channel(version_channel_id)
             secondary_channel = bot.get_channel(secondary_channel_id)
 
@@ -399,14 +372,12 @@ async def on_ready():
             should_ping = (can_ping or force_ping) and not is_dev_ping_blocked
             
             if should_ping and version_channel:
-                # Send to main version channel with role ping and update ping counters
                 try:
                     content = f"<@&{role_id_to_ping}>"
                     allowed = discord.AllowedMentions(everyone=False, users=False, roles=True)
                     msg = await version_channel.send(content=content, embed=embed, allowed_mentions=allowed)
                     print(f"Version {version_string} sent with role ping to channel {version_channel_id}")
                     
-                    # Store embed for persistence across restarts
                     try:
                         embed_json = embed.to_dict()
                         store_embed(
@@ -425,12 +396,10 @@ async def on_ready():
                         json.dump(ping_data, f, indent=2)
                 except Exception as e:
                     print(f"Failed to send pinged version message to {version_channel_id}: {e}")
-                    # fallback: send without ping to secondary channel if available
                     if secondary_channel:
                         try:
                             msg = await secondary_channel.send(embed=embed)
                             print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
-                            # Store this embed too
                             try:
                                 embed_json = embed.to_dict()
                                 store_embed(
@@ -445,13 +414,11 @@ async def on_ready():
                         except Exception as e2:
                             print(f"Failed to send to secondary channel as fallback: {e2}")
             else:
-                # Do NOT ping role - send without ping to version channel if available
                 if version_channel:
                     try:
                         msg = await version_channel.send(embed=embed)
                         print(f"Version {version_string} sent to channel {version_channel_id} WITHOUT role ping")
                         
-                        # Store embed for persistence across restarts
                         try:
                             embed_json = embed.to_dict()
                             store_embed(
@@ -465,12 +432,10 @@ async def on_ready():
                             print(f"Failed to store embed data: {e}")
                     except Exception as e:
                         print(f"Failed to send version to main channel without ping: {e}")
-                        # fallback to secondary channel
                         if secondary_channel:
                             try:
                                 msg = await secondary_channel.send(embed=embed)
                                 print(f"Version {version_string} sent to secondary channel {secondary_channel_id} after main send failed")
-                                # Store this embed too
                                 try:
                                     embed_json = embed.to_dict()
                                     store_embed(
@@ -500,7 +465,6 @@ async def on_ready():
             synced_global = await bot.tree.sync()
             print(f"✅ Synced {len(synced_global)} global commands")
             
-            # Also sync guild commands for your main guild for instant update EEEEEEEEEE
             if APPLICATION_ID:
                 guild_obj = discord.Object(id=int(os.getenv("GUILD_ID", "0")))
                 if guild_obj.id != 0:
@@ -517,7 +481,6 @@ async def on_ready():
             print(f"❌ Failed to sync commands: {e}")
             traceback.print_exc()
 
-# --- Cog Loader ---
 async def load_cog_with_error_handling(cog_name):
     try:
         await bot.load_extension(cog_name)
@@ -526,7 +489,6 @@ async def load_cog_with_error_handling(cog_name):
         print(f"❌ Failed to load {cog_name}: {e}")
         traceback.print_exc()
 
-# --- HTTP Server ---
 async def start_webserver():
     # Path to "./HTTP" relative to this Python file
     http_dir = os.path.join(os.path.dirname(__file__), "HTTP")
@@ -541,18 +503,15 @@ async def start_webserver():
     await site.start()
     print(f"HTTP server serving {http_dir} at http://0.0.0.0:8080")
 
-# --- Main Entry ---
 async def main():
     async with bot:
         # Start HTTP server
         await start_webserver()
 
 
-        # Load cogs from directories specified in .env.cogs
         cogs = []
         cog_directories = []
 
-        # Read cog directories from .env.cogs (supports several formats)
         # Acceptable lines:
         # - cogs
         # - COG_DIRECTORIES=cogs
@@ -599,10 +558,12 @@ async def main():
                 cogs.append("embed-builder-web.embed_new")
                 continue
                 
-            # Get all Python files from directory
             for filename in os.listdir(dir_path):
-                if filename.endswith(".py") and not filename.startswith("_"):
-                    cogs.append(f"{directory}.{filename[:-3]}")  # Remove .py and add directory prefix
+                if not filename.endswith(".py") or filename.startswith("_"):
+                    continue
+                if " copy" in filename.lower():
+                    continue
+                cogs.append(f"{directory}.{filename[:-3]}")
         
         # Sort cogs for consistent loading order
         cogs.sort()
@@ -617,7 +578,6 @@ async def main():
 
 @bot.tree.command(name="sync", description="Sync slash commands (admin only).")
 async def sync_commands(interaction: discord.Interaction):
-    # Only allow admins
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("You lack permission.", ephemeral=True)
         return
@@ -679,8 +639,11 @@ async def _gather_cog_list() -> list:
         if not os.path.exists(dir_path):
             continue
         for filename in os.listdir(dir_path):
-            if filename.endswith('.py') and not filename.startswith('_'):
-                cogs.append(f"{directory}.{filename[:-3]}")
+            if not filename.endswith(".py") or filename.startswith("_"):
+                continue
+            if " copy" in filename.lower():
+                continue
+            cogs.append(f"{directory}.{filename[:-3]}")
     cogs.sort()
     return cogs
 
@@ -739,7 +702,6 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
         await ctx.send("Only configured tuna admins can use this command.")
         return
 
-    # Parse flags from the message content
     try:
         tokens = re.split(r"\s+", ctx.message.content.lower())
     except Exception:
@@ -759,7 +721,6 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
     out_text = out.strip()[:1500] if out else "(no stdout)"
     err_text = err.strip()[:1500] if err else "(no stderr)"
 
-    # Try to reload cogs regardless of `git pull` exit status
     reload_results = await _reload_all_cogs()
 
     # Summarize
@@ -775,16 +736,13 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
     else:
         msg += "Failed:\nNone"
 
-    # Update status message with results
     try:
         await status_msg.edit(content=f"```\n{msg[:1900]}\n```")
     except Exception:
-        # fallback to sending a new message
         await ctx.send(f"```\n{msg[:1900]}\n```")
 
     # If requested, restart the bot after deploy
     if do_restart:
-        # Store who restarted the bot
         os.environ["REBOOT_INITIATOR_ID"] = str(ctx.author.id)
         os.environ["REBOOT_INITIATOR_NAME"] = str(ctx.author)
         # If restart is requested silently, set the env var so new process won't ping
@@ -793,7 +751,6 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
         # If ping flag is used, force role ping
         if restart_ping:
             os.environ["REBOOT_PING"] = "1"
-        # Send acknowledgement (silent still sends, just no ping unless --ping is used)
         try:
             await ctx.send("✅ Rebooting bot after deploy...")
         except Exception:
@@ -826,7 +783,6 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
         await ctx.send("Only configured tuna admins can use this command.")
         return
 
-    # Parse flags from the message content (accepts --silent, -s, silent, quiet)
     try:
         tokens = re.split(r"\s+", ctx.message.content.lower())
     except Exception:
@@ -837,11 +793,9 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
     silent = any(tok in silent_flags for tok in tokens)
     force_ping = any(tok in ping_flags for tok in tokens)
 
-    # Store who restarted the bot
     os.environ["REBOOT_INITIATOR_ID"] = str(ctx.author.id)
     os.environ["REBOOT_INITIATOR_NAME"] = str(ctx.author)
     
-    # Send an acknowledgement (silent flag means no ping, but message still sent)
     try:
         await ctx.send("✅ Rebooting bot...")
     except Exception:
@@ -850,7 +804,6 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
     # Give Discord time to accept the response
     await asyncio.sleep(0.5)
 
-    # If this is a silent reboot (and not forced to ping), set an env flag so the freshly started process won't ping the version counter
     if silent and not force_ping:
         os.environ["REBOOT_SILENT"] = "1"
     
@@ -858,7 +811,6 @@ async def tuna_reboot(ctx: commands.Context, *, _flags: str = ""):
     if force_ping:
         os.environ["REBOOT_PING"] = "1"
 
-    # Close the bot cleanly and execv to restart the process.
     try:
         await bot.close()
     except Exception as e:
@@ -958,7 +910,6 @@ async def tuna_troubleshoot(ctx: commands.Context, role_id: Optional[int] = None
 
     header = f"Role timestamps: {total_cnt} entries across {len(roles)} roles"
     out = "\n".join([header, ""] + lines)
-    # Send in chunks if too long
     CHUNK = 1900
     for i in range(0, len(out), CHUNK):
         chunk = out[i:i+CHUNK]
@@ -981,7 +932,6 @@ async def embed_from_message(ctx: commands.Context, message_id: int):
             await ctx.send(f"No embed found for message ID {message_id}")
             return
         
-        # Send as code block
         if len(embed_json) > 1900:
             # Split into chunks if too long
             for i in range(0, len(embed_json), 1900):
@@ -1024,7 +974,6 @@ async def list_embeds(ctx: commands.Context, limit: int = 10):
         
         out = "\n".join(lines)
         if len(out) > 1900:
-            # Send in chunks
             for i in range(0, len(out), 1900):
                 chunk = out[i:i+1900]
                 await ctx.send(chunk)

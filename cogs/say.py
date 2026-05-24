@@ -41,14 +41,12 @@ class Say(commands.Cog):
         channel: discord.TextChannel,
         send_as_embed: bool = False
     ):
-        # Permission check
         if not get(interaction.user.roles, id=ALLOWED_ROLE_ID):
             await interaction.response.send_message(
                 "You do not have permission to use this command.", ephemeral=True
             )
             return
 
-        # Log the command usage
         log_say_command(
             user_id=interaction.user.id,
             channel_id=channel.id,

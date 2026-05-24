@@ -20,7 +20,6 @@ class ImageCatalog(commands.Cog):
             await ctx.send("You do not have permission to use this command.")
             return
 
-        # Get catalog server and channel
         catalog_server = self.bot.get_guild(CATALOG_SERVER_ID)
         if not catalog_server:
             await ctx.send(f"Catalog server {CATALOG_SERVER_ID} not found.")
@@ -31,7 +30,6 @@ class ImageCatalog(commands.Cog):
             await ctx.send(f"Catalog channel {CATALOG_CHANNEL_ID} not found in server.")
             return
 
-        # Load existing discord URLs
         discord_urls_file = IMAGES_DIR / "discord_urls.json"
         if discord_urls_file.exists():
             try:
@@ -42,7 +40,6 @@ class ImageCatalog(commands.Cog):
         else:
             discord_urls = {}
 
-        # Get all image files
         if not IMAGES_DIR.exists():
             await ctx.send(f"Images directory not found at {IMAGES_DIR}")
             return
@@ -63,14 +60,12 @@ class ImageCatalog(commands.Cog):
             try:
                 # Upload to Discord
                 msg = await catalog_channel.send(file=discord.File(img_file))
-                # Store the attachment URL
                 if msg.attachments:
                     discord_urls[img_file.name] = msg.attachments[0].url
                     print(f"✅ Catalogued: {img_file.name}")
             except Exception as e:
                 print(f"❌ Failed to upload {img_file.name}: {e}")
 
-        # Save updated URLs
         try:
             with open(discord_urls_file, 'w') as f:
                 json.dump(discord_urls, f, indent=2)

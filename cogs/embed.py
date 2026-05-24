@@ -310,7 +310,6 @@ class RemoveFieldButton(discord.ui.Button):
             fields.pop()
         await update_embed_preview(self.parent_interaction, self.session)
 
-# new: edit a specific field by selecting name
 class EditFieldByNameButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=3):
         super().__init__(label="Edit Field (by name)", style=discord.ButtonStyle.primary, row=row)
@@ -323,7 +322,6 @@ class EditFieldByNameButton(discord.ui.Button):
             await interaction.response.send_message("No fields to edit.", ephemeral=True)
             return
 
-        # build a select with each field name (show index to disambiguate)
         view = FieldSelectView(self.session, self.parent_interaction)
         await interaction.response.send_message("Select a field to edit:", view=view, ephemeral=True)
 
@@ -345,7 +343,6 @@ class FieldSelect(discord.ui.Select):
             idx = int(self.values[0])
             name, value, inline = self.session.get()["fields"][idx]
             inline_str = "true" if inline else "false"
-            # open modal prefilled with current values
             modal = FieldEditModal(self.session, self.parent_interaction, idx, name, value, inline_str)
             await interaction.response.send_modal(modal)
             # stop the view so the ephemeral select can be cleaned up
@@ -422,7 +419,6 @@ class RemoveLinkButtonButton(discord.ui.Button):
             buttons.pop()
         await update_embed_preview(self.parent_interaction, self.session)
 
-# new: list saved sessions (non-destructive)
 class ListSessionsButton(discord.ui.Button):
     def __init__(self, session, parent_interaction, row=4):
         super().__init__(label="List Saved Sessions", style=discord.ButtonStyle.secondary, row=row)
@@ -430,7 +426,6 @@ class ListSessionsButton(discord.ui.Button):
         self.parent_interaction = parent_interaction
 
     async def callback(self, interaction: discord.Interaction):
-        # Ensure DB/table exists and (if needed) has 'name' column
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS embed_sessions (key TEXT PRIMARY KEY, user_id INTEGER, embeds TEXT, created_at TEXT, name TEXT)"
@@ -458,7 +453,6 @@ class ListSessionsButton(discord.ui.Button):
             display_name = (name.strip() if name and name.strip() else "NO NAME")
             lines.append(f"`{key}` - {display_name} - {created_at}")
 
-        # send ephemeral list
         chunk = "\n".join(lines)
         # If too long, truncate
         if len(chunk) > 1900:
@@ -500,7 +494,6 @@ class SaveButton(discord.ui.Button):
         self.cog = cog
         self.parent_interaction = parent_interaction
     async def callback(self, interaction: discord.Interaction):
-        # Open modal to ask for a name (non-destructive save)
         await interaction.response.send_modal(SaveSessionModal(self.session, self.cog, self.parent_interaction))
 
 # new modal to provide a name for the session (if empty -> NO NAME)
@@ -517,7 +510,6 @@ class SaveSessionModal(discord.ui.Modal, title="Save Session"):
         key = str(uuid.uuid4())[:8]
         name_val = self.name.value.strip() if self.name.value and self.name.value.strip() else "NO NAME"
         async with aiosqlite.connect(DB_PATH) as db:
-            # ensure table exists with 'name' column
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS embed_sessions (key TEXT PRIMARY KEY, user_id INTEGER, embeds TEXT, created_at TEXT, name TEXT)"
             )
@@ -595,7 +587,6 @@ def session_to_embed(embed_data, for_preview=True):
             text=footer[:2048],
             icon_url=embed_data["footer_icon"] if embed_data["footer_icon"] else None
         )
-    # Only add up to 25 fields, truncate name/value
     for name, value, inline in embed_data["fields"][:25]:
         if for_preview:
             field_name = name if name.strip() else "(NO CONTENT)"

@@ -17,7 +17,6 @@ class ImageCatalogManager {
     async loadCatalog() {
         const now = Date.now();
         
-        // Use cache if available and not expired
         if (this.isLoaded && (now - this.lastLoadTime) < this.cacheExpiry) {
             console.log('📦 Using cached image catalog');
             return this.catalog;

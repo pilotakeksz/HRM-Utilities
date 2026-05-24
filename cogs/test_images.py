@@ -93,7 +93,6 @@ class TestImages(commands.Cog):
         except Exception as e:
             results.append(f"❌ Test 8 (Direct file): {e}")
 
-        # Send summary
         summary = "\n".join(results)
         summary += "\n\n**Note:** 'Sent successfully' means no error occurred. Check above messages to see if images actually rendered."
         await interaction.followup.send(f"**Image Test Results:**\n{summary}", ephemeral=True)
