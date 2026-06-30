@@ -172,6 +172,11 @@ class Blacklist(commands.Cog):
             f"Blacklisted {user.id} | Reason: {reason} | Blacklist ID: {blacklist_id} | mcng-wide: {mcng_wide} | Ban: {ban}",
             embed=True
         )
+        
+        if(ban):
+            interaction.followup.send("User has been blacklisted and banned.", ephemeral=True)
+        else:
+            interaction.followup.send("User has been blacklisted.", ephemeral=True)
 
         log_channel = interaction.guild.get_channel(BLACKLIST_LOG_CHANNEL_ID)
         if log_channel:
