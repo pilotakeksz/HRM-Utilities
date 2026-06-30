@@ -10,3 +10,4 @@ beta_cogs/
 __pycache__/
 *.pyc
 *.pyo
+.idea/

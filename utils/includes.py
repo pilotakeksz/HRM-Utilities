@@ -6,6 +6,8 @@ from discord import app_commands
 from discord.ui import View, Button, Select, Modal, TextInput
 from discord.utils import get
 
+import git
+
 import aiosqlite
 
 import base64

@@ -14,6 +14,7 @@ import json
 from datetime import datetime, timezone, date
 from typing import Optional
 import re
+import git
 
 
 
@@ -61,6 +62,11 @@ old_stdout = sys.stdout
 old_stderr = sys.stderr
 sys.stdout = startup_output
 sys.stderr = startup_output
+
+#Git stuff.
+repo = git.Repo(".")
+origin = repo.remotes.origin
+
 
 async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[discord.Guild], channel: Optional[discord.abc.Messageable], command_name: str, content: str = "", affected_ids: Optional[list] = None):
     """Log a command invocation both to the configured logging channel as an embed and locally as a JSON line.
@@ -648,20 +654,20 @@ async def _gather_cog_list() -> list:
     return cogs
 
 
-async def _run_git_pull(repo_path: str) -> tuple:
+async def _run_git_pull() -> tuple:
     """Run 'git pull' in repo_path and return (returncode, stdout, stderr)."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "git", "pull", cwd=repo_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out, err = await proc.communicate()
-        return proc.returncode, (out.decode(errors='replace') if out else ""), (err.decode(errors='replace') if err else "")
-    except FileNotFoundError:
-        return 127, "", "git not found"
-    except Exception as e:
-        return 1, "", str(e)
+    tracked_changes = repo.index.diff(None)
+    untracked_changes = repo.untracked_files
+    if tracked_changes or untracked_changes:
+        print("You have file changes on this computer that will cause pulling to not work, please restore these following items:")
+        for diff in tracked_changes:
+            print(f"{diff.a_path}")
+        for file_path in untracked_changes:
+            print(f"{file_path}")
+    else:
+        print("running pull")
+        origin.pull(rebase=False)
+
 
 
 async def _reload_all_cogs() -> dict:
@@ -715,8 +721,7 @@ async def tuna_deploy(ctx: commands.Context, *, _flags: str = ""):
     restart_ping = any(tok in ping_flags for tok in tokens)
 
     status_msg = await ctx.send("🔄 Running deploy (git pull + reload cogs)...")
-    repo_path = os.path.dirname(__file__)
-    code, out, err = await _run_git_pull(repo_path)
+    code, out, err = await _run_git_pull()
 
     out_text = out.strip()[:1500] if out else "(no stdout)"
     err_text = err.strip()[:1500] if err else "(no stderr)"
