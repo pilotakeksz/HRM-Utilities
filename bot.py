@@ -67,7 +67,6 @@ sys.stderr = startup_output
 repo = git.Repo(".")
 origin = repo.remotes.origin
 
-
 async def log_command_use(kind: str, user: discord.abc.User, guild: Optional[discord.Guild], channel: Optional[discord.abc.Messageable], command_name: str, content: str = "", affected_ids: Optional[list] = None):
     """Log a command invocation both to the configured logging channel as an embed and locally as a JSON line.
 
@@ -655,20 +654,27 @@ async def _gather_cog_list() -> list:
 
 
 async def _run_git_pull() -> tuple:
-    """Run 'git pull' in repo_path and return (returncode, stdout, stderr)."""
+    """Does a git pull"""
+
+    #This has to be complicated due to normal git pull not being descriptive with its errors.
+
     tracked_changes = repo.index.diff(None)
     untracked_changes = repo.untracked_files
     if tracked_changes or untracked_changes:
-        print("You have file changes on this computer that will cause pulling to not work, please restore these following items:")
+        print("WARN: You have file changes on this computer that will cause pulling to not work, please restore these following items:")
         for diff in tracked_changes:
             print(f"{diff.a_path}")
         for file_path in untracked_changes:
             print(f"{file_path}")
+
+        print("WARN: Bot has NOT been upgraded, It is In need of service.")
     else:
         print("running pull")
-        origin.pull(rebase=False)
-
-
+        try:
+            origin.pull(rebase=False)
+        except GitCommandError as e:
+            print("ERROR: Pull failed with exception:", e)
+            print("WARN: Bot has NOT been upgraded, It is In need of service.")
 
 async def _reload_all_cogs() -> dict:
     """Attempt to reload or load all cogs; return dict with 'reloaded', 'loaded', 'failed'."""
